@@ -39,7 +39,7 @@ import { Badge } from '@/components/ui/badge'
 import { fmtNum, shortDate, weekdayName } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+import { fetcher } from '@/lib/api'
 
 interface StatsResponse {
   summary: {

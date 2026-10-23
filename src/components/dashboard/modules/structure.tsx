@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EntityFormDialog, type Field } from '../entity-dialog'
-import { fetcher, apiPost, apiDelete } from '@/lib/api'
+import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import { fmtNum } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 
@@ -27,8 +27,7 @@ export function BranchesModule() {
   const submit = async (vals: any) => {
     const payload = { ...vals, userName: 'admin' }
     if (editing) {
-      const r = await fetch(`/api/branches/${editing.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error) }
+      await apiPatch(`/api/branches/${editing.id}`, payload)
       toast({ title: 'تم التحديث' })
     } else {
       await apiPost('/api/branches', payload)
@@ -113,8 +112,7 @@ export function WarehousesModule() {
   const submit = async (vals: any) => {
     const payload = { ...vals, userName: 'admin' }
     if (editing) {
-      const r = await fetch(`/api/warehouses/${editing.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error) }
+      await apiPatch(`/api/warehouses/${editing.id}`, payload)
       toast({ title: 'تم التحديث' })
     } else {
       await apiPost('/api/warehouses', payload)

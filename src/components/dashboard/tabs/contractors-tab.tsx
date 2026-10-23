@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { fmtNum } from '@/lib/format'
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+import { fetcher } from '@/lib/api'
 
 interface StatsResponse {
   contractors: { name: string; count: number; freight: number; suppliers: number }[]

@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { fmtNum } from '@/lib/format'
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+import { fetcher } from '@/lib/api'
 
 interface FreightRate {
   id: string

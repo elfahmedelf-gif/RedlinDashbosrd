@@ -26,7 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { fmtNum, fmtDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+import { fetcher } from '@/lib/api'
 
 interface Shipment {
   id: string

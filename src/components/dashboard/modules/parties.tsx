@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EntityFormDialog, type Field } from '../entity-dialog'
 import { DataTable } from '../data-table'
-import { fetcher, apiPost, apiDelete } from '@/lib/api'
+import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import { fmtNum } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import type { ModuleKey } from '../sidebar'
@@ -66,8 +66,7 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
     const payload = { ...vals, [`is${type.charAt(0).toUpperCase() + type.slice(1)}`]: true, userName: 'admin' }
     if (editing) {
       // For edit, use PATCH
-      const r = await fetch(`/api/parties/${editing.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'فشل') }
+      await apiPatch(`/api/parties/${editing.id}`, payload)
       toast({ title: 'تم التحديث' })
     } else {
       await apiPost('/api/parties', payload)

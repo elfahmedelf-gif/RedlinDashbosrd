@@ -16,7 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
 import { DataTable } from '../data-table'
-import { fetcher, apiPost, apiDelete } from '@/lib/api'
+import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import { fmtNum, fmtDateTime, ROLE_LABELS } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -45,8 +45,7 @@ export function UsersModule() {
     if (!v.username || !v.name) { toast({ title: 'الاسم واسم المستخدم مطلوبان', variant: 'destructive' }); return }
     try {
       if (editing) {
-        const r = await fetch(`/api/users/${editing.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...v, userName: 'admin' }) })
-        if (!r.ok) { const e = await r.json(); throw new Error(e.error) }
+        await apiPatch(`/api/users/${editing.id}`, { ...v, userName: 'admin' })
         toast({ title: 'تم التحديث' })
       } else {
         await apiPost('/api/users', { ...v, userName: 'admin' })
@@ -205,8 +204,7 @@ export function SettingsModule() {
     setSaving(true)
     try {
       const updates = data!.items.map((s) => ({ key: s.key, value: drafts[s.key] ?? '', label: s.label, category: s.category }))
-      const r = await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ updates, userName: 'admin' }) })
-      if (!r.ok) throw new Error('فشل الحفظ')
+      await apiPatch('/api/settings', { updates, userName: 'admin' })
       toast({ title: 'تم حفظ الإعدادات' })
       mutate()
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }

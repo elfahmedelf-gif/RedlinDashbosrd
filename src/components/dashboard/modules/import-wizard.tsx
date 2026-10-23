@@ -106,7 +106,7 @@ export function ImportModule() {
       </Card>
 
       {/* Stepper */}
-      <div className="flex items-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs">
         {(['idle', 'preview', 'mapping', 'committing', 'done'] as const).map((s, i) => {
           const labels = { idle: 'البدء', preview: 'المعاينة', mapping: 'التعيين', committing: 'الاستيراد', done: 'النتيجة' }
           const isActive = step === s

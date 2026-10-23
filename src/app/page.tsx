@@ -18,7 +18,7 @@ import { LookupsModule } from '@/components/dashboard/modules/lookups'
 import { Button } from '@/components/ui/button'
 import { fetcher } from '@/lib/api'
 
-const fetcherCounts = (url: string) => fetch(url).then((r) => r.json())
+const fetcherCounts = fetcher
 
 const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
   overview: { title: 'الرئيسية', subtitle: 'لوحة المؤشرات الرئيسية' },

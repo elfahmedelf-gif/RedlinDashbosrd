@@ -17,7 +17,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { EntityFormDialog, type Field } from '../entity-dialog'
 import { DataTable } from '../data-table'
-import { fetcher, apiPost, apiDelete } from '@/lib/api'
+import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import { fmtNum, fmtDate, MOVEMENT_TYPE } from '@/lib/format'
 import { useLookup } from '@/lib/lookups'
 import { useToast } from '@/hooks/use-toast'
@@ -46,8 +46,7 @@ export function InventoryModule() {
   const submit = async (vals: any) => {
     const payload = { ...vals, userName: 'admin' }
     if (editing) {
-      const r = await fetch(`/api/items/${editing.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error) }
+      await apiPatch(`/api/items/${editing.id}`, payload)
       toast({ title: 'تم التحديث' })
     } else {
       await apiPost('/api/items', payload)
@@ -273,8 +272,7 @@ export function FreightModule() {
     const payload = { ...v, cost: v.cost ? Number(v.cost) : null, sellPrice: v.sellPrice ? Number(v.sellPrice) : null, sellPrice2: v.sellPrice2 ? Number(v.sellPrice2) : null, userName: 'admin' }
     try {
       if (editing) {
-        const r = await fetch(`/api/freight/${editing.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-        if (!r.ok) { const e = await r.json(); throw new Error(e.error) }
+        await apiPatch(`/api/freight/${editing.id}`, payload)
         toast({ title: 'تم التحديث' })
       } else {
         await apiPost('/api/freight', payload)
