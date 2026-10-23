@@ -1,0 +1,452 @@
+'use client'
+
+import * as React from 'react'
+import {
+  Truck, LayoutDashboard, LayoutGrid, PackageSearch, Users, UserCog, Building2,
+  Warehouse as WarehouseIcon, Boxes, ArrowRightLeft, Receipt, BookOpen,
+  FileText, Landmark, FileBarChart, Upload, UserCircle, Settings, History,
+  ChevronRight, ChevronLeft, ChevronDown, PanelRightClose, PanelRightOpen,
+  LogOut, ListChecks, type LucideIcon,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+export type ModuleKey =
+  | 'overview' | 'shipments' | 'customers' | 'contractors' | 'suppliers'
+  | 'branches' | 'warehouses' | 'inventory' | 'movements' | 'freight'
+  | 'accounts' | 'journal' | 'vouchers' | 'reports' | 'import'
+  | 'users' | 'lookups' | 'settings' | 'audit'
+
+export interface ModuleDef {
+  key: ModuleKey
+  label: string
+  icon: LucideIcon
+  desc: string
+  group: string
+}
+
+export const MODULES: ModuleDef[] = [
+  { key: 'overview', label: 'الرئيسية', icon: LayoutDashboard, desc: 'لوحة المؤشرات', group: 'main' },
+  { key: 'shipments', label: 'الشحنات', icon: PackageSearch, desc: 'سجل الشحنات', group: 'main' },
+  { key: 'customers', label: 'العملاء', icon: Users, desc: 'ملفات العملاء', group: 'parties' },
+  { key: 'contractors', label: 'المقاولون', icon: UserCog, desc: 'الناقلون', group: 'parties' },
+  { key: 'suppliers', label: 'الموردون', icon: Truck, desc: 'الموردون', group: 'parties' },
+  { key: 'branches', label: 'الفروع', icon: Building2, desc: 'الفروع', group: 'structure' },
+  { key: 'warehouses', label: 'المخازن', icon: WarehouseIcon, desc: 'المخازن', group: 'structure' },
+  { key: 'inventory', label: 'المخزون', icon: Boxes, desc: 'الأصناف', group: 'inventory' },
+  { key: 'movements', label: 'حركة المخزون', icon: ArrowRightLeft, desc: 'الحركات', group: 'inventory' },
+  { key: 'freight', label: 'أسعار النولون', icon: Receipt, desc: 'جدول الأسعار', group: 'inventory' },
+  { key: 'accounts', label: 'شجرة الحسابات', icon: BookOpen, desc: 'دليل الحسابات', group: 'accounting' },
+  { key: 'journal', label: 'القيود اليومية', icon: FileText, desc: 'القيد المزدوج', group: 'accounting' },
+  { key: 'vouchers', label: 'سندات القبض/الصرف', icon: Landmark, desc: 'السندات', group: 'accounting' },
+  { key: 'reports', label: 'التقارير', icon: FileBarChart, desc: 'التقارير', group: 'reports' },
+  { key: 'import', label: 'استيراد البيانات', icon: Upload, desc: 'استيراد Excel', group: 'system' },
+  { key: 'users', label: 'المستخدمون', icon: UserCircle, desc: 'المستخدمون والأدوار', group: 'system' },
+  { key: 'lookups', label: 'القوائم المنسدلة', icon: ListChecks, desc: 'إدارة قوائم النظام', group: 'system' },
+  { key: 'settings', label: 'الإعدادات', icon: Settings, desc: 'إعدادات النظام', group: 'system' },
+  { key: 'audit', label: 'سجل التدقيق', icon: History, desc: 'سجل العمليات', group: 'system' },
+]
+
+const GROUP_LABELS: Record<string, string> = {
+  main: 'العمليات الرئيسية',
+  parties: 'الأطراف',
+  structure: 'الهيكل التنظيمي',
+  inventory: 'المخزون والتسعير',
+  accounting: 'الحسابات المالية',
+  reports: 'التقارير',
+  system: 'النظام',
+}
+
+// Group meta: icon + label
+const GROUP_META: Record<string, { icon: LucideIcon; label: string }> = {
+  main: { icon: LayoutDashboard, label: 'العمليات الرئيسية' },
+  parties: { icon: Users, label: 'الأطراف' },
+  structure: { icon: Building2, label: 'الهيكل التنظيمي' },
+  inventory: { icon: Boxes, label: 'المخزون والتسعير' },
+  accounting: { icon: BookOpen, label: 'الحسابات المالية' },
+  reports: { icon: FileBarChart, label: 'التقارير' },
+  system: { icon: Settings, label: 'النظام' },
+}
+
+interface SidebarProps {
+  active: ModuleKey
+  onChange: (k: ModuleKey) => void
+  counts: Partial<Record<ModuleKey, number>>
+}
+
+export function Sidebar({ active, onChange, counts }: SidebarProps) {
+
+  // Sidebar collapse state - persisted
+  const [collapsed, setCollapsed] = React.useState(false)
+  React.useEffect(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('sidebar-collapsed') : null
+    if (saved === '1') setCollapsed(true)
+  }, [])
+  const toggle = React.useCallback(() => {
+    setCollapsed((c) => {
+      const next = !c
+      if (typeof window !== 'undefined') localStorage.setItem('sidebar-collapsed', next ? '1' : '0')
+      return next
+    })
+  }, [])
+
+  const groups = React.useMemo(() => {
+    const m = new Map<string, ModuleDef[]>()
+    for (const mod of MODULES) {
+      if (!m.has(mod.group)) m.set(mod.group, [])
+      m.get(mod.group)!.push(mod)
+    }
+    return Array.from(m.entries())
+  }, [])
+
+  // Which group is the active module in?
+  const activeGroup = React.useMemo(
+    () => MODULES.find((m) => m.key === active)?.group ?? null,
+    [active],
+  )
+
+  // Accordion-style expanded groups: only ONE group open at a time.
+  // Persisted in localStorage as a JSON array (always 0 or 1 item).
+  // Default: expand only the group containing the active module (or 'main' as fallback).
+  const [expanded, setExpanded] = React.useState<Set<string>>(new Set())
+  React.useEffect(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('sidebar-groups-expanded') : null
+      if (saved) {
+        const arr = JSON.parse(saved) as string[]
+        // Force accordion: keep only the first saved group
+        setExpanded(new Set(arr.slice(0, 1)))
+      } else {
+        // Default: open only the active group (or 'main')
+        const initial = activeGroup || 'main'
+        setExpanded(new Set([initial]))
+      }
+    } catch {
+      setExpanded(new Set([activeGroup || 'main']))
+    }
+  }, [])
+
+  // Auto-expand the active group on navigation — accordion style:
+  // collapse all others and keep only the active group open.
+  // (If the user already had multiple open, we replace them with just the active group.)
+  React.useEffect(() => {
+    if (!activeGroup) return
+    setExpanded((prev) => {
+      // If only the active group is open already, no change needed
+      if (prev.size === 1 && prev.has(activeGroup)) return prev
+      const next = new Set<string>([activeGroup])
+      if (typeof window !== 'undefined') localStorage.setItem('sidebar-groups-expanded', JSON.stringify(Array.from(next)))
+      return next
+    })
+  }, [activeGroup])
+
+  // Accordion behavior: when user clicks a group, only that group is open.
+  // - Clicking an already-open group closes it (and opens nothing else).
+  // - Clicking a closed group closes all others and opens just that one.
+  // - The "active group auto-expand" effect below still keeps the active group open on navigation,
+  //   but in accordion mode it collapses others first.
+  const toggleGroup = React.useCallback((g: string) => {
+    setExpanded((prev) => {
+      // If this group is currently open → close it. Result: empty set (accordion collapses all).
+      // If closed → open it and close everything else (accordion: only one open at a time).
+      const next = new Set<string>()
+      if (!prev.has(g)) next.add(g)
+      if (typeof window !== 'undefined') localStorage.setItem('sidebar-groups-expanded', JSON.stringify(Array.from(next)))
+      return next
+    })
+  }, [])
+
+  return (
+    <aside
+      className={cn(
+        'hidden md:flex shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground sticky top-0 h-screen z-30 transition-[width] duration-300 ease-out',
+        collapsed ? 'w-[76px]' : 'w-72 lg:w-80',
+      )}
+    >
+      {/* Header / brand */}
+      <div className={cn(
+        'flex items-center gap-3 border-b border-sidebar-border h-16 shrink-0',
+        collapsed ? 'justify-center px-2' : 'px-5',
+      )}>
+        <div className="relative flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-lg shrink-0">
+          <Truck className="size-5" />
+          <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-emerald-400 ring-2 ring-sidebar" />
+        </div>
+        {!collapsed && (
+          <div className="flex-1 min-w-0 anim-fade-in">
+            <h1 className="font-bold text-base leading-tight truncate">شركة النقل والشحن</h1>
+            <p className="text-[11px] text-muted-foreground leading-tight truncate">نظام الإدارة المتكامل</p>
+          </div>
+        )}
+        {!collapsed && (
+          <button
+            onClick={toggle}
+            className="text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg size-8 flex items-center justify-center transition-colors"
+            title="طي القائمة"
+          >
+            <PanelRightClose className="size-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Expand button when collapsed */}
+      {collapsed && (
+        <button
+          onClick={toggle}
+          className="mx-auto mt-2 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg size-8 flex items-center justify-center transition-colors"
+          title="توسيع القائمة"
+        >
+          <PanelRightOpen className="size-4" />
+        </button>
+      )}
+
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 space-y-1 scrollbar-thin">
+        {groups.map(([groupKey, mods]) => {
+          const isExpanded = expanded.has(groupKey)
+          const isActiveGroup = activeGroup === groupKey
+          const groupMeta = GROUP_META[groupKey]
+          const GIcon = groupMeta?.icon
+          // group total count = sum of child counts
+          const groupTotal = mods.reduce((acc, m) => acc + (counts[m.key] ?? 0), 0)
+
+          if (collapsed) {
+            // Collapsed mode: show each module as an icon-only button (no grouping)
+            return (
+              <React.Fragment key={groupKey}>
+                <div className="mx-2 my-1.5 border-t border-sidebar-border/60" />
+                {mods.map((m) => {
+                  const isActive = active === m.key
+                  const Icon = m.icon
+                  const count = counts[m.key]
+                  return (
+                    <button
+                      key={m.key}
+                      onClick={() => onChange(m.key)}
+                      title={m.label}
+                      className={cn(
+                        'group relative w-full flex items-center justify-center rounded-xl py-2.5 transition-all duration-200',
+                        isActive ? 'nav-item-active shadow-md' : 'hover:bg-sidebar-accent text-sidebar-foreground/90',
+                      )}
+                    >
+                      {isActive && <span className="absolute right-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-l-full bg-primary-foreground/80" />}
+                      <Icon className={cn('size-5', isActive ? '' : 'text-muted-foreground group-hover:text-foreground')} />
+                      {typeof count === 'number' && count > 0 && (
+                        <span className="absolute top-1 right-1 size-2 rounded-full bg-primary ring-2 ring-sidebar" />
+                      )}
+                    </button>
+                  )
+                })}
+              </React.Fragment>
+            )
+          }
+
+          return (
+            <div key={groupKey}>
+              {/* Group header - clickable to toggle */}
+              <button
+                onClick={() => toggleGroup(groupKey)}
+                className={cn(
+                  'group w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-200',
+                  isActiveGroup
+                    ? 'bg-sidebar-accent text-sidebar-foreground'
+                    : 'hover:bg-sidebar-accent/60 text-sidebar-foreground/85 hover:text-sidebar-foreground',
+                )}
+              >
+                {GIcon && (
+                  <GIcon className={cn('size-4 shrink-0', isActiveGroup ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
+                )}
+                <span className="flex-1 text-right text-[13px] font-bold leading-tight">{groupMeta?.label}</span>
+                {groupTotal > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full tnum font-semibold bg-secondary text-secondary-foreground">
+                    {groupTotal.toLocaleString('en-US')}
+                  </span>
+                )}
+                <ChevronDown
+                  className={cn(
+                    'size-4 text-muted-foreground transition-transform duration-300 shrink-0',
+                    isExpanded && 'rotate-180',
+                  )}
+                />
+              </button>
+
+              {/* Modules list - collapsible */}
+              <div
+                className={cn(
+                  'overflow-hidden transition-all duration-300 ease-out',
+                  isExpanded ? 'max-h-[600px] opacity-100 mt-1' : 'max-h-0 opacity-0',
+                )}
+              >
+                <div className="space-y-0.5 pr-2 border-r-2 border-sidebar-border/40 mr-3 my-1">
+                  {mods.map((m) => {
+                    const isActive = active === m.key
+                    const Icon = m.icon
+                    const count = counts[m.key]
+                    return (
+                      <button
+                        key={m.key}
+                        onClick={() => onChange(m.key)}
+                        className={cn(
+                          'group relative w-full flex items-center gap-2.5 rounded-lg text-sm transition-all duration-200 px-3 py-2',
+                          isActive
+                            ? 'nav-item-active shadow-sm'
+                            : 'hover:bg-sidebar-accent text-sidebar-foreground/85 hover:text-sidebar-foreground',
+                        )}
+                      >
+                        {isActive && (
+                          <span className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-l-full bg-primary-foreground/80" />
+                        )}
+                        <Icon className={cn(
+                          'shrink-0 size-4',
+                          isActive ? '' : 'text-muted-foreground group-hover:text-foreground',
+                        )} />
+                        <span className="flex-1 text-right font-medium leading-tight text-[13px]">{m.label}</span>
+                        {typeof count === 'number' && (
+                          <span className={cn(
+                            'text-[10px] px-1.5 py-0.5 rounded-full tnum font-semibold',
+                            isActive
+                              ? 'bg-primary-foreground/20 text-primary-foreground'
+                              : 'bg-secondary/80 text-secondary-foreground',
+                          )}>
+                            {count.toLocaleString('en-US')}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </nav>
+
+      {/* Footer: user info + version (dark mode toggle moved to header) */}
+      <div className={cn('border-t border-sidebar-border p-2 space-y-1', collapsed && 'flex flex-col items-center')}>
+        {!collapsed && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors cursor-pointer">
+            <div className="flex items-center justify-center size-8 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-xs font-bold shrink-0">م</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold truncate">مدير النظام</div>
+              <div className="text-[10px] text-muted-foreground truncate">admin</div>
+            </div>
+            <LogOut className="size-3.5 text-muted-foreground" />
+          </div>
+        )}
+        {!collapsed && (
+          <div className="px-3 pt-1 text-[10px] text-muted-foreground/60 leading-relaxed">
+            نظام إدارة شحن · إصدار 2.0
+          </div>
+        )}
+      </div>
+    </aside>
+  )
+}
+
+// Mobile bottom nav (refined) — 4 primary modules + "More" button for the full menu
+export function MobileNav({ active, onChange }: { active: ModuleKey; onChange: (k: ModuleKey) => void }) {
+  const [open, setOpen] = React.useState(false)
+  const primary: ModuleKey[] = ['overview', 'shipments', 'customers', 'reports']
+
+  return (
+    <>
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border glass supports-[backdrop-filter]:bg-card/85 backdrop-blur-xl">
+        <div className="grid grid-cols-5 gap-0.5 p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
+          {primary.map((k) => {
+            const m = MODULES.find((x) => x.key === k)!
+            const Icon = m.icon
+            const isActive = active === k
+            return (
+              <button
+                key={k}
+                onClick={() => onChange(k)}
+                className={cn(
+                  'flex flex-col items-center gap-1 py-1.5 rounded-xl text-[10px] font-medium transition-all',
+                  isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <span className={cn(
+                  'flex items-center justify-center size-9 rounded-xl transition-all',
+                  isActive && 'bg-primary/10 scale-105',
+                )}>
+                  <Icon className="size-5" />
+                </span>
+                <span className="truncate max-w-full leading-none">{m.label}</span>
+              </button>
+            )
+          })}
+          {/* "More" button — opens the full module grid */}
+          <button
+            onClick={() => setOpen(true)}
+            className={cn(
+              'flex flex-col items-center gap-1 py-1.5 rounded-xl text-[10px] font-medium transition-all',
+              !primary.includes(active) ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <span className={cn(
+              'flex items-center justify-center size-9 rounded-xl transition-all',
+              !primary.includes(active) && 'bg-primary/10 scale-105',
+            )}>
+              <LayoutGrid className="size-5" />
+            </span>
+            <span className="leading-none">المزيد</span>
+          </button>
+        </div>
+      </nav>
+
+      {open && (
+        <div className="md:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm anim-fade-in" onClick={() => setOpen(false)}>
+          <div
+            className="absolute bottom-4 left-4 right-4 max-h-[75vh] overflow-y-auto rounded-2xl border border-border glass shadow-2xl p-3 anim-slide-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3 px-2">
+              <h3 className="font-bold text-sm">كل الوحدات</h3>
+              <button onClick={() => setOpen(false)} className="text-muted-foreground size-8 rounded-full hover:bg-secondary flex items-center justify-center">
+                <ChevronLeft className="size-4" />
+              </button>
+            </div>
+            {Array.from(new Set(MODULES.map((m) => m.group))).map((g) => (
+              <div key={g} className="mb-3">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-bold px-2 mb-1">{GROUP_LABELS[g]}</div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {MODULES.filter((m) => m.group === g).map((m) => {
+                    const Icon = m.icon
+                    const isActive = active === m.key
+                    return (
+                      <button
+                        key={m.key}
+                        onClick={() => { onChange(m.key); setOpen(false) }}
+                        className={cn(
+                          'flex flex-col items-center gap-1.5 p-3 rounded-xl text-[11px] font-medium transition-all',
+                          isActive ? 'nav-item-active' : 'hover:bg-secondary text-foreground',
+                        )}
+                      >
+                        <Icon className="size-5" />
+                        <span className="text-center leading-tight">{m.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// Mobile top header (refined)
+export function MobileHeader() {
+  return (
+    <header className="md:hidden sticky top-0 z-30 flex items-center gap-2 px-4 h-14 border-b border-border glass supports-[backdrop-filter]:bg-card/85 backdrop-blur-xl">
+      <div className="flex items-center justify-center size-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-md">
+        <Truck className="size-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <h1 className="font-bold text-sm leading-tight truncate">شركة النقل والشحن</h1>
+        <p className="text-[11px] text-muted-foreground leading-tight truncate">نظام الإدارة</p>
+      </div>
+    </header>
+  )
+}
