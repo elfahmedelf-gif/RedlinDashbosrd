@@ -90,23 +90,26 @@ export default function Page() {
         <Sidebar active={tab} onChange={setTab} counts={counts} />
         <main className="flex-1 min-w-0 flex flex-col pb-20 md:pb-0">
           <header className="sticky top-0 z-20 border-b border-border glass supports-[backdrop-filter]:bg-background/80 backdrop-blur-xl">
-            <div className="px-3 sm:px-4 md:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="px-3 sm:px-4 md:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4 min-w-0">
+                {/* أيقونة لوحة التحكم */}
                 {ActiveIcon && (
-                  <div className="hidden sm:flex items-center justify-center size-10 rounded-xl bg-primary/10 text-primary shrink-0">
-                    <ActiveIcon className="size-5" />
+                  <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-primary/10 text-primary border border-primary/15 shadow-sm shrink-0">
+                    <ActiveIcon className="w-6 h-6" />
                   </div>
                 )}
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-muted-foreground/70 mb-0.5 truncate-1">
+
+                {/* النصوص مع مسافات عمودية وline-height مريح */}
+                <div className="flex flex-col justify-center space-y-1 min-w-0">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground/70 tracking-wider truncate-1">
                     <span>النظام</span>
                     <ChevronLeft className="size-3 shrink-0" />
                     <span className="text-foreground/80 truncate-1">{TAB_LABELS[tab].title}</span>
                   </div>
-                  <h2 className="text-base sm:text-lg md:text-xl font-bold tracking-tight leading-none truncate-1">
+                  <h1 className="text-base sm:text-lg md:text-xl font-bold text-foreground leading-normal truncate-1">
                     {TAB_LABELS[tab].title}
-                  </h2>
-                  <p className="text-[11px] md:text-xs text-muted-foreground mt-0.5 hidden sm:block truncate-1">
+                  </h1>
+                  <p className="text-xs text-muted-foreground leading-normal hidden sm:block truncate-1">
                     {TAB_LABELS[tab].subtitle}
                   </p>
                 </div>
