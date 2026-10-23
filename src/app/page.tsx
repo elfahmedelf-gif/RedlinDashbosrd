@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { Calendar, X, ChevronLeft } from 'lucide-react'
+import { Calendar, X } from 'lucide-react'
 import { Sidebar, MobileNav, MobileHeader, type ModuleKey, MODULES } from '@/components/dashboard/sidebar'
 import { DarkModeToggle } from '@/components/dashboard/dark-mode-toggle'
 import { DashboardModule } from '@/components/dashboard/modules/dashboard'
@@ -21,7 +21,7 @@ import { fetcher } from '@/lib/api'
 const fetcherCounts = fetcher
 
 const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
-  overview: { title: 'الرئيسية', subtitle: 'لوحة المؤشرات الرئيسية' },
+  overview: { title: 'الرئيسية', subtitle: 'لوحة المؤشرات والعمليات الرئيسية' },
   shipments: { title: 'الشحنات', subtitle: 'سجل عمليات الشحن وحالاتها' },
   customers: { title: 'العملاء', subtitle: 'ملفات العملاء وأرصدتهم' },
   contractors: { title: 'المقاولون', subtitle: 'الناقلون وأداؤهم' },
@@ -89,60 +89,53 @@ export default function Page() {
       <div className="flex flex-1 min-h-0">
         <Sidebar active={tab} onChange={setTab} counts={counts} />
         <main className="flex-1 min-w-0 flex flex-col pb-20 md:pb-0">
-          <header className="sticky top-0 z-20 border-b border-border glass supports-[backdrop-filter]:bg-background/80 backdrop-blur-xl">
-            <div className="px-3 sm:px-4 md:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4 min-w-0">
-                {/* أيقونة لوحة التحكم */}
-                {ActiveIcon && (
-                  <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-primary/10 text-primary border border-primary/15 shadow-sm shrink-0">
-                    <ActiveIcon className="w-6 h-6" />
-                  </div>
-                )}
-
-                {/* النصوص مع مسافات عمودية وline-height مريح */}
-                <div className="flex flex-col justify-center space-y-1 min-w-0">
-                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground/70 tracking-wider truncate-1">
-                    <span>النظام</span>
-                    <ChevronLeft className="size-3 shrink-0" />
-                    <span className="text-foreground/80 truncate-1">{TAB_LABELS[tab].title}</span>
-                  </div>
-                  <h1 className="text-base sm:text-lg md:text-xl font-bold text-foreground leading-normal truncate-1">
-                    {TAB_LABELS[tab].title}
-                  </h1>
-                  <p className="text-xs text-muted-foreground leading-normal hidden sm:block truncate-1">
-                    {TAB_LABELS[tab].subtitle}
-                  </p>
+          <header className="h-16 px-6 bg-white dark:bg-slate-900 border-b border-slate-250 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3.5">
+              {/* الأيقونة بحجم مناسب ومحاذاة مركزية */}
+              {ActiveIcon && (
+                <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 border border-blue-150 dark:border-blue-800 shadow-sm shrink-0">
+                  <ActiveIcon className="w-5 h-5" />
                 </div>
+              )}
+
+              {/* العنوان والوصف فقط بدون كلمة النظام */}
+              <div className="flex flex-col justify-center">
+                <h1 className="text-lg font-bold text-slate-850 dark:text-white leading-tight">
+                  {TAB_LABELS[tab].title}
+                </h1>
+                <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {TAB_LABELS[tab].subtitle}
+                </span>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {tab === 'overview' && (
-                  <div className="flex items-center gap-1.5 bg-card border border-border rounded-xl p-1 px-2 min-w-0">
-                    <Calendar className="size-4 text-muted-foreground shrink-0" />
-                    <input
-                      type="date"
-                      value={from}
-                      onChange={(e) => setFrom(e.target.value)}
-                      className="text-xs bg-transparent border-0 outline-none px-1 py-1 min-w-0 w-24 sm:w-28"
-                    />
-                    <span className="text-muted-foreground text-xs shrink-0">→</span>
-                    <input
-                      type="date"
-                      value={to}
-                      onChange={(e) => setTo(e.target.value)}
-                      className="text-xs bg-transparent border-0 outline-none px-1 py-1 min-w-0 w-24 sm:w-28"
-                    />
-                    {(from || to) && (
-                      <button
-                        onClick={() => { setFrom(''); setTo('') }}
-                        className="size-6 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
-                      >
-                        <X className="size-3.5" />
-                      </button>
-                    )}
-                  </div>
-                )}
-                <DarkModeToggle />
-              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {tab === 'overview' && (
+                <div className="flex items-center gap-1.5 bg-card border border-border rounded-xl p-1 px-2 min-w-0">
+                  <Calendar className="size-4 text-muted-foreground shrink-0" />
+                  <input
+                    type="date"
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
+                    className="text-xs bg-transparent border-0 outline-none px-1 py-1 min-w-0 w-24 sm:w-28"
+                  />
+                  <span className="text-muted-foreground text-xs shrink-0">→</span>
+                  <input
+                    type="date"
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                    className="text-xs bg-transparent border-0 outline-none px-1 py-1 min-w-0 w-24 sm:w-28"
+                  />
+                  {(from || to) && (
+                    <button
+                      onClick={() => { setFrom(''); setTo('') }}
+                      className="size-6 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+              <DarkModeToggle />
             </div>
           </header>
           <div className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 w-full mx-auto max-w-[1600px]">
