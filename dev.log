@@ -34,3 +34,23 @@
  GET / 200 in 71ms (compile: 4ms, render: 67ms)
  GET / 200 in 88ms (compile: 2ms, render: 86ms)
  GET / 200 in 117ms (compile: 5ms, render: 112ms)
+ GET / 200 in 53ms (compile: 3ms, render: 51ms)
+ GET / 200 in 49ms (compile: 2ms, render: 47ms)
+✓ Compiled in 257ms
+✓ Compiled in 218ms
+⚠ Cross origin request detected from preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai to /_next/* resource. In a future major version of Next.js, you will need to explicitly configure "allowedDevOrigins" in next.config to allow this.
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+✓ Compiled in 284ms
+✓ Compiled in 208ms
+✓ Compiled in 228ms
+✓ Compiled in 250ms
+✓ Compiled in 167ms
+✓ Compiled in 191ms
+✓ Compiled in 208ms
+ GET / 200 in 318ms (compile: 53ms, render: 265ms)
+ GET / 200 in 61ms (compile: 3ms, render: 58ms)
+ GET / 200 in 55ms (compile: 5ms, render: 50ms)
+✓ Compiled in 168ms
+✓ Compiled in 278ms
+ GET / 200 in 311ms (compile: 59ms, render: 252ms)
+✓ Compiled in 279ms

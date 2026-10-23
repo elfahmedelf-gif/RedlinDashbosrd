@@ -99,64 +99,64 @@ function ReportTable({ type, items, loading }: { type: ReportType; items: any[];
 
   if (type === 'shipments') {
     const cols = [
-      { key: 'no', header: 'رقم', primary: true, render: (s: any) => <span className="font-mono text-xs">{s.shipmentNo}</span> },
-      { key: 'date', header: 'التاريخ', hideInCard: true, render: (s: any) => <span className="text-xs tnum">{fmtDate(s.date)}</span> },
-      { key: 'cust', header: 'العميل', primary: true, render: (s: any) => <span className="text-sm">{s.customer?.name || s.recipientName || '-'}</span> },
-      { key: 'dest', header: 'الوجهة', hideInCard: true, render: (s: any) => <span>{s.destination || '-'}</span> },
-      { key: 'contractor', header: 'المقاول', hideInCard: true, render: (s: any) => <span className="text-xs">{s.contractor?.name || '-'}</span> },
-      { key: 'status', header: 'الحالة', render: (s: any) => <Badge variant="outline" className={SHIPMENT_STATUS[s.status]?.tone}>{SHIPMENT_STATUS[s.status]?.label}</Badge> },
-      { key: 'freight', header: 'النولون', align: 'left' as const, render: (s: any) => <span className="tnum font-bold">{fmtNum(s.freightTotal)}</span> },
-      { key: 'sup', header: 'الموردين', align: 'left' as const, hideInCard: true, render: (s: any) => <span className="tnum">{fmtNum(s.totalSuppliers)}</span> },
+      { key: 'no', header: 'رقم', primary: true, align: 'center' as const, width: 'w-24', render: (s: any) => <span className="font-mono text-xs">{s.shipmentNo}</span> },
+      { key: 'date', header: 'التاريخ', hideInCard: true, align: 'center' as const, width: 'w-32', render: (s: any) => <span className="text-xs tnum">{fmtDate(s.date)}</span> },
+      { key: 'cust', header: 'العميل', primary: true, render: (s: any) => <span className="text-sm truncate-1 block">{s.customer?.name || s.recipientName || '-'}</span> },
+      { key: 'dest', header: 'الوجهة', hideInCard: true, width: 'w-32', render: (s: any) => <span className="truncate-1 block">{s.destination || '-'}</span> },
+      { key: 'contractor', header: 'المقاول', hideInCard: true, width: 'w-32', render: (s: any) => <span className="text-xs truncate-1 block">{s.contractor?.name || '-'}</span> },
+      { key: 'status', header: 'الحالة', align: 'center' as const, width: 'w-36', render: (s: any) => <Badge variant="outline" className={SHIPMENT_STATUS[s.status]?.tone}>{SHIPMENT_STATUS[s.status]?.label}</Badge> },
+      { key: 'freight', header: 'نولون العميل', align: 'left' as const, width: 'w-28', render: (s: any) => <span className="tnum font-bold">{fmtNum(s.freightTotal)}</span> },
+      { key: 'sup', header: 'نولون المقاول', align: 'left' as const, hideInCard: true, width: 'w-28', render: (s: any) => <span className="tnum">{fmtNum(s.totalSuppliers)}</span> },
     ]
-    return <DataTable rows={items} columns={cols} getRowKey={(s) => s.id} minW={900} searchFn={(s, q) => (s.shipmentNo || '').toLowerCase().includes(q) || (s.recipientName || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
+    return <DataTable rows={items} columns={cols} getRowKey={(s) => s.id} minW={1050} searchFn={(s, q) => (s.shipmentNo || '').toLowerCase().includes(q) || (s.recipientName || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
   }
   if (type === 'freight-margin') {
     const cols = [
-      { key: 'no', header: 'رقم', primary: true, render: (s: any) => <span className="font-mono text-xs">{s.shipmentNo}</span> },
-      { key: 'dest', header: 'الوجهة', primary: true, render: (s: any) => <span>{s.destination || '-'}</span> },
-      { key: 'route', header: 'خط السير', hideInCard: true, render: (s: any) => <span className="text-xs">{s.routeCode || '-'}</span> },
-      { key: 'contractor', header: 'المقاول', hideInCard: true, render: (s: any) => <span className="text-xs">{s.contractor?.name || '-'}</span> },
-      { key: 'cost', header: 'التكلفة', align: 'left' as const, render: (s: any) => <span className="tnum">{fmtNum(s.freightCost)}</span> },
-      { key: 'sell', header: 'البيع', align: 'left' as const, render: (s: any) => <span className="tnum">{fmtNum(s.salePrice ?? s.freightTotal)}</span> },
-      { key: 'margin', header: 'الهامش', align: 'left' as const, render: (s: any) => <span className={cn('tnum font-bold', (s.margin ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600')}>{fmtNum(s.margin)}</span> },
+      { key: 'no', header: 'رقم', primary: true, align: 'center' as const, width: 'w-24', render: (s: any) => <span className="font-mono text-xs">{s.shipmentNo}</span> },
+      { key: 'dest', header: 'الوجهة', primary: true, render: (s: any) => <span className="truncate-1 block">{s.destination || '-'}</span> },
+      { key: 'route', header: 'خط السير', hideInCard: true, align: 'center' as const, width: 'w-32', render: (s: any) => <span className="text-xs">{s.routeCode || '-'}</span> },
+      { key: 'contractor', header: 'المقاول', hideInCard: true, width: 'w-32', render: (s: any) => <span className="text-xs truncate-1 block">{s.contractor?.name || '-'}</span> },
+      { key: 'cost', header: 'التكلفة', align: 'left' as const, width: 'w-28', render: (s: any) => <span className="tnum">{fmtNum(s.freightCost)}</span> },
+      { key: 'sell', header: 'البيع', align: 'left' as const, width: 'w-28', render: (s: any) => <span className="tnum">{fmtNum(s.salePrice ?? s.freightTotal)}</span> },
+      { key: 'margin', header: 'الهامش', align: 'left' as const, width: 'w-28', render: (s: any) => <span className={cn('tnum font-bold', (s.margin ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600')}>{fmtNum(s.margin)}</span> },
     ]
-    return <DataTable rows={items} columns={cols} getRowKey={(s) => s.id} minW={800} searchFn={(s, q) => (s.destination || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالوجهة..." />
+    return <DataTable rows={items} columns={cols} getRowKey={(s) => s.id} minW={900} searchFn={(s, q) => (s.destination || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالوجهة..." />
   }
   if (type === 'contractor-dues') {
     const cols = [
-      { key: 'name', header: 'المقاول', primary: true, render: (c: any) => <span className="font-medium">{c.name}</span> },
-      { key: 'count', header: 'الشحنات', align: 'center' as const, render: (c: any) => <Badge variant="outline" className="tnum">{fmtNum(c.shipments)}</Badge> },
-      { key: 'freight', header: 'النولون', align: 'left' as const, hideInCard: true, render: (c: any) => <span className="tnum">{fmtNum(c.freight)}</span> },
-      { key: 'total', header: 'الإجمالي', align: 'left' as const, hideInCard: true, render: (c: any) => <span className="tnum">{fmtNum(c.totalSuppliers)}</span> },
-      { key: 'paid', header: 'مدفوع', align: 'left' as const, render: (c: any) => <span className="tnum text-emerald-600">{fmtNum(c.paid)}</span> },
-      { key: 'due', header: 'مستحق', align: 'left' as const, render: (c: any) => <span className={cn('tnum font-bold', c.due > 0 ? 'text-rose-600' : '')}>{fmtNum(c.due)}</span> },
+      { key: 'name', header: 'المقاول', primary: true, render: (c: any) => <span className="font-medium truncate-1 block">{c.name}</span> },
+      { key: 'count', header: 'الشحنات', align: 'center' as const, width: 'w-24', render: (c: any) => <Badge variant="outline" className="tnum">{fmtNum(c.shipments)}</Badge> },
+      { key: 'freight', header: 'النولون', align: 'left' as const, hideInCard: true, width: 'w-28', render: (c: any) => <span className="tnum">{fmtNum(c.freight)}</span> },
+      { key: 'total', header: 'الإجمالي', align: 'left' as const, hideInCard: true, width: 'w-28', render: (c: any) => <span className="tnum">{fmtNum(c.totalSuppliers)}</span> },
+      { key: 'paid', header: 'مدفوع', align: 'left' as const, width: 'w-28', render: (c: any) => <span className="tnum text-emerald-600">{fmtNum(c.paid)}</span> },
+      { key: 'due', header: 'مستحق', align: 'left' as const, width: 'w-28', render: (c: any) => <span className={cn('tnum font-bold', c.due > 0 ? 'text-rose-600' : '')}>{fmtNum(c.due)}</span> },
     ]
-    return <DataTable rows={items} columns={cols} getRowKey={(c) => c.id} minW={700} searchFn={(c, q) => (c.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
+    return <DataTable rows={items} columns={cols} getRowKey={(c) => c.id} minW={800} searchFn={(c, q) => (c.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
   }
   if (type === 'customer-debts') {
     const cols = [
-      { key: 'name', header: 'العميل', primary: true, render: (c: any) => <span className="font-medium">{c.name}</span> },
-      { key: 'count', header: 'الشحنات', align: 'center' as const, render: (c: any) => <Badge variant="outline" className="tnum">{fmtNum(c.shipments)}</Badge> },
-      { key: 'total', header: 'الإجمالي', align: 'left' as const, hideInCard: true, render: (c: any) => <span className="tnum">{fmtNum(c.total)}</span> },
-      { key: 'paid', header: 'محصّل', align: 'left' as const, render: (c: any) => <span className="tnum text-emerald-600">{fmtNum(c.paid)}</span> },
-      { key: 'due', header: 'مديونية', align: 'left' as const, render: (c: any) => <span className={cn('tnum font-bold', c.due > 0 ? 'text-rose-600' : '')}>{fmtNum(c.due)}</span> },
+      { key: 'name', header: 'العميل', primary: true, render: (c: any) => <span className="font-medium truncate-1 block">{c.name}</span> },
+      { key: 'count', header: 'الشحنات', align: 'center' as const, width: 'w-24', render: (c: any) => <Badge variant="outline" className="tnum">{fmtNum(c.shipments)}</Badge> },
+      { key: 'total', header: 'الإجمالي', align: 'left' as const, hideInCard: true, width: 'w-28', render: (c: any) => <span className="tnum">{fmtNum(c.total)}</span> },
+      { key: 'paid', header: 'محصّل', align: 'left' as const, width: 'w-28', render: (c: any) => <span className="tnum text-emerald-600">{fmtNum(c.paid)}</span> },
+      { key: 'due', header: 'مديونية', align: 'left' as const, width: 'w-28', render: (c: any) => <span className={cn('tnum font-bold', c.due > 0 ? 'text-rose-600' : '')}>{fmtNum(c.due)}</span> },
     ]
-    return <DataTable rows={items} columns={cols} getRowKey={(c) => c.id} minW={700} searchFn={(c, q) => (c.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
+    return <DataTable rows={items} columns={cols} getRowKey={(c) => c.id} minW={750} searchFn={(c, q) => (c.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
   }
   if (type === 'trial-balance') {
     const cols = [
-      { key: 'code', header: 'الكود', hideInCard: true, render: (a: any) => <span className="font-mono text-xs">{a.code}</span> },
-      { key: 'name', header: 'الحساب', primary: true, render: (a: any) => <span className="font-medium">{a.name}</span> },
-      { key: 'type', header: 'النوع', render: (a: any) => <Badge variant="outline" className={ACCOUNT_TYPE[a.type]?.tone}>{ACCOUNT_TYPE[a.type]?.label}</Badge> },
-      { key: 'debit', header: 'مدين', align: 'left' as const, render: (a: any) => <span className="tnum">{fmtNum(a.debit)}</span> },
-      { key: 'credit', header: 'دائن', align: 'left' as const, render: (a: any) => <span className="tnum">{fmtNum(a.credit)}</span> },
-      { key: 'bal', header: 'الرصيد', align: 'left' as const, render: (a: any) => <span className="tnum font-bold">{fmtNum(a.balance)}</span> },
+      { key: 'code', header: 'الكود', hideInCard: true, align: 'center' as const, width: 'w-24', render: (a: any) => <span className="font-mono text-xs">{a.code}</span> },
+      { key: 'name', header: 'الحساب', primary: true, render: (a: any) => <span className="font-medium truncate-1 block">{a.name}</span> },
+      { key: 'type', header: 'النوع', align: 'center' as const, width: 'w-32', render: (a: any) => <Badge variant="outline" className={ACCOUNT_TYPE[a.type]?.tone}>{ACCOUNT_TYPE[a.type]?.label}</Badge> },
+      { key: 'debit', header: 'مدين', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum">{fmtNum(a.debit)}</span> },
+      { key: 'credit', header: 'دائن', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum">{fmtNum(a.credit)}</span> },
+      { key: 'bal', header: 'الرصيد', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum font-bold">{fmtNum(a.balance)}</span> },
     ]
     const totalDebit = items.reduce((s, a) => s + (a.debit || 0), 0)
     const totalCredit = items.reduce((s, a) => s + (a.credit || 0), 0)
     return (
       <div className="space-y-2">
-        <DataTable rows={items} columns={cols} getRowKey={(a) => a.id} minW={700} searchFn={(a, q) => (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
+        <DataTable rows={items} columns={cols} getRowKey={(a) => a.id} minW={800} searchFn={(a, q) => (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
         <div className="flex items-center justify-end gap-4 text-sm">
           <span>إجمالي المدين: <b className="tnum">{fmtNum(totalDebit)}</b></span>
           <span>إجمالي الدائن: <b className="tnum">{fmtNum(totalCredit)}</b></span>
@@ -169,13 +169,13 @@ function ReportTable({ type, items, loading }: { type: ReportType; items: any[];
   }
   if (type === 'inventory-movements') {
     const cols = [
-      { key: 'date', header: 'التاريخ', hideInCard: true, render: (m: any) => <span className="text-xs tnum">{fmtDate(m.date)}</span> },
-      { key: 'type', header: 'النوع', primary: true, render: (m: any) => <Badge variant="outline" className={MOVEMENT_TYPE[m.type]?.tone}>{MOVEMENT_TYPE[m.type]?.label}</Badge> },
-      { key: 'item', header: 'الصنف', primary: true, render: (m: any) => <span className="text-sm">{m.item?.name}</span> },
-      { key: 'wh', header: 'المخزن', hideInCard: true, render: (m: any) => <span className="text-xs">{m.warehouse?.name}</span> },
-      { key: 'qty', header: 'الكمية', align: 'left' as const, render: (m: any) => <span className={cn('tnum font-bold', m.quantity < 0 ? 'text-rose-600' : 'text-emerald-600')}>{m.quantity > 0 ? '+' : ''}{fmtNum(m.quantity)}</span> },
+      { key: 'date', header: 'التاريخ', hideInCard: true, align: 'center' as const, width: 'w-32', render: (m: any) => <span className="text-xs tnum">{fmtDate(m.date)}</span> },
+      { key: 'type', header: 'النوع', primary: true, align: 'center' as const, width: 'w-36', render: (m: any) => <Badge variant="outline" className={MOVEMENT_TYPE[m.type]?.tone}>{MOVEMENT_TYPE[m.type]?.label}</Badge> },
+      { key: 'item', header: 'الصنف', primary: true, render: (m: any) => <span className="text-sm truncate-1 block">{m.item?.name}</span> },
+      { key: 'wh', header: 'المخزن', hideInCard: true, width: 'w-32', render: (m: any) => <span className="text-xs">{m.warehouse?.name}</span> },
+      { key: 'qty', header: 'الكمية', align: 'left' as const, width: 'w-28', render: (m: any) => <span className={cn('tnum font-bold whitespace-nowrap', m.quantity < 0 ? 'text-rose-600' : 'text-emerald-600')}>{m.quantity > 0 ? '+' : ''}{fmtNum(m.quantity)}</span> },
     ]
-    return <DataTable rows={items} columns={cols} getRowKey={(m) => m.id} minW={700} searchFn={(m, q) => (m.item?.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
+    return <DataTable rows={items} columns={cols} getRowKey={(m) => m.id} minW={750} searchFn={(m, q) => (m.item?.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
   }
   if (type === 'low-stock') {
     return (

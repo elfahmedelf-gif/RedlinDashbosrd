@@ -11,6 +11,8 @@ interface Column<T> {
   key: string
   header: string
   className?: string
+  /** Fixed column width (Tailwind class like 'w-28' or CSS value like '120px'). Applied to <th>. Columns without width share the remaining space. */
+  width?: string
   align?: 'right' | 'center' | 'left'
   // Whether this column is "primary" (shown prominently in card mode as a title).
   // If no primary column is marked, the first column is used.
@@ -159,12 +161,15 @@ export function DataTable<T>({
 
           {/* Desktop: table view */}
           <div className="hidden sm:block rounded-2xl border border-border overflow-hidden bg-card elev-sm">
-            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-              <table className="w-full text-sm" style={{ minWidth: minW }}>
-                <thead className="bg-muted/50 text-xs text-muted-foreground sticky top-0 backdrop-blur-sm">
+            <div className="w-full overflow-x-auto max-h-[600px] overflow-y-auto">
+              <table className="w-full table-fixed text-sm text-right" style={{ minWidth: minW }}>
+                <thead className="bg-muted/50 text-xs text-muted-foreground sticky top-0 z-10 backdrop-blur-sm">
                   <tr>
                     {columns.map((c) => (
-                      <th key={c.key} className={cn('font-medium px-3 py-2.5 whitespace-nowrap', alignClass(c.align), c.className)}>
+                      <th
+                        key={c.key}
+                        className={cn('font-medium px-4 py-3 whitespace-nowrap', alignClass(c.align), c.width, c.className)}
+                      >
                         {c.header}
                       </th>
                     ))}
@@ -184,7 +189,7 @@ export function DataTable<T>({
                         )}
                       >
                         {columns.map((c) => (
-                          <td key={c.key} className={cn('px-3 py-2.5 align-top', alignClass(c.align), c.className)}>
+                          <td key={c.key} className={cn('px-4 py-3 align-middle', alignClass(c.align), c.className)}>
                             {c.render(row, idx)}
                           </td>
                         ))}

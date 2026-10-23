@@ -274,11 +274,11 @@ export function AuditModule() {
   const actionLabels: Record<string, string> = { create: 'إضافة', update: 'تعديل', delete: 'حذف', post: 'ترحيل', import: 'استيراد', approve: 'اعتماد', cancel: 'إلغاء' }
 
   const cols = [
-    { key: 'date', header: 'التاريخ', hideInCard: true, render: (a: any) => <span className="text-xs tnum text-muted-foreground">{fmtDateTime(a.date)}</span> },
-    { key: 'user', header: 'المستخدم', hideInCard: true, render: (a: any) => <span className="text-xs font-medium">{a.userName || 'النظام'}</span> },
-    { key: 'action', header: 'العملية', primary: true, render: (a: any) => <Badge variant="outline" className={actionTones[a.action] || ''}>{actionLabels[a.action] || a.action}</Badge> },
-    { key: 'entity', header: 'الكيان', render: (a: any) => <span className="text-xs">{entityLabels[a.entity] || a.entity}</span> },
-    { key: 'notes', header: 'ملاحظات', render: (a: any) => <span className="text-xs truncate-1">{a.notes || '-'}</span> },
+    { key: 'date', header: 'التاريخ', hideInCard: true, align: 'center' as const, width: 'w-44', render: (a: any) => <span className="text-xs tnum text-muted-foreground whitespace-nowrap">{fmtDateTime(a.date)}</span> },
+    { key: 'user', header: 'المستخدم', hideInCard: true, width: 'w-28', render: (a: any) => <span className="text-xs font-medium">{a.userName || 'النظام'}</span> },
+    { key: 'action', header: 'العملية', primary: true, align: 'center' as const, width: 'w-28', render: (a: any) => <Badge variant="outline" className={actionTones[a.action] || ''}>{actionLabels[a.action] || a.action}</Badge> },
+    { key: 'entity', header: 'الكيان', align: 'center' as const, width: 'w-32', render: (a: any) => <span className="text-xs">{entityLabels[a.entity] || a.entity}</span> },
+    { key: 'notes', header: 'ملاحظات', render: (a: any) => <span className="text-xs truncate-1 block">{a.notes || '-'}</span> },
   ]
 
   return (
@@ -300,7 +300,7 @@ export function AuditModule() {
         </div>
       </div>
       <Card><CardContent className="p-0">
-        <DataTable rows={data?.items ?? []} columns={cols} loading={isLoading} getRowKey={(a: any) => a.id} minW={700} searchFn={() => true} />
+        <DataTable rows={data?.items ?? []} columns={cols} loading={isLoading} getRowKey={(a: any) => a.id} minW={800} searchFn={() => true} />
       </CardContent></Card>
       <div className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950/30 rounded-lg p-3 border border-amber-200 dark:border-amber-900">
         🔒 سجل التدقيق غير قابل للتعديل أو الحذف — يُحفظ تلقائيًا مع كل عملية. القيم قبل/بعد مخزنة كـ JSON.

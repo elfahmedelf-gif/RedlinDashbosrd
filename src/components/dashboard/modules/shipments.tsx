@@ -162,11 +162,11 @@ export function ShipmentsModule() {
                     <div className="text-xs font-medium tnum truncate-1">{fmtDate(s.date)}</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] text-muted-foreground/70">النولون</div>
+                    <div className="text-[10px] text-muted-foreground/70">نولون العميل</div>
                     <div className="text-xs font-bold tnum num-ltr">{fmtNum(s.freightTotal ?? s.freightCost)} ج.م</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] text-muted-foreground/70">الموردين</div>
+                    <div className="text-[10px] text-muted-foreground/70">نولون المقاول</div>
                     <div className="text-xs font-bold tnum num-ltr">{fmtNum(s.totalSuppliers ?? 0)} ج.م</div>
                   </div>
                 </div>
@@ -178,19 +178,19 @@ export function ShipmentsModule() {
 
       {/* Desktop: table view */}
       <Card className="overflow-hidden hidden sm:block">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" style={{ minWidth: 1000 }}>
+        <div className="w-full overflow-x-auto">
+          <table className="w-full table-fixed text-sm text-right" style={{ minWidth: 1150 }}>
             <thead className="bg-muted/40 text-xs text-muted-foreground">
-              <tr className="text-right">
-                <th className="font-medium px-3 py-2.5">رقم الشحنة</th>
-                <th className="font-medium px-3 py-2.5">العميل / المستلم</th>
-                <th className="font-medium px-3 py-2.5">الوجهة</th>
-                <th className="font-medium px-3 py-2.5">الحجم</th>
-                <th className="font-medium px-3 py-2.5">المقاول</th>
-                <th className="font-medium px-3 py-2.5">التاريخ</th>
-                <th className="font-medium px-3 py-2.5">الحالة</th>
-                <th className="font-medium px-3 py-2.5 text-left">النولون</th>
-                <th className="font-medium px-3 py-2.5 text-left">الموردين</th>
+              <tr>
+                <th className="font-medium px-4 py-3 text-center w-28">رقم الشحنة</th>
+                <th className="font-medium px-4 py-3">العميل / المستلم</th>
+                <th className="font-medium px-4 py-3 w-36">الوجهة</th>
+                <th className="font-medium px-4 py-3 text-center w-20">الحجم</th>
+                <th className="font-medium px-4 py-3 w-32">المقاول</th>
+                <th className="font-medium px-4 py-3 text-center w-32">التاريخ</th>
+                <th className="font-medium px-4 py-3 text-center w-36">الحالة</th>
+                <th className="font-medium px-4 py-3 text-left w-28">نولون العميل</th>
+                <th className="font-medium px-4 py-3 text-left w-28">نولون المقاول</th>
               </tr>
             </thead>
             <tbody>
@@ -205,30 +205,30 @@ export function ShipmentsModule() {
                   const sMeta = STATUS_LABEL[s.status] || { label: s.status, tone: '' }
                   return (
                     <tr key={s.id} onClick={() => setSelected(s.id)} className={cn('border-t border-border hover:bg-muted/40 cursor-pointer', i % 2 ? 'bg-card' : 'bg-muted/15')}>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3 align-middle text-center">
                         <div className="font-mono text-xs font-bold truncate-1">{s.shipmentNo}</div>
                         {s.billNo && <div className="text-[10px] text-muted-foreground tnum truncate-1">بوليصة: {s.billNo}</div>}
                       </td>
-                      <td className="px-3 py-2.5 min-w-0">
-                        <div className="font-medium truncate-1 max-w-[180px]" title={s.customer?.name || s.recipientName || ''}>
+                      <td className="px-4 py-3 align-middle">
+                        <div className="font-medium truncate-1" title={s.customer?.name || s.recipientName || ''}>
                           {s.customer?.name || s.recipientName || '-'}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 min-w-0">
-                        <div className="font-medium truncate-1 max-w-[140px]">{s.destination ?? '-'}</div>
+                      <td className="px-4 py-3 align-middle">
+                        <div className="font-medium truncate-1">{s.destination ?? '-'}</div>
                         {s.routeCode && <div className="text-[10px] text-muted-foreground truncate-1">كود: {s.routeCode}</div>}
                       </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
+                      <td className="px-4 py-3 align-middle text-center whitespace-nowrap">
                         <Badge variant="outline" className={cn('font-bold', sizeTone)}>{size}</Badge>
                         {s.policyQty != null && <div className="text-[10px] text-muted-foreground tnum mt-0.5">كمية: {fmtNum(s.policyQty)}</div>}
                       </td>
-                      <td className="px-3 py-2.5 text-xs min-w-0"><span className="truncate-1 block max-w-[120px]">{s.contractor?.name ?? '-'}</span></td>
-                      <td className="px-3 py-2.5 text-xs tnum whitespace-nowrap">{fmtDate(s.date)}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
+                      <td className="px-4 py-3 align-middle text-xs"><span className="truncate-1 block">{s.contractor?.name ?? '-'}</span></td>
+                      <td className="px-4 py-3 align-middle text-xs tnum text-center whitespace-nowrap">{fmtDate(s.date)}</td>
+                      <td className="px-4 py-3 align-middle text-center whitespace-nowrap">
                         <Badge variant="outline" className={sMeta.tone}>{sMeta.label}</Badge>
                       </td>
-                      <td className="px-3 py-2.5 text-left font-bold tnum whitespace-nowrap num-ltr">{fmtNum(s.freightTotal ?? s.freightCost)}</td>
-                      <td className="px-3 py-2.5 text-left tnum whitespace-nowrap num-ltr">{fmtNum(s.totalSuppliers ?? 0)}</td>
+                      <td className="px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap"><span className="num-ltr">{fmtNum(s.freightTotal ?? s.freightCost)}</span></td>
+                      <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap"><span className="num-ltr">{fmtNum(s.totalSuppliers ?? 0)}</span></td>
                     </tr>
                   )
                 })

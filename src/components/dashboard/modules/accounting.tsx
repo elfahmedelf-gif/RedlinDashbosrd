@@ -59,19 +59,19 @@ export function AccountsModule() {
   }
 
   const columns = [
-    { key: 'code', header: 'الكود', align: 'right' as const, className: 'w-24', hideInCard: true, render: (a: any) => <span className="font-mono text-xs">{a.code}</span> },
+    { key: 'code', header: 'الكود', align: 'center' as const, width: 'w-24', hideInCard: true, render: (a: any) => <span className="font-mono text-xs">{a.code}</span> },
     { key: 'name', header: 'اسم الحساب', primary: true, render: (a: any) => (
-      <span style={{ paddingRight: `${a.depth * 16}px` }} className={cn('text-sm', a.isDetail ? 'font-medium' : 'font-bold text-primary')}>
+      <span style={{ paddingRight: `${a.depth * 16}px` }} className={cn('text-sm block truncate-1', a.isDetail ? 'font-medium' : 'font-bold text-primary')}>
         {a.name}
       </span>
     ) },
-    { key: 'type', header: 'النوع', render: (a: any) => {
+    { key: 'type', header: 'النوع', align: 'center' as const, width: 'w-32', render: (a: any) => {
       const t = ACCOUNT_TYPE[a.type] || { label: a.type, tone: '' }
       return <Badge variant="outline" className={t.tone}>{t.label}</Badge>
     } },
-    { key: 'debit', header: 'مدين', align: 'left' as const, render: (a: any) => <span className="tnum">{fmtNum(a.debit)}</span> },
-    { key: 'credit', header: 'دائن', align: 'left' as const, render: (a: any) => <span className="tnum">{fmtNum(a.credit)}</span> },
-    { key: 'balance', header: 'الرصيد', align: 'left' as const, render: (a: any) => <span className="tnum font-bold">{fmtNum(a.balance)}</span> },
+    { key: 'debit', header: 'مدين', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum">{fmtNum(a.debit)}</span> },
+    { key: 'credit', header: 'دائن', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum">{fmtNum(a.credit)}</span> },
+    { key: 'balance', header: 'الرصيد', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum font-bold">{fmtNum(a.balance)}</span> },
   ]
 
   return (
@@ -86,7 +86,7 @@ export function AccountsModule() {
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">شجرة الحسابات</CardTitle><CardDescription>مع أرصدة من القيود المرحّلة</CardDescription></CardHeader>
         <CardContent className="p-0">
-          <DataTable rows={tree} columns={columns} loading={isLoading} getRowKey={(a: any) => a.id} minW={700} searchFn={(a, q) => (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالاسم أو الكود..." />
+          <DataTable rows={tree} columns={columns} loading={isLoading} getRowKey={(a: any) => a.id} minW={800} searchFn={(a, q) => (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالاسم أو الكود..." />
         </CardContent>
       </Card>
       <EntityFormDialog open={open} onOpenChange={setOpen} title="إضافة حساب" fields={fields} initial={{}} onSubmit={submit} />
@@ -154,16 +154,16 @@ export function JournalModule() {
   }
 
   const columns = [
-    { key: 'no', header: 'رقم القيد', primary: true, render: (e: any) => <span className="font-mono text-xs font-bold">{e.entryNo}</span> },
-    { key: 'date', header: 'التاريخ', hideInCard: true, render: (e: any) => <span className="text-xs tnum">{fmtDate(e.date)}</span> },
-    { key: 'desc', header: 'البيان', hideInCard: true, render: (e: any) => <div><div className="text-sm font-medium truncate max-w-[280px]">{e.description || '-'}</div>{e.reference && <div className="text-[10px] text-muted-foreground">مرجع: {e.reference}</div>}</div> },
-    { key: 'branch', header: 'الفرع', hideInCard: true, render: (e: any) => <span className="text-xs">{e.branch?.name || '-'}</span> },
-    { key: 'lines', header: 'السطور', hideInCard: true, align: 'center' as const, render: (e: any) => <Badge variant="outline" className="tnum">{e.lines?.length ?? 0}</Badge> },
-    { key: 'debit', header: 'مدين', align: 'left' as const, render: (e: any) => <span className="tnum font-bold">{fmtNum(e.totalDebit)}</span> },
-    { key: 'credit', header: 'دائن', align: 'left' as const, render: (e: any) => <span className="tnum font-bold">{fmtNum(e.totalCredit)}</span> },
-    { key: 'status', header: 'الحالة', render: (e: any) => <Badge variant="outline" className={e.status === 'posted' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}>{e.status === 'posted' ? 'مرحّل' : 'مسودة'}</Badge> },
-    { key: 'actions', header: 'إجراءات', align: 'left' as const, hideInCard: false, render: (e: any) => (
-      <div className="flex gap-1">
+    { key: 'no', header: 'رقم القيد', primary: true, align: 'center' as const, width: 'w-24', render: (e: any) => <span className="font-mono text-xs font-bold">{e.entryNo}</span> },
+    { key: 'date', header: 'التاريخ', hideInCard: true, align: 'center' as const, width: 'w-32', render: (e: any) => <span className="text-xs tnum">{fmtDate(e.date)}</span> },
+    { key: 'desc', header: 'البيان', hideInCard: true, render: (e: any) => <div><div className="text-sm font-medium truncate-1">{e.description || '-'}</div>{e.reference && <div className="text-[10px] text-muted-foreground">مرجع: {e.reference}</div>}</div> },
+    { key: 'branch', header: 'الفرع', hideInCard: true, width: 'w-32', render: (e: any) => <span className="text-xs">{e.branch?.name || '-'}</span> },
+    { key: 'lines', header: 'السطور', hideInCard: true, align: 'center' as const, width: 'w-20', render: (e: any) => <Badge variant="outline" className="tnum">{e.lines?.length ?? 0}</Badge> },
+    { key: 'debit', header: 'مدين', align: 'left' as const, width: 'w-28', render: (e: any) => <span className="tnum font-bold">{fmtNum(e.totalDebit)}</span> },
+    { key: 'credit', header: 'دائن', align: 'left' as const, width: 'w-28', render: (e: any) => <span className="tnum font-bold">{fmtNum(e.totalCredit)}</span> },
+    { key: 'status', header: 'الحالة', align: 'center' as const, width: 'w-24', render: (e: any) => <Badge variant="outline" className={e.status === 'posted' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}>{e.status === 'posted' ? 'مرحّل' : 'مسودة'}</Badge> },
+    { key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-24', hideInCard: false, render: (e: any) => (
+      <div className="flex gap-1 justify-center">
         {e.status === 'draft' && <Button variant="ghost" size="sm" onClick={() => post(e.id)} title="ترحيل"><Check className="size-3.5 text-emerald-600" /></Button>}
         <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(e.id)}><Trash2 className="size-3.5" /></Button>
       </div>
@@ -188,7 +188,7 @@ export function JournalModule() {
         <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">قيد جديد</span><span className="sm:hidden">جديد</span></Button>
       </div>
 
-      <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(e: any) => e.id} minW={900} searchFn={(e, q) => (e.entryNo || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q)} searchPlaceholder="بحث برقم القيد أو البيان..." />
+      <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(e: any) => e.id} minW={1100} searchFn={(e, q) => (e.entryNo || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q)} searchPlaceholder="بحث برقم القيد أو البيان..." />
 
       {/* Create journal entry dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
@@ -306,13 +306,13 @@ export function VouchersModule() {
   }
 
   const columns = [
-    { key: 'no', header: 'رقم السند', primary: true, render: (v: any) => <span className="font-mono text-xs font-bold">{v.voucherNo}</span> },
-    { key: 'type', header: 'النوع', render: (v: any) => <Badge variant="outline" className={v.type === 'receipt' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'}>{v.type === 'receipt' ? 'قبض' : 'صرف'}</Badge> },
-    { key: 'date', header: 'التاريخ', hideInCard: true, render: (v: any) => <span className="text-xs tnum">{fmtDate(v.date)}</span> },
-    { key: 'party', header: 'الطرف', hideInCard: true, render: (v: any) => <span className="text-sm font-medium">{v.party?.name || '-'}</span> },
-    { key: 'amount', header: 'المبلغ', align: 'left' as const, render: (v: any) => <span className="tnum font-bold">{fmtNum(v.amount)} ج.م</span> },
-    { key: 'desc', header: 'البيان', hideInCard: true, render: (v: any) => <span className="text-xs text-muted-foreground truncate">{v.description || '-'}</span> },
-    { key: 'actions', header: '', align: 'left' as const, render: (v: any) => <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(v.id)}><Trash2 className="size-3.5" /></Button> },
+    { key: 'no', header: 'رقم السند', primary: true, align: 'center' as const, width: 'w-24', render: (v: any) => <span className="font-mono text-xs font-bold">{v.voucherNo}</span> },
+    { key: 'type', header: 'النوع', align: 'center' as const, width: 'w-24', render: (v: any) => <Badge variant="outline" className={v.type === 'receipt' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'}>{v.type === 'receipt' ? 'قبض' : 'صرف'}</Badge> },
+    { key: 'date', header: 'التاريخ', hideInCard: true, align: 'center' as const, width: 'w-28', render: (v: any) => <span className="text-xs tnum">{fmtDate(v.date)}</span> },
+    { key: 'party', header: 'الطرف', hideInCard: true, width: 'w-40', render: (v: any) => <span className="text-sm font-medium truncate-1 block">{v.party?.name || '-'}</span> },
+    { key: 'amount', header: 'المبلغ', align: 'left' as const, width: 'w-28', render: (v: any) => <span className="tnum font-bold">{fmtNum(v.amount)} ج.م</span> },
+    { key: 'desc', header: 'البيان', hideInCard: true, render: (v: any) => <span className="text-xs text-muted-foreground truncate-1 block">{v.description || '-'}</span> },
+    { key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-20', render: (v: any) => <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(v.id)}><Trash2 className="size-3.5" /></Button> },
   ]
 
   return (
@@ -332,7 +332,7 @@ export function VouchersModule() {
         </div>
         <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">سند جديد</span><span className="sm:hidden">جديد</span></Button>
       </div>
-      <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(v: any) => v.id} minW={800} searchFn={(v, q) => (v.voucherNo || '').toLowerCase().includes(q) || (v.party?.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
+      <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(v: any) => v.id} minW={900} searchFn={(v, q) => (v.voucherNo || '').toLowerCase().includes(q) || (v.party?.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>سند قبض/صرف</DialogTitle><DialogDescription>يسجل في الصندوق أو البنك ويرتبط بالطرف.</DialogDescription></DialogHeader>

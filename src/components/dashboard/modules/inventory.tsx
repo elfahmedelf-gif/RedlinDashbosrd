@@ -158,22 +158,21 @@ export function MovementsModule() {
   }
 
   const columns = [
-    { key: 'date', header: 'التاريخ', align: 'right' as const, hideInCard: true, render: (m: any) => <span className="text-xs tnum">{fmtDate(m.date)}</span> },
-    { key: 'type', header: 'النوع', primary: true, render: (m: any) => {
+    { key: 'date', header: 'التاريخ', align: 'center' as const, width: 'w-32', hideInCard: true, render: (m: any) => <span className="text-xs tnum">{fmtDate(m.date)}</span> },
+    { key: 'type', header: 'النوع', primary: true, align: 'center' as const, width: 'w-36', render: (m: any) => {
       const lookup = MOVE_LABEL[m.type]
       const fallback = MOVEMENT_TYPE[m.type]
       const label = lookup?.label || fallback?.label || m.type
       const tone = lookup?.tone || fallback?.tone || ''
       return <Badge variant="outline" className={tone}>{label}</Badge>
     } },
-    { key: 'item', header: 'الصنف', primary: true, render: (m: any) => <div><div className="font-medium text-sm">{m.item?.name}</div>{m.item?.code && <div className="text-[10px] text-muted-foreground tnum">{m.item.code}</div>}</div> },
-    { key: 'warehouse', header: 'المخزن', hideInCard: true, render: (m: any) => <span className="text-xs">{m.warehouse?.name || '-'}</span> },
-    { key: 'qty', header: 'الكمية', align: 'left' as const, render: (m: any) => {
-      const t = MOVEMENT_TYPE[m.type] || { sign: 1 }
-      return <span className={cn('tnum font-bold', m.quantity < 0 ? 'text-rose-600' : 'text-emerald-600')}>{m.quantity > 0 ? '+' : ''}{fmtNum(m.quantity)} {m.item?.unit || ''}</span>
+    { key: 'item', header: 'الصنف', primary: true, render: (m: any) => <div className="min-w-0"><div className="font-medium text-sm truncate-1">{m.item?.name}</div>{m.item?.code && <div className="text-[10px] text-muted-foreground tnum">{m.item.code}</div>}</div> },
+    { key: 'warehouse', header: 'المخزن', hideInCard: true, width: 'w-32', render: (m: any) => <span className="text-xs">{m.warehouse?.name || '-'}</span> },
+    { key: 'qty', header: 'الكمية', align: 'left' as const, width: 'w-28', render: (m: any) => {
+      return <span className={cn('tnum font-bold whitespace-nowrap', m.quantity < 0 ? 'text-rose-600' : 'text-emerald-600')}>{m.quantity > 0 ? '+' : ''}{fmtNum(m.quantity)} {m.item?.unit || ''}</span>
     } },
-    { key: 'cost', header: 'التكلفة', align: 'left' as const, render: (m: any) => <span className="tnum">{m.totalCost ? fmtNum(m.totalCost) + ' ج.م' : '-'}</span> },
-    { key: 'notes', header: 'ملاحظات', render: (m: any) => <span className="text-xs text-muted-foreground">{m.notes || '-'}</span> },
+    { key: 'cost', header: 'التكلفة', align: 'left' as const, width: 'w-28', render: (m: any) => <span className="tnum">{m.totalCost ? fmtNum(m.totalCost) + ' ج.م' : '-'}</span> },
+    { key: 'notes', header: 'ملاحظات', render: (m: any) => <span className="text-xs text-muted-foreground truncate-1 block">{m.notes || '-'}</span> },
   ]
 
   return (
@@ -182,7 +181,7 @@ export function MovementsModule() {
         <div className="text-sm text-muted-foreground tnum">{data?.items.length ?? 0} حركة</div>
         <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">حركة جديدة</span><span className="sm:hidden">حركة</span></Button>
       </div>
-      <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(m: any) => m.id} searchFn={(m, q) => (m.item?.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالصنف..." />
+      <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(m: any) => m.id} minW={900} searchFn={(m, q) => (m.item?.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالصنف..." />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -289,19 +288,19 @@ export function FreightModule() {
   }
 
   const columns = [
-    { key: 'idx', header: '#', align: 'left' as const, className: 'w-12', hideInCard: true, render: (_: any, i: number) => <span className="text-xs text-muted-foreground tnum">{i + 1}</span> },
-    { key: 'regionAr', header: 'المنطقة (عربي)', primary: true, render: (r: any) => <span className="font-medium">{r.regionAr || '-'}</span> },
-    { key: 'regionEn', header: 'Region (EN)', hideInCard: true, render: (r: any) => <span className="text-xs text-muted-foreground" dir="ltr">{r.regionEn || '-'}</span> },
-    { key: 'route', header: 'خط السير', hideInCard: true, render: (r: any) => <span className="text-xs">{r.routeName || '-'}</span> },
-    { key: 'cost', header: 'التكلفة', align: 'left' as const, render: (r: any) => <span className="tnum">{r.cost != null ? fmtNum(r.cost) : '-'}</span> },
-    { key: 'sell', header: 'سعر البيع', align: 'left' as const, render: (r: any) => <span className="tnum font-bold">{r.sellPrice != null ? fmtNum(r.sellPrice) : '-'}</span> },
-    { key: 'margin', header: 'الهامش', align: 'left' as const, render: (r: any) => {
+    { key: 'idx', header: '#', align: 'center' as const, width: 'w-12', hideInCard: true, render: (_: any, i: number) => <span className="text-xs text-muted-foreground tnum">{i + 1}</span> },
+    { key: 'regionAr', header: 'المنطقة (عربي)', primary: true, render: (r: any) => <span className="font-medium truncate-1 block">{r.regionAr || '-'}</span> },
+    { key: 'regionEn', header: 'Region (EN)', hideInCard: true, width: 'w-32', render: (r: any) => <span className="text-xs text-muted-foreground" dir="ltr">{r.regionEn || '-'}</span> },
+    { key: 'route', header: 'خط السير', hideInCard: true, width: 'w-32', render: (r: any) => <span className="text-xs">{r.routeName || '-'}</span> },
+    { key: 'cost', header: 'التكلفة', align: 'left' as const, width: 'w-28', render: (r: any) => <span className="tnum">{r.cost != null ? fmtNum(r.cost) : '-'}</span> },
+    { key: 'sell', header: 'سعر البيع', align: 'left' as const, width: 'w-28', render: (r: any) => <span className="tnum font-bold">{r.sellPrice != null ? fmtNum(r.sellPrice) : '-'}</span> },
+    { key: 'margin', header: 'الهامش', align: 'center' as const, width: 'w-24', render: (r: any) => {
       if (r.sellPrice == null || r.cost == null || !r.cost) return '-'
       const pct = ((r.sellPrice - r.cost) / r.cost) * 100
       return <Badge variant="outline" className={pct >= 30 ? 'text-emerald-600' : 'text-amber-600'}>{pct.toFixed(1)}%</Badge>
     } },
-    { key: 'actions', header: 'إجراءات', align: 'left' as const, render: (r: any) => (
-      <div className="flex gap-1">
+    { key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-24', render: (r: any) => (
+      <div className="flex gap-1 justify-center">
         <Button variant="ghost" size="sm" onClick={() => { setEditing(r); setOpen(true) }}><Pencil className="size-3.5" /></Button>
         <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(r.id)}><Trash2 className="size-3.5" /></Button>
       </div>
@@ -314,7 +313,7 @@ export function FreightModule() {
         <div className="text-sm text-muted-foreground tnum">{data?.items.length ?? 0} سعر</div>
         <Button onClick={() => { setEditing(null); setOpen(true) }} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">سعر جديد</span><span className="sm:hidden">سعر</span></Button>
       </div>
-      <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(r: any) => r.id} searchFn={(r, q) => (r.regionAr || '').toLowerCase().includes(q) || (r.regionEn || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالمنطقة..." />
+      <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(r: any) => r.id} minW={900} searchFn={(r, q) => (r.regionAr || '').toLowerCase().includes(q) || (r.regionEn || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالمنطقة..." />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
