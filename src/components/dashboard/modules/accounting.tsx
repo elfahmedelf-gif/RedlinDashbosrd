@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { Plus, Trash2, BookOpen, FileText, Landmark, ChevronRight, ChevronDown, Check } from 'lucide-react'
+import { Plus, Trash2, BookOpen, FileText, Landmark, ChevronRight, ChevronDown, Check, FileSpreadsheet } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +19,7 @@ import { Switch } from '@/components/ui/switch'
 import { EntityFormDialog, type Field } from '../entity-dialog'
 import { DataTable } from '../data-table'
 import { fetcher, apiPost, apiDelete } from '@/lib/api'
+import { exportToCSV } from '@/lib/export'
 import { fmtNum, fmtDate, ACCOUNT_TYPE } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -287,15 +288,18 @@ export function VouchersModule() {
   const [typeFilter, setTypeFilter] = React.useState<string>('all')
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>(`/api/vouchers?type=${typeFilter !== 'all' ? typeFilter : ''}`, fetcher, { refreshInterval: 30000 })
   const { data: parties } = useSWR<{ items: any[] }>('/api/parties', fetcher)
+  // recent shipments for optional voucher-shipment link
+  const { data: shipmentsRes } = useSWR<{ items: any[] }>('/api/shipments?pageSize=200', fetcher)
+  const shipmentsList = shipmentsRes?.items ?? []
 
-  const [v, setV] = React.useState<any>({ type: 'receipt', partyId: '', amount: 1, description: '', date: new Date().toISOString().slice(0, 10), accountName: 'الصندوق' })
-  React.useEffect(() => { if (open) setV({ type: 'receipt', partyId: '', amount: 1, description: '', date: new Date().toISOString().slice(0, 10), accountName: 'الصندوق' }) }, [open])
+  const [v, setV] = React.useState<any>({ type: 'receipt', partyId: '', shipmentId: '', amount: 1, description: '', date: new Date().toISOString().slice(0, 10), accountName: 'الصندوق' })
+  React.useEffect(() => { if (open) setV({ type: 'receipt', partyId: '', shipmentId: '', amount: 1, description: '', date: new Date().toISOString().slice(0, 10), accountName: 'الصندوق' }) }, [open])
   const [err, setErr] = React.useState(''); const [loading, setLoading] = React.useState(false)
 
   const submit = async () => {
     setLoading(true); setErr('')
     try {
-      await apiPost('/api/vouchers', { ...v, amount: Number(v.amount), userName: 'admin' })
+      await apiPost('/api/vouchers', { ...v, amount: Number(v.amount), shipmentId: v.shipmentId || null, userName: 'admin' })
       toast({ title: 'تم إنشاء السند' }); setOpen(false); mutate()
     } catch (e: any) { setErr(e.message) } finally { setLoading(false) }
   }
@@ -305,11 +309,24 @@ export function VouchersModule() {
     catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }
 
+  const exportVouchers = () => {
+    if (!data?.items?.length) { toast({ title: 'لا توجد بيانات للتصدير' }); return }
+    const rows = data.items.map((v: any) => ({
+      'رقم السند': v.voucherNo, 'النوع': v.type === 'receipt' ? 'قبض' : 'صرف',
+      'التاريخ': v.date ? fmtDate(v.date) : '', 'الطرف': v.party?.name ?? '',
+      'الشحنة المرتبطة': v.shipment?.shipmentNo ?? '',
+      'المبلغ': v.amount, 'الحساب': v.accountName, 'البيان': v.description ?? '',
+    }))
+    exportToCSV(rows, `vouchers-${new Date().toISOString().slice(0, 10)}.csv`)
+    toast({ title: `تم تصدير ${rows.length} سند` })
+  }
+
   const columns = [
     { key: 'no', header: 'رقم السند', primary: true, align: 'center' as const, width: 'w-24', render: (v: any) => <span className="font-mono text-xs font-bold">{v.voucherNo}</span> },
     { key: 'type', header: 'النوع', align: 'center' as const, width: 'w-24', render: (v: any) => <Badge variant="outline" className={v.type === 'receipt' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'}>{v.type === 'receipt' ? 'قبض' : 'صرف'}</Badge> },
     { key: 'date', header: 'التاريخ', hideInCard: true, align: 'center' as const, width: 'w-28', render: (v: any) => <span className="text-xs tnum">{fmtDate(v.date)}</span> },
-    { key: 'party', header: 'الطرف', hideInCard: true, width: 'w-40', render: (v: any) => <span className="text-sm font-medium truncate-1 block">{v.party?.name || '-'}</span> },
+    { key: 'party', header: 'الطرف', hideInCard: true, width: 'w-36', render: (v: any) => <span className="text-sm font-medium truncate-1 block">{v.party?.name || '-'}</span> },
+    { key: 'shipment', header: 'الشحنة', align: 'center' as const, width: 'w-28', render: (v: any) => v.shipment?.shipmentNo ? <span className="font-mono text-xs font-bold text-primary">{v.shipment.shipmentNo}</span> : <span className="text-xs text-muted-foreground">—</span> },
     { key: 'amount', header: 'المبلغ', align: 'left' as const, width: 'w-28', render: (v: any) => <span className="tnum font-bold">{fmtNum(v.amount)} ج.م</span> },
     { key: 'desc', header: 'البيان', hideInCard: true, render: (v: any) => <span className="text-xs text-muted-foreground truncate-1 block">{v.description || '-'}</span> },
     { key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-20', render: (v: any) => <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(v.id)}><Trash2 className="size-3.5" /></Button> },
@@ -330,12 +347,68 @@ export function VouchersModule() {
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">سند جديد</span><span className="sm:hidden">جديد</span></Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={exportVouchers} disabled={!data?.items?.length} className="shrink-0">
+            <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">تصدير</span>
+          </Button>
+          <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">سند جديد</span><span className="sm:hidden">جديد</span></Button>
+        </div>
       </div>
-      <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(v: any) => v.id} minW={900} searchFn={(v, q) => (v.voucherNo || '').toLowerCase().includes(q) || (v.party?.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
+      <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(v: any) => v.id} minW={950} searchFn={(v: any, q: string) => (v.voucherNo || '').toLowerCase().includes(q) || (v.party?.name || '').toLowerCase().includes(q) || (v.shipment?.shipmentNo || '').toLowerCase().includes(q)} searchPlaceholder="بحث برقم السند/الطرف/الشحنة..." />
+
+      {/* Quick COD settlement panel — show shipments ready to settle */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2"><Landmark className="size-4" /> تسوية سريعة للشحنات (COD)</CardTitle>
+          <CardDescription>شحنات لم تُسوَّ بعد ولها عميل ومقاول — يصدر النظام سند قبض من العميل وسند صرف للمقاول دفعة واحدة.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-3">
+          <div className="space-y-2 max-h-72 overflow-y-auto no-scrollbar">
+            {shipmentsList
+              .filter((s: any) => s.collectionStatus !== 'collected' && s.customerId && s.contractorId && (s.freightTotal ?? 0) > 0)
+              .slice(0, 20)
+              .map((s: any) => {
+                const margin = (s.freightTotal ?? 0) - (s.totalSuppliers ?? 0)
+                return (
+                  <div key={s.id} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border hover:bg-muted/30 text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-mono text-xs font-bold shrink-0">{s.shipmentNo}</span>
+                      <span className="text-xs text-muted-foreground truncate-1">{s.customer?.name || s.recipientName}</span>
+                      <span className="text-xs text-muted-foreground truncate-1 hidden sm:inline">→ {s.contractor?.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="tnum text-xs text-muted-foreground">هامش: <b className={margin >= 0 ? 'text-emerald-700' : 'text-rose-700'}>{fmtNum(margin)}</b></span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            const res = await apiPost(`/api/shipments/${s.id}/settle-cod`, {
+                              customerAmount: s.freightTotal ?? 0,
+                              contractorAmount: s.totalSuppliers ?? 0,
+                              userName: 'admin',
+                            })
+                            toast({ title: 'تمت تسوية COD', description: `قبض ${res.receiptVoucherNo ?? '—'} • صرف ${res.paymentVoucherNo ?? '—'}` })
+                            mutate()
+                          } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+                        }}
+                      >
+                        تسوية
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            {shipmentsList.filter((s: any) => s.collectionStatus !== 'collected' && s.customerId && s.contractorId && (s.freightTotal ?? 0) > 0).length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-6">لا توجد شحنات معلقة للتسوية.</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>سند قبض/صرف</DialogTitle><DialogDescription>يسجل في الصندوق أو البنك ويرتبط بالطرف.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>سند قبض/صرف</DialogTitle><DialogDescription>يسجل في الصندوق أو البنك ويرتبط بالطرف — ويمكن ربطه اختياريًا بشحنة محددة.</DialogDescription></DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-2">
             <div className="col-span-2">
               <label className="text-xs font-medium">نوع السند *</label>
@@ -353,6 +426,17 @@ export function VouchersModule() {
                 <SelectTrigger><SelectValue placeholder="اختر الطرف..." /></SelectTrigger>
                 <SelectContent>{(parties?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
               </Select>
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-medium">شحنة مرتبطة (اختياري)</label>
+              <Select value={v.shipmentId} onValueChange={(val) => setV({ ...v, shipmentId: val === '__' ? '' : val })}>
+                <SelectTrigger><SelectValue placeholder="— بدون شحنة —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__">— بدون شحنة —</SelectItem>
+                  {shipmentsList.map((s) => <SelectItem key={s.id} value={s.id}>{s.shipmentNo} — {s.customer?.name || s.recipientName || '-'} — {s.destination ?? '-'}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground mt-0.5">يربط السند بالشحنة المحددة — يظهر في تفاصيل الشحنة وتقارير التسويات.</p>
             </div>
             <div><label className="text-xs font-medium">المبلغ *</label><Input type="number" value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} /></div>
             <div><label className="text-xs font-medium">التاريخ</label><Input type="date" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} /></div>

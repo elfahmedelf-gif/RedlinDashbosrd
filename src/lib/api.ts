@@ -262,6 +262,14 @@ function enrichShipment(s: any) {
       userName: 'system',
     }]
   }
+  // Profit margin = customer freight (sell) - contractor freight (cost)
+  const sell = Number(st.freightTotal ?? 0)
+  const cost = Number(st.totalSuppliers ?? 0)
+  st.margin = Math.round((sell - cost) * 100) / 100
+  // Linked vouchers (with shipmentId === s.id)
+  st.vouchers = db.vouchers.filter((v: any) => v.shipmentId === s.id).map((v: any) => ({
+    id: v.id, voucherNo: v.voucherNo, type: v.type, amount: v.amount, date: v.date, description: v.description ?? null,
+  }))
   return st
 }
 
@@ -407,8 +415,17 @@ function handleGet(url: string): any {
     if (status && status !== 'all') items = items.filter((s: any) => s.status === status)
     const dest = qs('destination')
     if (dest && dest !== 'all') items = items.filter((s: any) => s.destination === dest)
+    const contractor = qs('contractor')
+    if (contractor && contractor !== 'all') items = items.filter((s: any) => s.contractorId === contractor)
+    const province = qs('province')
+    if (province && province !== 'all') items = items.filter((s: any) => (s.routeCode ?? '').includes(province))
+    const idsParam = qs('ids')
+    if (idsParam) {
+      const idSet = new Set(idsParam.split(',').filter(Boolean))
+      items = items.filter((s: any) => idSet.has(s.id))
+    }
     const page = Math.max(1, parseInt(qs('page') || '1', 10))
-    const pageSize = Math.min(200, Math.max(1, parseInt(qs('pageSize') || '20', 10)))
+    const pageSize = Math.min(500, Math.max(1, parseInt(qs('pageSize') || '20', 10)))
     return paginate(items, page, pageSize)
   }
 
@@ -493,9 +510,15 @@ function handleGet(url: string): any {
   // ----- vouchers -----
   if (p === '/api/vouchers') {
     const type = qs('type')
-    let items = db.vouchers.map((v: any) => ({ ...v, party: partyRef(v.partyId) }))
+    const shipmentId = qs('shipmentId')
+    let items = db.vouchers.map((v: any) => ({
+      ...v,
+      party: partyRef(v.partyId),
+      shipment: v.shipmentId ? (db.shipments.find((s: any) => s.id === v.shipmentId) ? { id: v.shipmentId, shipmentNo: db.shipments.find((s: any) => s.id === v.shipmentId).shipmentNo } : null) : null,
+    }))
       .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
     if (type) items = items.filter((v: any) => v.type === type)
+    if (shipmentId) items = items.filter((v: any) => v.shipmentId === shipmentId)
     return { items, total: items.length }
   }
 
@@ -642,6 +665,43 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
     addAudit('create', 'shipment', s.id, `إنشاء شحنة ${nextNo}`, b.userName)
     return { id: s.id, shipmentNo: nextNo }
   }
+  // ---- bulk status update ---- (must be checked BEFORE the {id}/status regex)
+  if (p === '/api/shipments/bulk/status' && method === 'POST') {
+    const ids: string[] = Array.isArray(b.ids) ? b.ids : []
+    if (!ids.length) throw new Error('اختر الشحنات المراد تحديثها')
+    if (!b.status) throw new Error('اختر الحالة الجديدة')
+    const updated: string[] = []
+    for (const id of ids) {
+      const s = findIn(db.shipments, id)
+      if (!s) continue
+      s.statusHistory = s.statusHistory ?? []
+      s.statusHistory.push({ status: b.status, notes: b.notes ?? 'تحديث جماعي', date: nowISO, userName: b.userName ?? 'admin' })
+      s.status = b.status
+      s.updatedAt = nowISO
+      updated.push(s.shipmentNo ?? id)
+    }
+    addAudit('bulk_update', 'shipment', null, `تحديث حالة ${updated.length} شحنة إلى ${b.status}`, b.userName)
+    return { ok: true, count: updated.length }
+  }
+
+  // ---- bulk assign contractor ----
+  if (p === '/api/shipments/bulk/assign' && method === 'POST') {
+    const ids: string[] = Array.isArray(b.ids) ? b.ids : []
+    if (!ids.length) throw new Error('اختر الشحنات المراد إسنادها')
+    if (!b.contractorId) throw new Error('اختر المقاول')
+    const contractor = partyById.get(b.contractorId)
+    const updated: string[] = []
+    for (const id of ids) {
+      const s = findIn(db.shipments, id)
+      if (!s) continue
+      s.contractorId = b.contractorId
+      s.updatedAt = nowISO
+      updated.push(s.shipmentNo ?? id)
+    }
+    addAudit('bulk_update', 'shipment', null, `إسناد ${updated.length} شحنة للمقاول ${contractor?.name ?? b.contractorId}`, b.userName)
+    return { ok: true, count: updated.length }
+  }
+
   let m = p.match(/^\/api\/shipments\/([^/]+)\/status$/)
   if (m && method === 'POST') {
     const s = findIn(db.shipments, m[1])
@@ -653,6 +713,78 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
     addAudit('update', 'shipment', s.id, `تحديث حالة الشحنة ${s.shipmentNo} إلى ${b.status}`, b.userName)
     return { ok: true }
   }
+
+  // ---- settle COD (cash on delivery): pay the contractor and receive from customer ----
+  let mSettle = p.match(/^\/api\/shipments\/([^/]+)\/settle-cod$/)
+  if (mSettle && method === 'POST') {
+    const s = findIn(db.shipments, mSettle[1])
+    if (!s) throw new Error('الشحنة غير موجودة')
+    if (!s.customerId && !s.contractorId) throw new Error('الشحنة لا تحتوي على عميل أو مقاول')
+    const created: any = {}
+    const cashAcc = db.accounts.find((a: any) => a.code === '1101')
+    const custAcc = db.accounts.find((a: any) => a.code === '1103')
+    const contrAcc = db.accounts.find((a: any) => a.code === '2102')
+    // 1) receipt voucher from customer (COD amount)
+    const customerAmount = Number(b.customerAmount ?? s.freightTotal ?? 0)
+    if (s.customerId && customerAmount > 0) {
+      const v1: any = {
+        id: uid('vc'),
+        voucherNo: `V-${String(db.vouchers.length + 1).padStart(4, '0')}`,
+        type: 'receipt', date: nowISO, partyId: s.customerId, party: partyRef(s.customerId),
+        amount: customerAmount, description: `تسوية COD — تحصيل من العميل ضد الشحنة ${s.shipmentNo}`,
+        accountName: 'الصندوق', journalEntryNo: `JE-${String(db.journal.length + 1).padStart(4, '0')}`,
+        shipmentId: s.id, userName: b.userName ?? 'admin', createdAt: nowISO,
+      }
+      db.vouchers.unshift(v1)
+      if (cashAcc && custAcc) {
+        db.journal.unshift({
+          id: uid('je'), entryNo: v1.journalEntryNo, date: nowISO,
+          description: `سند قبض تسوية ${v1.voucherNo} — ${v1.party?.name ?? ''} (شحنة ${s.shipmentNo})`,
+          reference: v1.voucherNo, branchId: null, status: 'posted', totalDebit: customerAmount, totalCredit: customerAmount,
+          lines: [
+            { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: customerAmount, credit: 0, description: 'نقدية مستلمة من COD', partyId: v1.partyId, party: v1.party },
+            { id: uid('jl'), accountId: custAcc.id, account: { id: custAcc.id, code: custAcc.code, name: custAcc.name }, debit: 0, credit: customerAmount, description: `تحصيل COD لشحنة ${s.shipmentNo}`, partyId: v1.partyId, party: v1.party },
+          ],
+          createdAt: nowISO, updatedAt: nowISO,
+        })
+      }
+      created.receiptVoucherNo = v1.voucherNo
+    }
+    // 2) payment voucher to contractor (cost)
+    const contractorAmount = Number(b.contractorAmount ?? s.totalSuppliers ?? s.freightCost ?? 0)
+    if (s.contractorId && contractorAmount > 0) {
+      const v2: any = {
+        id: uid('vc'),
+        voucherNo: `V-${String(db.vouchers.length + 1).padStart(4, '0')}`,
+        type: 'payment', date: nowISO, partyId: s.contractorId, party: partyRef(s.contractorId),
+        amount: contractorAmount, description: `تسوية COD — صرف للمقاول مقابل نقل الشحنة ${s.shipmentNo}`,
+        accountName: 'الصندوق', journalEntryNo: `JE-${String(db.journal.length + 1).padStart(4, '0')}`,
+        shipmentId: s.id, userName: b.userName ?? 'admin', createdAt: nowISO,
+      }
+      db.vouchers.unshift(v2)
+      if (cashAcc && contrAcc) {
+        db.journal.unshift({
+          id: uid('je'), entryNo: v2.journalEntryNo, date: nowISO,
+          description: `سند صرف تسوية ${v2.voucherNo} — ${v2.party?.name ?? ''} (شحنة ${s.shipmentNo})`,
+          reference: v2.voucherNo, branchId: null, status: 'posted', totalDebit: contractorAmount, totalCredit: contractorAmount,
+          lines: [
+            { id: uid('jl'), accountId: contrAcc.id, account: { id: contrAcc.id, code: contrAcc.code, name: contrAcc.name }, debit: contractorAmount, credit: 0, description: `صرف نقل لشحنة ${s.shipmentNo}`, partyId: v2.partyId, party: v2.party },
+            { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: 0, credit: contractorAmount, description: 'نقدية مدفوعة COD', partyId: v2.partyId, party: v2.party },
+          ],
+          createdAt: nowISO, updatedAt: nowISO,
+        })
+      }
+      created.paymentVoucherNo = v2.voucherNo
+    }
+    // 3) mark collection status as settled
+    s.collectionStatus = 'collected'
+    s.statusHistory = s.statusHistory ?? []
+    s.statusHistory.push({ status: s.status, notes: `تسوية COD — قبض ${created.receiptVoucherNo ?? '—'} / صرف ${created.paymentVoucherNo ?? '—'}`, date: nowISO, userName: b.userName ?? 'admin' })
+    s.updatedAt = nowISO
+    addAudit('settle', 'shipment', s.id, `تسوية COD للشحنة ${s.shipmentNo}`, b.userName)
+    return { ok: true, ...created }
+  }
+
   m = p.match(/^\/api\/shipments\/([^/]+)$/)
   if (m && method === 'DELETE') {
     const idx = db.shipments.findIndex((x: any) => x.id === m[1])
@@ -825,6 +957,8 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
 
   // ---- vouchers ----
   if (p === '/api/vouchers' && method === 'POST') {
+    const shipmentId = b.shipmentId || null
+    const linkedShipment = shipmentId ? db.shipments.find((s: any) => s.id === shipmentId) : null
     const v = {
       id: uid('vc'), voucherNo: `V-${String(db.vouchers.length + 1).padStart(4, '0')}`,
       type: b.type ?? 'receipt', date: b.date ? new Date(b.date).toISOString() : nowISO,
@@ -832,6 +966,7 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
       amount: Number(b.amount) || 0, description: b.description ?? null,
       accountName: b.accountName ?? 'الصندوق',
       journalEntryNo: `JE-${String(db.journal.length + 1).padStart(4, '0')}`,
+      shipmentId: linkedShipment ? shipmentId : null,
       userName: b.userName ?? 'admin', createdAt: nowISO,
     }
     if (!v.partyId) throw new Error('اختر الطرف')
@@ -844,22 +979,22 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
     if (cashAcc && partyAcc) {
       db.journal.unshift({
         id: uid('je'), entryNo: v.journalEntryNo, date: v.date,
-        description: `${v.type === 'receipt' ? 'سند قبض' : 'سند صرف'} ${v.voucherNo} — ${v.party?.name ?? ''}`,
+        description: `${v.type === 'receipt' ? 'سند قبض' : 'سند صرف'} ${v.voucherNo} — ${v.party?.name ?? ''}${linkedShipment ? ` (شحنة ${linkedShipment.shipmentNo})` : ''}`,
         reference: v.voucherNo, branchId: null, status: 'posted',
         totalDebit: v.amount, totalCredit: v.amount,
         lines: v.type === 'receipt'
           ? [
               { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: v.amount, credit: 0, description: 'نقدية مستلمة', partyId: v.partyId, party: v.party },
-              { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: 0, credit: v.amount, description: 'تحصيل من العميل', partyId: v.partyId, party: v.party },
+              { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: 0, credit: v.amount, description: linkedShipment ? `تحصيل لشحنة ${linkedShipment.shipmentNo}` : 'تحصيل من العميل', partyId: v.partyId, party: v.party },
             ]
           : [
-              { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: v.amount, credit: 0, description: 'مستحقات مقاول', partyId: v.partyId, party: v.party },
+              { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: v.amount, credit: 0, description: linkedShipment ? `مستحقات نقل لشحنة ${linkedShipment.shipmentNo}` : 'مستحقات مقاول', partyId: v.partyId, party: v.party },
               { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: 0, credit: v.amount, description: 'نقدية مدفوعة', partyId: v.partyId, party: v.party },
             ],
         createdAt: nowISO, updatedAt: nowISO,
       })
     }
-    addAudit('create', 'voucher', v.id, `${v.type === 'receipt' ? 'سند قبض' : 'سند صرف'} ${v.voucherNo} بمبلغ ${v.amount}`, b.userName)
+    addAudit('create', 'voucher', v.id, `${v.type === 'receipt' ? 'سند قبض' : 'سند صرف'} ${v.voucherNo} بمبلغ ${v.amount}${linkedShipment ? ` (شحنة ${linkedShipment.shipmentNo})` : ''}`, b.userName)
     return { id: v.id, voucherNo: v.voucherNo }
   }
   m = p.match(/^\/api\/vouchers\/([^/]+)$/)

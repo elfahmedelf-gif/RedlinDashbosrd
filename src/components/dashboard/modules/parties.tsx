@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { Plus, Pencil, Trash2, ArrowLeft, Phone, MapPin, FileText } from 'lucide-react'
+import { Plus, Pencil, Trash2, ArrowLeft, Phone, MapPin, FileText, FileSpreadsheet } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EntityFormDialog, type Field } from '../entity-dialog'
 import { DataTable } from '../data-table'
 import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
+import { exportToCSV } from '@/lib/export'
 import { fmtNum } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import type { ModuleKey } from '../sidebar'
@@ -75,13 +76,32 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
     mutate()
   }
 
+  const exportParties = () => {
+    if (!data?.items?.length) { toast({ title: 'لا توجد بيانات للتصدير' }); return }
+    const rows = data.items.map((p: Party) => ({
+      'الكود': p.code ?? '', 'الاسم': p.name, 'الاسم EN': p.nameEn ?? '',
+      'الهاتف': p.phone ?? '', 'المدينة': p.city ?? '', 'المنطقة': p.region ?? '',
+      'الفرع': p.branch?.name ?? '', 'حد الائتمان': p.creditLimit ?? '',
+      'الرصيد الافتتاحي': p.openingBalance ?? 0,
+      'عدد الشحنات': p._count.shipments, 'إجمالي التعامل': p._sum.totalSuppliers ?? 0,
+      'تحصيل العميل': p._sum.customerPay ?? 0,
+    }))
+    exportToCSV(rows, `${type}-${new Date().toISOString().slice(0, 10)}.csv`)
+    toast({ title: `تم تصدير ${rows.length} ${title}` })
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm text-muted-foreground tnum">
           {data?.items.length ?? 0} {title}
         </div>
-        <Button onClick={onAdd} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">إضافة جديد</span><span className="sm:hidden">جديد</span></Button>
+        <div className="flex gap-2 shrink-0">
+          <Button variant="outline" onClick={exportParties} size="sm" disabled={!data?.items?.length}>
+            <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">تصدير</span>
+          </Button>
+          <Button onClick={onAdd} size="sm"><Plus className="size-4" /> <span className="hidden sm:inline">إضافة جديد</span><span className="sm:hidden">جديد</span></Button>
+        </div>
       </div>
 
       {isLoading ? (

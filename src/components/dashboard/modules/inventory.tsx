@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { Plus, Pencil, Trash2, Boxes, AlertTriangle, ArrowRightLeft } from 'lucide-react'
+import { Plus, Pencil, Trash2, Boxes, AlertTriangle, ArrowRightLeft, FileSpreadsheet } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { EntityFormDialog, type Field } from '../entity-dialog'
 import { DataTable } from '../data-table'
 import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
+import { exportToCSV } from '@/lib/export'
 import { fmtNum, fmtDate, MOVEMENT_TYPE } from '@/lib/format'
 import { useLookup } from '@/lib/lookups'
 import { useToast } from '@/hooks/use-toast'
@@ -287,6 +288,18 @@ export function FreightModule() {
     catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }
 
+  const exportFreight = () => {
+    if (!data?.items?.length) { toast({ title: 'لا توجد بيانات للتصدير' }); return }
+    const rows = data.items.map((r: any) => ({
+      'المنطقة (عربي)': r.regionAr ?? '', 'Region (EN)': r.regionEn ?? '',
+      'خط السير': r.routeName ?? '', 'المسافة (كم)': r.distanceKm ?? '',
+      'نوع الحمولة': r.loadType ?? '', 'التكلفة': r.cost ?? 0,
+      'سعر البيع': r.sellPrice ?? 0, 'سعر 2': r.sellPrice2 ?? '', 'ملاحظات': r.notes ?? '',
+    }))
+    exportToCSV(rows, `freight-${new Date().toISOString().slice(0, 10)}.csv`)
+    toast({ title: `تم تصدير ${rows.length} سعر` })
+  }
+
   const columns = [
     { key: 'idx', header: '#', align: 'center' as const, width: 'w-12', hideInCard: true, render: (_: any, i: number) => <span className="text-xs text-muted-foreground tnum">{i + 1}</span> },
     { key: 'regionAr', header: 'المنطقة (عربي)', primary: true, render: (r: any) => <span className="font-medium truncate-1 block">{r.regionAr || '-'}</span> },
@@ -311,7 +324,12 @@ export function FreightModule() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm text-muted-foreground tnum">{data?.items.length ?? 0} سعر</div>
-        <Button onClick={() => { setEditing(null); setOpen(true) }} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">سعر جديد</span><span className="sm:hidden">سعر</span></Button>
+        <div className="flex gap-2 shrink-0">
+          <Button variant="outline" onClick={exportFreight} size="sm" disabled={!data?.items?.length}>
+            <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">تصدير</span>
+          </Button>
+          <Button onClick={() => { setEditing(null); setOpen(true) }} size="sm"><Plus className="size-4" /> <span className="hidden sm:inline">سعر جديد</span><span className="sm:hidden">سعر</span></Button>
+        </div>
       </div>
       <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(r: any) => r.id} minW={900} searchFn={(r, q) => (r.regionAr || '').toLowerCase().includes(q) || (r.regionEn || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالمنطقة..." />
 

@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { DataTable } from '../data-table'
 import { fetcher } from '@/lib/api'
+import { exportToCSV, exportToExcel } from '@/lib/export'
 import { fmtNum, fmtDate, ACCOUNT_TYPE, SHIPMENT_STATUS, MOVEMENT_TYPE } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -35,21 +36,32 @@ export function ReportsModule() {
 
   const exportCSV = () => {
     if (!data?.items?.length) return
-    const keys = Object.keys(data.items[0])
-    const lines = [keys.join(',')]
-    for (const row of data.items) {
-      lines.push(keys.map((k) => {
+    // Flatten nested objects for CSV
+    const rows = data.items.map((row: any) => {
+      const flat: Record<string, any> = {}
+      for (const k of Object.keys(row)) {
         const v = row[k]
-        if (v == null) return ''
-        const s = typeof v === 'object' ? JSON.stringify(v) : String(v)
-        return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s
-      }).join(','))
-    }
-    const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = `${active}-${new Date().toISOString().slice(0,10)}.csv`
-    a.click(); URL.revokeObjectURL(url)
+        if (v == null) flat[k] = ''
+        else if (typeof v === 'object') flat[k] = JSON.stringify(v)
+        else flat[k] = v
+      }
+      return flat
+    })
+    exportToCSV(rows, `${active}-${new Date().toISOString().slice(0, 10)}.csv`)
+  }
+  const exportXls = () => {
+    if (!data?.items?.length) return
+    const rows = data.items.map((row: any) => {
+      const flat: Record<string, any> = {}
+      for (const k of Object.keys(row)) {
+        const v = row[k]
+        if (v == null) flat[k] = ''
+        else if (typeof v === 'object') flat[k] = JSON.stringify(v)
+        else flat[k] = v
+      }
+      return flat
+    })
+    exportToExcel(rows, `${active}-${new Date().toISOString().slice(0, 10)}.xls`)
   }
 
   if (active && data) {
@@ -64,7 +76,8 @@ export function ReportsModule() {
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-36 h-8 text-xs" />
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-36 h-8 text-xs" />
             <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="size-4" /> طباعة</Button>
-            <Button variant="outline" size="sm" onClick={exportCSV}><FileSpreadsheet className="size-4" /> تصدير CSV</Button>
+            <Button variant="outline" size="sm" onClick={exportCSV}><FileSpreadsheet className="size-4" /> CSV</Button>
+            <Button variant="outline" size="sm" onClick={exportXls}><FileSpreadsheet className="size-4" /> Excel</Button>
           </div>
         </div>
         <ReportTable type={active} items={data.items} loading={isLoading} />
