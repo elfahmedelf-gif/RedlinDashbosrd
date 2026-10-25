@@ -159,28 +159,28 @@ export function Sidebar({ active, onChange, counts }: SidebarProps) {
     <aside
       className={cn(
         'hidden md:flex shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground sticky top-0 h-screen z-30 transition-[width] duration-300 ease-out',
-        collapsed ? 'w-[76px]' : 'w-72 lg:w-80',
+        collapsed ? 'w-[68px]' : 'w-56 lg:w-60',
       )}
     >
       {/* Header / brand */}
       <div className={cn(
-        'flex items-center gap-3 border-b border-sidebar-border h-16 shrink-0',
-        collapsed ? 'justify-center px-2' : 'px-5',
+        'flex items-center gap-2.5 border-b border-sidebar-border h-16 shrink-0',
+        collapsed ? 'justify-center px-2' : 'px-4',
       )}>
-        <div className="relative flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-lg shrink-0">
+        <div className="relative flex items-center justify-center size-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-lg shrink-0">
           <Truck className="size-5" />
           <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-emerald-400 ring-2 ring-sidebar" />
         </div>
         {!collapsed && (
           <div className="flex-1 min-w-0 anim-fade-in">
-            <h1 className="font-bold text-base leading-tight truncate">شركة النقل والشحن</h1>
-            <p className="text-[11px] text-muted-foreground leading-tight truncate">نظام الإدارة المتكامل</p>
+            <h1 className="font-bold text-sm leading-tight truncate">شركة النقل والشحن</h1>
+            <p className="text-[10px] text-muted-foreground leading-tight truncate">نظام الإدارة المتكامل</p>
           </div>
         )}
         {!collapsed && (
           <button
             onClick={toggle}
-            className="text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg size-8 flex items-center justify-center transition-colors"
+            className="text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg size-7 flex items-center justify-center transition-colors shrink-0"
             title="طي القائمة"
           >
             <PanelRightClose className="size-4" />
@@ -246,7 +246,7 @@ export function Sidebar({ active, onChange, counts }: SidebarProps) {
               <button
                 onClick={() => toggleGroup(groupKey)}
                 className={cn(
-                  'group w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-200',
+                  'group w-full flex items-center gap-2 px-2.5 py-2 rounded-xl transition-all duration-200',
                   isActiveGroup
                     ? 'bg-sidebar-accent text-sidebar-foreground'
                     : 'hover:bg-sidebar-accent/60 text-sidebar-foreground/85 hover:text-sidebar-foreground',
@@ -255,15 +255,15 @@ export function Sidebar({ active, onChange, counts }: SidebarProps) {
                 {GIcon && (
                   <GIcon className={cn('size-4 shrink-0', isActiveGroup ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
                 )}
-                <span className="flex-1 text-right text-[13px] font-bold leading-tight">{groupMeta?.label}</span>
+                <span className="flex-1 text-right text-[12px] font-bold leading-tight truncate">{groupMeta?.label}</span>
                 {groupTotal > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full tnum font-semibold bg-secondary text-secondary-foreground">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full tnum font-semibold bg-secondary text-secondary-foreground shrink-0">
                     {groupTotal.toLocaleString('en-US')}
                   </span>
                 )}
                 <ChevronDown
                   className={cn(
-                    'size-4 text-muted-foreground transition-transform duration-300 shrink-0',
+                    'size-3.5 text-muted-foreground transition-transform duration-300 shrink-0',
                     isExpanded && 'rotate-180',
                   )}
                 />
@@ -276,7 +276,7 @@ export function Sidebar({ active, onChange, counts }: SidebarProps) {
                   isExpanded ? 'max-h-[600px] opacity-100 mt-1' : 'max-h-0 opacity-0',
                 )}
               >
-                <div className="space-y-0.5 pr-2 border-r-2 border-sidebar-border/40 mr-3 my-1">
+                <div className="space-y-0.5 pr-1.5 border-r-2 border-sidebar-border/40 mr-2 my-1">
                   {mods.map((m) => {
                     const isActive = active === m.key
                     const Icon = m.icon
@@ -286,7 +286,7 @@ export function Sidebar({ active, onChange, counts }: SidebarProps) {
                         key={m.key}
                         onClick={() => onChange(m.key)}
                         className={cn(
-                          'group relative w-full flex items-center gap-2.5 rounded-lg text-sm transition-all duration-200 px-3 py-2',
+                          'group relative w-full flex items-center gap-2 rounded-lg text-sm transition-all duration-200 px-2.5 py-1.5',
                           isActive
                             ? 'nav-item-active shadow-sm'
                             : 'hover:bg-sidebar-accent text-sidebar-foreground/85 hover:text-sidebar-foreground',
@@ -299,10 +299,10 @@ export function Sidebar({ active, onChange, counts }: SidebarProps) {
                           'shrink-0 size-4',
                           isActive ? '' : 'text-muted-foreground group-hover:text-foreground',
                         )} />
-                        <span className="flex-1 text-right font-medium leading-tight text-[13px]">{m.label}</span>
+                        <span className="flex-1 text-right font-medium leading-tight text-[12px] truncate">{m.label}</span>
                         {typeof count === 'number' && (
                           <span className={cn(
-                            'text-[10px] px-1.5 py-0.5 rounded-full tnum font-semibold',
+                            'text-[10px] px-1.5 py-0.5 rounded-full tnum font-semibold shrink-0',
                             isActive
                               ? 'bg-primary-foreground/20 text-primary-foreground'
                               : 'bg-secondary/80 text-secondary-foreground',
@@ -323,17 +323,17 @@ export function Sidebar({ active, onChange, counts }: SidebarProps) {
       {/* Footer: user info + version (dark mode toggle moved to header) */}
       <div className={cn('border-t border-sidebar-border p-2 space-y-1', collapsed && 'flex flex-col items-center')}>
         {!collapsed && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors cursor-pointer">
-            <div className="flex items-center justify-center size-8 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-xs font-bold shrink-0">م</div>
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-sidebar-accent transition-colors cursor-pointer">
+            <div className="flex items-center justify-center size-7 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-[10px] font-bold shrink-0">م</div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold truncate">مدير النظام</div>
+              <div className="text-[11px] font-semibold truncate">مدير النظام</div>
               <div className="text-[10px] text-muted-foreground truncate">admin</div>
             </div>
-            <LogOut className="size-3.5 text-muted-foreground" />
+            <LogOut className="size-3.5 text-muted-foreground shrink-0" />
           </div>
         )}
         {!collapsed && (
-          <div className="px-3 pt-1 text-[10px] text-muted-foreground/60 leading-relaxed">
+          <div className="px-2.5 pt-1 text-[10px] text-muted-foreground/60 leading-relaxed truncate">
             نظام إدارة شحن · إصدار 2.0
           </div>
         )}

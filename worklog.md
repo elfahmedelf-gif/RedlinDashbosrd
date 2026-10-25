@@ -124,3 +124,41 @@ Stage Summary:
 - التحسينات اليومية: تحديد متعدد (bulk status/assign) + تصدير موحد (CSV/Excel) على 5 جداول + فلاتر سريعة (مقاول + محافظة)
 - RTL محفوظ 100%: كل النوافذ المنبثقة + الجداول + البوليصة كلها dir="rtl"
 - أداء: لا توجد طلبات شبكة، كلها في الذاكرة — المعاينة فورية
+
+---
+Task ID: 4
+Agent: main (Z.ai Code)
+Task: ضبط أبعاد الواجهة — تقليص السايدبار + كروت KPI أعرض وأقل ارتفاعًا + كروت الحالة أفقية مدمجة
+
+Work Log:
+- فحص القياسات الحالية: السايدبار w-72 lg:w-80 (320px في lg)، KPI cards بـ p-4 sm:p-5 + size-11 sm:size-12 icon + kpi-value clamp(1.25-2rem)
+- اكتشاف السبب الجذري لطول الكروت: شادكن Card له py-6 gap-6 افتراضي لا يُلغى بـ CardContent p-4 → الإجمالي 48px+ من الـ padding الرأسي الزائد
+- تعديل sidebar.tsx: عرض السايدبار w-72 lg:w-80 → w-56 lg:w-60 (320px → 240px) — توفير 80px لمنطقة العمل
+- تعديل header السايدبار: h-16 px-5 gap-3 size-10 → h-16 px-4 gap-2.5 size-9 + text-base→text-sm + button size-8→size-7
+- تعديل nav items: px-3 py-2 gap-2.5 text-[13px] → px-2.5 py-1.5 gap-2 text-[12px] + truncate لمنع الفيض
+- تعديل group header: px-3 → px-2.5, gap-2.5→gap-2, text-[13px]→text-[12px] truncate + size-4 chevron→size-3.5
+- تعديل footer السايدبار: px-3 py-2 → px-2.5 py-1.5, size-8→size-7, text-xs→text-[11px]
+- تعديل Kpi Card في dashboard.tsx: p-4 sm:p-5 → p-3.5 sm:p-4 + إضافة py-0 gap-0 على Card لإلغاء الـ padding الافتراضي + size-11 sm:size-12 icon → size-10 sm:size-11 + space-y-1 → space-y-0.5
+- تعديل kpi-value في globals.css: clamp(1.25rem, 4vw, 2rem) → clamp(1.05rem, 3.5vw, 1.6rem) (مدمج مع KPI الأصغر)
+- تعديل StatusCard: تحويل من عمودي (flex-col items-center, p-4, size-10 icon, text-xl value) → أفقي مدمج (flex-row items-center gap-2.5, px-3 py-2.5, size-8 icon, text-base value)
+- تعديل Mini Card: إضافة py-0 gap-0 على Card (الافتراضي كان يضيف 48px padding)
+- تعديل التباعد بين الأقسام: space-y-5 → space-y-4 + gap-3/4 → gap-2.5/3 على كل الـ grids
+- تعديل DashboardSkeleton: ارتفاع Skeletons أقل (h-28→h-20، h-20→h-14، h-96→h-72) ليتطابق الأبعاد الجديدة
+- التحقق عبر Agent Browser:
+  * sidebar width: 320px → 240px (-25%) ✓
+  * main content width: 960px → 1040px (+80px) ✓
+  * Top KPI cards: 235×167 → 235×119 (-29% ارتفاع، تجاوز الهدف 15-20%) ✓
+  * Status cards: 154×104 → 154×56 (-46% ارتفاع، أصبحت أفقية مدمجة) ✓
+  * Mini cards: 187×112 → 187×64 (-43% ارتفاع) ✓
+  * RTL محفوظ (htmlDir=rtl) ✓
+  * Dark mode يعمل بشكل صحيح (htmlClass=dark, sidebar dark bg, نفس الأبعاد 235×119) ✓
+  * bun run lint: نظيف بدون أخطاء
+  * dev.log: لا أخطاء، GET / 200 ✓
+
+Stage Summary:
+- تقليص السايدبار: من 320px إلى 240px — منح منطقة العمل 80px إضافية أفقية
+- كروت KPI العلوية: الارتفاع انخفض 29% (167px → 119px) — أكثر من الهدف المطلوب 15-20%
+- كروت الحالة (Status Cards): تحولت من عمودية طويلة (104px ارتفاع، أيقونة في الأعلى والرقم والوصف تحته) → أفقية مدمجة (56px ارتفاع، أيقونة على اليمين والرقم/الوصف على اليسار)
+- كروت Mini: الارتفاع انخفض 43% (112px → 64px) بعد إزالة الـ padding الافتراضي للـ Card
+- الإصلاح الجوهري: إضافة py-0 gap-0 على كل الكروت لإلغاء الـ padding الافتراضي من shadcn Card (48px زائد!)
+- التناسق محفوظ: RTL + light/dark mode كلاهما يعملان بنفس الأبعاد المضغوطة

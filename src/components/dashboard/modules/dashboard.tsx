@@ -65,9 +65,9 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
   ].filter((u) => u.value > 0)
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Primary KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 stagger">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3 stagger">
         <Kpi title="إجمالي الشحنات" value={fmtNum(s.totalShipments)} icon={Package} tone="primary"
           subtitle={`من ${shortDate(data.dateRange.from)} إلى ${shortDate(data.dateRange.to)}`} />
         <Kpi title="إيرادات النولون" value={fmtNum(s.totalFreight)} unit="ج.م" icon={Receipt} tone="teal"
@@ -78,8 +78,8 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
           subtitle={s.netFreightMargin >= 0 ? 'ربح' : 'خسارة'} />
       </div>
 
-      {/* Status counts */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 stagger">
+      {/* Status counts — horizontal compact cards (grid-cols-6 on lg, 3 on sm, 2 on mobile) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 stagger">
         <StatusCard label="قيد التنفيذ" value={s.inTransit} icon={Truck} tone="indigo" />
         <StatusCard label="مسلّمة" value={s.delivered} icon={Package} tone="emerald" />
         <StatusCard label="مرتجعة" value={s.returned} icon={Undo2} tone="rose" />
@@ -89,7 +89,7 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
       </div>
 
       {/* Mini financial stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
         <Mini label="التعتيق" value={fmtNum(s.totalAging)} icon={Clock} />
         <Mini label="المبيت" value={fmtNum(s.totalOvernight)} icon={Moon} />
         <Mini label="المرتجعات" value={fmtNum(s.totalReturns)} icon={Undo2} />
@@ -326,12 +326,12 @@ function Kpi({ title, value, unit, icon: Icon, tone, subtitle }: { title: string
   }
   const t = tones[tone] || tones.primary
   return (
-    <Card className={cn('relative overflow-hidden hover-lift group min-w-0 border-border', `bg-gradient-to-br ${t.wrap}`)}>
-      <CardContent className="p-4 sm:p-5 relative z-10">
+    <Card className={cn('relative overflow-hidden hover-lift group min-w-0 border-border py-0 gap-0', `bg-gradient-to-br ${t.wrap}`)}>
+      <CardContent className="p-3.5 sm:p-4 relative z-10">
         {/* flex justify-between items-center — right=info, left=icon (RTL) */}
         <div className="flex justify-between items-center gap-3">
           {/* ── Right side (RTL): title + bold value + subtitle ── */}
-          <div className="min-w-0 flex-1 space-y-1">
+          <div className="min-w-0 flex-1 space-y-0.5">
             <div className="text-xs text-muted-foreground font-medium truncate-1">{title}</div>
             <div className="flex items-baseline gap-1.5 min-w-0">
               <span className="kpi-value font-bold tnum tracking-tight num-ltr text-foreground">{value}</span>
@@ -341,10 +341,10 @@ function Kpi({ title, value, unit, icon: Icon, tone, subtitle }: { title: string
           </div>
           {/* ── Left side (RTL): rounded background with icon ── */}
           <div className={cn(
-            'flex items-center justify-center size-11 sm:size-12 rounded-2xl shrink-0 transition-transform group-hover:scale-105',
+            'flex items-center justify-center size-10 sm:size-11 rounded-2xl shrink-0 transition-transform group-hover:scale-105',
             t.icon, t.glow,
           )}>
-            <Icon className="size-5 sm:size-6" />
+            <Icon className="size-5 sm:size-5" />
           </div>
         </div>
       </CardContent>
@@ -362,16 +362,17 @@ function StatusCard({ label, value, icon: Icon, tone }: { label: string; value: 
     primary: 'text-primary bg-primary/10 dark:bg-primary/20',
   }
   return (
-    <Card className="hover-lift min-w-0 border-border">
-      <CardContent className="p-4 flex flex-col items-center text-center gap-2">
-        {/* Icon in a rounded tinted background */}
-        <div className={cn('flex items-center justify-center size-10 rounded-2xl', tones[tone])}>
-          <Icon className="size-5" />
+    <Card className="hover-lift min-w-0 border-border py-0 gap-0">
+      <CardContent className="px-3 py-2.5 flex items-center gap-2.5">
+        {/* Compact icon on the right (RTL) */}
+        <div className={cn('flex items-center justify-center size-8 rounded-lg shrink-0', tones[tone])}>
+          <Icon className="size-4" />
         </div>
-        {/* Bold number */}
-        <div className="text-xl font-bold tnum leading-tight num-ltr text-foreground">{fmtNum(value)}</div>
-        {/* Description label */}
-        <div className="text-[11px] text-muted-foreground leading-tight truncate-1">{label}</div>
+        {/* Value + label stacked compactly on the left */}
+        <div className="min-w-0 flex-1">
+          <div className="text-base font-bold tnum leading-tight num-ltr text-foreground truncate-1">{fmtNum(value)}</div>
+          <div className="text-[11px] text-muted-foreground leading-tight truncate-1">{label}</div>
+        </div>
       </CardContent>
     </Card>
   )
@@ -379,7 +380,7 @@ function StatusCard({ label, value, icon: Icon, tone }: { label: string; value: 
 
 function Mini({ label, value, icon: Icon }: { label: string; value: string; icon: React.ElementType }) {
   return (
-    <Card className="hover-lift min-w-0">
+    <Card className="hover-lift min-w-0 py-0 gap-0">
       <CardContent className="p-2.5 sm:p-3 flex items-center gap-2 sm:gap-2.5">
         <div className="flex items-center justify-center size-7 sm:size-8 rounded-lg bg-secondary text-secondary-foreground shrink-0">
           <Icon className="size-3.5 sm:size-4" />
@@ -410,13 +411,13 @@ function Alert({ tone, icon: Icon, children }: { tone: string; icon: React.Eleme
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">{[0,1,2,3].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">{[0,1,2,3,4,5].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">{[0,1,2,3,4].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}</div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">{[0,1,2,3].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">{[0,1,2,3,4,5].map((i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">{[0,1,2,3,4].map((i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Skeleton className="h-96 rounded-xl lg:col-span-2" />
-        <Skeleton className="h-96 rounded-xl" />
+        <Skeleton className="h-72 rounded-xl lg:col-span-2" />
+        <Skeleton className="h-72 rounded-xl" />
       </div>
     </div>
   )
