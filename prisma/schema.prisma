@@ -1,9 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
+// Prisma schema - Shipping Company Management System
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,20 +8,361 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Party {
+  id                 String   @id @default(cuid())
+  code               String?
+  name               String
+  nameEn             String?
+  isCustomer         Boolean  @default(false)
+  isContractor       Boolean  @default(false)
+  isSupplier         Boolean  @default(false)
+  phone              String?
+  phones             String?
+  email              String?
+  address            String?
+  city               String?
+  region             String?
+  taxNumber          String?
+  paymentTerms       String?
+  creditLimit        Float?
+  openingBalance     Float    @default(0)
+  openingBalanceType String?
+  branchId           String?
+  notes              String?
+  documents          String?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  branch             Branch?  @relation(fields: [branchId], references: [id])
+  shipmentsAsCustomer    Shipment[]           @relation("CustomerShipments")
+  shipmentsAsContractor  Shipment[]           @relation("ContractorShipments")
+  journalLines       JournalLine[]
+  vouchers           Voucher[]
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  code      String?
+  name      String
+  nameEn    String?
+  manager   String?
+  phone     String?
+  address   String?
+  region    String?
+  balance   Float    @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  warehouses     Warehouse[]
+  shipments      Shipment[]
+  parties        Party[]
+  journalEntries JournalEntry[]
+  costCenters    CostCenter[]
+  users          User[]
+}
+
+model Warehouse {
+  id        String   @id @default(cuid())
+  code      String?
+  name      String
+  branchId  String
+  manager   String?
+  balance   Float    @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  branch    Branch     @relation(fields: [branchId], references: [id])
+  items     Item[]
+  movements InventoryMovement[]
+  shipments Shipment[]
+}
+
+model Item {
+  id           String   @id @default(cuid())
+  code         String?
+  name         String
+  nameEn       String?
+  unit         String?
+  reorderLevel Float?
+  cost         Float    @default(0)
+  price        Float    @default(0)
+  warehouseId  String?
+  notes        String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  warehouse Warehouse?           @relation(fields: [warehouseId], references: [id])
+  movements InventoryMovement[]
+}
+
+model InventoryMovement {
+  id            String   @id @default(cuid())
+  date          DateTime @default(now())
+  type          String
+  itemId        String
+  warehouseId   String
+  toWarehouseId String?
+  quantity      Float
+  unitCost      Float?
+  totalCost     Float?
+  reference     String?
+  notes         String?
+  status        String   @default("approved")
+  userId        String?
+  userName      String?
+  createdAt     DateTime @default(now())
+  item      Item      @relation(fields: [itemId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+}
+
+model Shipment {
+  id            String    @id @default(cuid())
+  shipmentNo    String?
+  billNo        String?
+  policyQty     Float?
+  customerId    String?
+  customer      Party?    @relation("CustomerShipments", fields: [customerId], references: [id])
+  recipientName String?
+  shipToParty   String?
+  deliveryPhones String?
+  pickupAddress String?
+  deliveryAddress String?
+  destination   String?
+  destinationEn String?
+  routeCode     String?
+  branchId      String?
+  branch        Branch?  @relation(fields: [branchId], references: [id])
+  warehouseId   String?
+  warehouse     Warehouse? @relation(fields: [warehouseId], references: [id])
+  loadType      String?
+  ton15         Float?
+  ton3          Float?
+  m6            Float?
+  drop          Float?
+  worker        String?
+  contractorId  String?
+  contractor    Party?   @relation("ContractorShipments", fields: [contractorId], references: [id])
+  vehicleNo     String?
+  freightCost   Float?
+  freightTotal  Float?
+  salePrice     Float?
+  customerPay   Float?
+  aging         Float?
+  overnight     Float?
+  returns       Float?
+  transfer      Float?
+  other         Float?
+  totalSuppliers Float?
+  status        String   @default("new")
+  collectionStatus String @default("uncollected")
+  date          DateTime?
+  shippingDate  DateTime?
+  expectedDeliveryDate DateTime?
+  actualDeliveryDate DateTime?
+  date2         DateTime?
+  notes         String?
+  note1         String?
+  attachments   String?
+  sFlag         String?
+  warehouseOrig String?
+  m1            String?
+  m2            String?
+  xCol          String?
+  card          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  statusHistory ShipmentStatusHistory[]
+  journalLines  JournalLine[]
+}
+
+model ShipmentStatusHistory {
+  id         String   @id @default(cuid())
+  shipmentId String
+  fromStatus String?
+  toStatus   String
+  changedAt  DateTime @default(now())
+  userId     String?
+  userName   String?
+  notes      String?
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+}
+
+model FreightPrice {
+  id         String    @id @default(cuid())
+  regionAr   String?
+  regionEn   String?
+  routeName  String?
+  distanceKm String?
+  loadType   String?
+  cost       Float?
+  sellPrice  Float?
+  sellPrice2 Float?
+  validFrom  DateTime?
+  validTo    DateTime?
+  notes      String?
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model Account {
+  id        String   @id @default(cuid())
+  code      String
+  name      String
+  nameEn    String?
+  type      String
+  parentId  String?
+  isDetail  Boolean  @default(true)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  parent   Account?   @relation("AccountTree", fields: [parentId], references: [id])
+  children Account[]  @relation("AccountTree")
+  lines    JournalLine[]
+}
+
+model CostCenter {
+  id       String   @id @default(cuid())
+  code     String?
+  name     String
+  branchId String?
+  active   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  branch Branch? @relation(fields: [branchId], references: [id])
+}
+
+model JournalEntry {
+  id          String    @id @default(cuid())
+  entryNo     String?
+  date        DateTime  @default(now())
+  branchId    String?
+  description String?
+  reference   String?
+  sourceType  String?
+  sourceId    String?
+  status      String   @default("draft")
+  totalDebit  Float    @default(0)
+  totalCredit Float    @default(0)
+  userId      String?
+  userName    String?
+  createdAt   DateTime @default(now())
+  postedAt    DateTime?
+  branch Branch?       @relation(fields: [branchId], references: [id])
+  lines  JournalLine[]
+}
+
+model JournalLine {
+  id          String  @id @default(cuid())
+  entryId     String
+  accountId   String
+  debit       Float   @default(0)
+  credit      Float   @default(0)
+  description String?
+  partyId     String?
+  shipmentId  String?
+  costCenterId String?
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account Account      @relation(fields: [accountId], references: [id])
+  party   Party?       @relation(fields: [partyId], references: [id])
+  shipment Shipment?   @relation(fields: [shipmentId], references: [id])
+}
+
+model Voucher {
+  id            String   @id @default(cuid())
+  voucherNo     String?
+  type          String
+  date          DateTime @default(now())
+  partyId       String
+  amount        Float
+  accountId     String?
+  accountName   String?
+  description   String?
+  reference     String?
+  branchId      String?
+  journalEntryId String?
+  userId        String?
+  userName      String?
+  createdAt     DateTime @default(now())
+  party Party @relation(fields: [partyId], references: [id])
+}
+
 model User {
   id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
+  username  String   @unique
+  password  String?
+  name      String
+  email     String?
+  phone     String?
+  branchId  String?
+  active    Boolean  @default(true)
   createdAt DateTime @default(now())
+  branch Branch? @relation(fields: [branchId], references: [id])
+  roles  UserRole[]
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  label       String
+  permissions String?
+  createdAt   DateTime @default(now())
+  users UserRole[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  @@id([userId, roleId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  date       DateTime @default(now())
+  userId     String?
+  userName   String?
+  action     String
+  entity     String
+  entityId   String?
+  beforeData String?
+  afterData  String?
+  notes      String?
+}
+
+model ImportLog {
+  id           String   @id @default(cuid())
+  date         DateTime @default(now())
+  fileName     String
+  sheetName    String?
+  totalRows    Int      @default(0)
+  importedRows Int      @default(0)
+  skippedRows  Int      @default(0)
+  errorRows    Int      @default(0)
+  errors       String?
+  userId       String?
+  userName     String?
+  status       String   @default("completed")
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String?
+  label     String?
+  category  String?
   updatedAt DateTime @updatedAt
 }
 
-model Post {
+model LookupItem {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  category  String
+  key       String
+  label     String
+  labelEn   String?
+  tone      String?
+  icon      String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  isSystem  Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@unique([category, key])
+  @@index([category])
 }
