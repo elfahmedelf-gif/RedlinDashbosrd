@@ -1,83 +1,22 @@
-▲ Next.js 16.4.2 (Turbopack)
+▲ Next.js 16.1.3 (Turbopack)
 - Local:         http://localhost:3000
 - Network:       http://21.0.21.226:3000
 - Environments: .env
-✓ Ready in 308ms
-✓ Running next.config.ts took 36ms
 
+✓ Starting...
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+✓ Ready in 926ms
 ○ Compiling / ...
- GET / 200 in 565ms (next.js: 194ms, application-code: 371ms)
- GET / 200 in 57ms (next.js: 1.3ms, application-code: 56ms)
- GET / 200 in 53ms (next.js: 1.6ms, application-code: 52ms)
- GET / 200 in 171ms (next.js: 1.9ms, application-code: 169ms)
- GET / 200 in 52ms (next.js: 1.5ms, application-code: 51ms)
- GET / 200 in 56ms (next.js: 1.3ms, application-code: 55ms)
- GET / 200 in 79ms (next.js: 1.9ms, application-code: 77ms)
-[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
- GET / 200 in 54ms (next.js: 1.1ms, application-code: 52ms)
-  Turbopack has seen frequent file updates and is waiting for the filesystem to settle (0.5s elapsed so far; last modified: "/home/z/my-project/node_modules/es-iterator-helpers").
-
------
-[1m[31mFATAL[39m[0m: An unexpected Turbopack error occurred. A panic log has been written to /tmp/next-panic-e1e86be0973b2741e919cf07dbe9b50f.log.
-
-To help make Turbopack better, report this error by clicking here: https://bugs.nextjs.org/search?category=turbopack-error-report&title=Turbopack%20Error%3A%20Invariant%3A%20Expected%20to%20replace%20all%20template%20variables%2C%20found%20VAR_MODULE_GLOBAL_ERROR&body=Turbopack%20version%3A%20%602864b177%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0AInvariant%3A%20Expected%20to%20replace%20all%20template%20variables%2C%20found%20VAR_MODULE_GLOBAL_ERROR%0A%0ADebug%20info%3A%0A-%20Execution%20of%20subscribe_issues_and_diags_operation%20failed%0A-%20Execution%20of%20%3CAppEndpoint%20as%20Endpoint%3E%3A%3Aserver_changed%20failed%0A-%20Execution%20of%20%2AProject%3A%3Aserver_changed%20failed%0A-%20Execution%20of%20%2AAppEndpointOutput%3A%3Aserver_assets%20failed%0A-%20Execution%20of%20AppEndpoint%3A%3Aoutput%20failed%0A-%20Execution%20of%20get_app_page_entry%20failed%0A-%20Invariant%3A%20Expected%20to%20replace%20all%20template%20variables%2C%20found%20VAR_MODULE_GLOBAL_ERROR%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace
------
-
-✓ Compiled in 4s
-
------
-[1m[31mFATAL[39m[0m: An unexpected Turbopack error occurred. A panic log has been written to /tmp/next-panic-e1e86be0973b2741e919cf07dbe9b50f.log.
-
-To help make Turbopack better, report this error by clicking here: https://bugs.nextjs.org/search?category=turbopack-error-report&title=Turbopack%20Error%3A%20Failed%20to%20write%20app%20endpoint%20%2Fpage&body=Turbopack%20version%3A%20%602864b177%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0AFailed%20to%20write%20app%20endpoint%20%2Fpage%0A%0ACaused%20by%3A%0A-%20Invariant%3A%20Expected%20to%20replace%20all%20template%20variables%2C%20found%20VAR_MODULE_GLOBAL_ERROR%0A%0ADebug%20info%3A%0A-%20Execution%20of%20get_written_endpoint_with_issues_operation%20failed%0A-%20Execution%20of%20endpoint_write_to_disk%20failed%0A-%20Execution%20of%20%3CAppEndpoint%20as%20Endpoint%3E%3A%3Aoutput%20failed%0A-%20Failed%20to%20write%20app%20endpoint%20%2Fpage%0A-%20Execution%20of%20%2Aall_asset_paths%20failed%0A-%20Execution%20of%20%2AAppEndpointOutput%3A%3Aoutput_assets%20failed%0A-%20Execution%20of%20AppEndpoint%3A%3Aoutput%20failed%0A-%20Execution%20of%20get_app_page_entry%20failed%0A-%20Invariant%3A%20Expected%20to%20replace%20all%20template%20variables%2C%20found%20VAR_MODULE_GLOBAL_ERROR%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace
------
-
-⨯ Error: Failed to load external module next/dist/compiled/next-server/pages-turbo.runtime.dev.js: Error: Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:
-  - react:      19.3.1
-  - react-dom:  19.2.3
-Learn more: https://react.dev/warnings/version-mismatch
-    at module evaluation (.next/dev/server/chunks/ssr/[externals]__1vp7etusa_gny._.js:10:33)
-    at Object.<anonymous> (.next/dev/server/pages/_document.js:4:3)
-⨯ Error: Failed to load external module next/dist/compiled/next-server/pages-turbo.runtime.dev.js: Error: Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:
-  - react:      19.3.1
-  - react-dom:  19.2.3
-Learn more: https://react.dev/warnings/version-mismatch
-    at module evaluation (.next/dev/server/chunks/ssr/[externals]__1vp7etusa_gny._.js:10:33)
-    at Object.<anonymous> (.next/dev/server/pages/_document.js:4:3)
-Error: Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:
-  - react:      19.3.1
-  - react-dom:  19.2.3
-Learn more: https://react.dev/warnings/version-mismatch
-    at ignore-listed frames
-Error: Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:
-  - react:      19.3.1
-  - react-dom:  19.2.3
-Learn more: https://react.dev/warnings/version-mismatch
-    at ignore-listed frames
-⨯ Error: Failed to load external module next/dist/compiled/next-server/pages-turbo.runtime.dev.js: Error: Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:
-  - react:      19.3.1
-  - react-dom:  19.2.3
-Learn more: https://react.dev/warnings/version-mismatch
-    at module evaluation (.next/dev/server/chunks/ssr/[externals]__1vp7etusa_gny._.js:10:33)
-    at Object.<anonymous> (.next/dev/server/pages/_document.js:4:3)
-⨯ Error: Failed to load external module next/dist/compiled/next-server/pages-turbo.runtime.dev.js: Error: Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:
-  - react:      19.3.1
-  - react-dom:  19.2.3
-Learn more: https://react.dev/warnings/version-mismatch
-    at module evaluation (.next/dev/server/chunks/ssr/[externals]__1vp7etusa_gny._.js:10:33)
-    at Object.<anonymous> (.next/dev/server/pages/_document.js:4:3)
-Error: Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:
-  - react:      19.3.1
-  - react-dom:  19.2.3
-Learn more: https://react.dev/warnings/version-mismatch
-    at ignore-listed frames
- GET / 500 in 3.1s
- GET / 500 in 3.1s
-Error: Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:
-  - react:      19.3.1
-  - react-dom:  19.2.3
-Learn more: https://react.dev/warnings/version-mismatch
-    at ignore-listed frames
- GET / 500 in 3.3s
- GET / 500 in 3.3s
+ GET / 200 in 8.5s (compile: 8.2s, render: 310ms)
+ GET / 200 in 52ms (compile: 4ms, render: 48ms)
+ GET / 200 in 43ms (compile: 2ms, render: 41ms)
+ GET / 200 in 35ms (compile: 2ms, render: 33ms)
+ GET / 200 in 259ms (compile: 2ms, render: 257ms)
+ GET / 200 in 60ms (compile: 4ms, render: 56ms)
+ GET / 200 in 54ms (compile: 3ms, render: 51ms)
+ GET / 200 in 53ms (compile: 3ms, render: 51ms)
+ GET / 200 in 52ms (compile: 3ms, render: 49ms)
