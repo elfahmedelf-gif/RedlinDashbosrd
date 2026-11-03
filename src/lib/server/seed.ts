@@ -165,7 +165,7 @@ async function runSeed(): Promise<void> {
         return role
       }
       await ensureRole('admin', 'مدير النظام', ['*'])
-      await ensureRole('finance_manager', 'مدير مالي', ['accounting.*', 'reports.*', 'shipments.read', 'parties.*', 'audit.view', 'dashboard.view', 'vouchers.view', 'vouchers.view.all', 'vouchers.create', 'vouchers.approve', 'vouchers.reject', 'vouchers.execute', 'vouchers.cancel', 'vouchers.print', 'vouchers.export'])
+      await ensureRole('finance_manager', 'مدير مالي', ['accounting.*', 'reports.*', 'shipments.read', 'parties.*', 'audit.view', 'dashboard.view', 'vouchers.view', 'vouchers.view.all', 'vouchers.create', 'vouchers.submit', 'vouchers.approve', 'vouchers.reject', 'vouchers.execute', 'vouchers.cancel', 'vouchers.print', 'vouchers.export'])
       await ensureRole('branch_manager', 'مدير فرع', ['shipments.*', 'parties.*', 'inventory.*', 'structure.view', 'dashboard.view', 'vouchers.view', 'vouchers.create', 'vouchers.edit', 'vouchers.submit', 'vouchers.approve', 'vouchers.execute', 'vouchers.cancel', 'vouchers.print', 'vouchers.export'])
       await ensureRole('operations', 'موظف عمليات', ['shipments.view', 'shipments.create', 'shipments.edit', 'shipments.status', 'shipments.assign', 'shipments.print', 'shipments.export', 'parties.view', 'inventory.view', 'dashboard.view', 'vouchers.view', 'vouchers.create', 'vouchers.edit', 'vouchers.submit', 'vouchers.print', 'vouchers.export'])
       await ensureRole('voucher_clerk', 'كاتب أذونات', ['dashboard.view', 'shipments.view', 'parties.view', 'structure.view', 'vouchers.view', 'vouchers.create', 'vouchers.edit', 'vouchers.submit', 'vouchers.print'])
