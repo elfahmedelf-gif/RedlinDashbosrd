@@ -8,6 +8,64 @@
 import mockJson from '../../mock-data.json'
 import type { SessionUser } from './permissions'
 
+// ============================================================================
+// كتالوج الأذونات التشغيلية (16 نوعًا) + دورة الحياة (7 حالات)
+// يجمع الأذونات التشغيلية والمالية والجرد والخاصة في نموذج موحد
+// ============================================================================
+export interface VoucherTypeDef {
+  code: string
+  label: string
+  labelEn: string
+  category: 'operational' | 'financial' | 'inventory' | 'special'
+  prefix: string
+  requiresCourier: boolean
+  requiresDestBranch: boolean
+  requiresParty: boolean
+  requiresEmployee: boolean
+  isFinancial: boolean
+  requiresShipments: boolean
+  preStatuses: string[] | null
+  postStatus: string | null
+  color: string
+  icon: string
+}
+
+export const VOUCHER_TYPES: VoucherTypeDef[] = [
+  { code: 'receiving', label: 'إذن استلام شحنات', labelEn: 'Receiving Voucher', category: 'operational', prefix: 'RCV', requiresCourier: false, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: true, preStatuses: ['new','preparing'], postStatus: 'received', color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300', icon: 'PackageCheck' },
+  { code: 'loading', label: 'إذن تحميل شحنات', labelEn: 'Loading Voucher', category: 'operational', prefix: 'LDG', requiresCourier: false, requiresDestBranch: true, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: true, preStatuses: ['received','preparing'], postStatus: 'loaded', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', icon: 'Truck' },
+  { code: 'unloading', label: 'إذن تفريغ شحنات', labelEn: 'Unloading Voucher', category: 'operational', prefix: 'UNL', requiresCourier: false, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: true, preStatuses: ['in_transit','loaded'], postStatus: 'arrived', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', icon: 'PackageMinus' },
+  { code: 'branch_transfer', label: 'إذن تحويل بين الفروع', labelEn: 'Branch Transfer', category: 'operational', prefix: 'TRN', requiresCourier: false, requiresDestBranch: true, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: true, preStatuses: ['received','loaded'], postStatus: 'in_transit', color: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300', icon: 'ArrowRightLeft' },
+  { code: 'courier_assignment', label: 'إذن تسليم لمندوب', labelEn: 'Courier Assignment', category: 'operational', prefix: 'CRA', requiresCourier: true, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: true, preStatuses: ['arrived','received','preparing'], postStatus: 'assigned_courier', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300', icon: 'UserCheck' },
+  { code: 'courier_receiving', label: 'إذن استلام من مندوب', labelEn: 'Courier Receiving', category: 'operational', prefix: 'CRV', requiresCourier: true, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: true, preStatuses: ['assigned_courier','out_for_delivery'], postStatus: 'received', color: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300', icon: 'Hand' },
+  { code: 'delivery', label: 'إذن تسليم شحنات', labelEn: 'Delivery Voucher', category: 'operational', prefix: 'DLV', requiresCourier: true, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: true, preStatuses: ['assigned_courier','out_for_delivery'], postStatus: 'delivered', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', icon: 'CheckCircle2' },
+  { code: 'return', label: 'إذن مرتجع شحنات', labelEn: 'Return Voucher', category: 'operational', prefix: 'RET', requiresCourier: true, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: true, preStatuses: ['delivered','out_for_delivery','failed','postponed','assigned_courier'], postStatus: 'returned', color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300', icon: 'Undo2' },
+  { code: 'returned_receiving', label: 'إذن استلام مرتجعات', labelEn: 'Returned Receiving', category: 'operational', prefix: 'RTR', requiresCourier: false, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: true, preStatuses: ['returned'], postStatus: 'received_returned', color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', icon: 'Undo2' },
+  { code: 'collection', label: 'إذن تحصيل نقدية', labelEn: 'Collection Voucher', category: 'financial', prefix: 'COL', requiresCourier: false, requiresDestBranch: false, requiresParty: true, requiresEmployee: true, isFinancial: true, requiresShipments: false, preStatuses: null, postStatus: null, color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', icon: 'Banknote' },
+  { code: 'cash_deposit', label: 'إذن توريد خزينة', labelEn: 'Cash Deposit', category: 'financial', prefix: 'DEP', requiresCourier: false, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: true, requiresShipments: false, preStatuses: null, postStatus: null, color: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300', icon: 'Landmark' },
+  { code: 'cash_disbursement', label: 'إذن صرف نقدية', labelEn: 'Cash Disbursement', category: 'financial', prefix: 'CSH', requiresCourier: false, requiresDestBranch: false, requiresParty: true, requiresEmployee: true, isFinancial: true, requiresShipments: false, preStatuses: null, postStatus: null, color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300', icon: 'BanknoteArrowDown' },
+  { code: 'courier_settlement', label: 'إذن تسوية عهدة مندوب', labelEn: 'Courier Settlement', category: 'financial', prefix: 'STL', requiresCourier: true, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: true, requiresShipments: false, preStatuses: null, postStatus: null, color: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300', icon: 'Scale' },
+  { code: 'inventory_count', label: 'إذن جرد مخزون', labelEn: 'Inventory Count', category: 'inventory', prefix: 'INV', requiresCourier: false, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: false, preStatuses: null, postStatus: null, color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300', icon: 'ClipboardCheck' },
+  { code: 'waybill_amendment', label: 'إذن تعديل بوليصة', labelEn: 'Waybill Amendment', category: 'special', prefix: 'AMD', requiresCourier: false, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: true, preStatuses: null, postStatus: null, color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300', icon: 'FileEdit' },
+  { code: 'write_off', label: 'إذن شطب/إتلاف شحنة', labelEn: 'Write-off Voucher', category: 'special', prefix: 'WOF', requiresCourier: false, requiresDestBranch: false, requiresParty: false, requiresEmployee: true, isFinancial: false, requiresShipments: true, preStatuses: null, postStatus: 'written_off', color: 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300', icon: 'Trash2' },
+]
+
+export const VOUCHER_STATES = [
+  { key: 'draft', label: 'مسودة', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' },
+  { key: 'pending', label: 'بانتظار الاعتماد', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  { key: 'approved', label: 'معتمد', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+  { key: 'in_progress', label: 'قيد التنفيذ', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' },
+  { key: 'completed', label: 'مكتمل', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+  { key: 'rejected', label: 'مرفوض', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300' },
+  { key: 'cancelled', label: 'ملغي', color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
+] as const
+
+export const VOUCHER_CATEGORIES = [
+  { key: 'operational', label: 'أذونات تشغيلية', color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300' },
+  { key: 'financial', label: 'أذونات مالية', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+  { key: 'inventory', label: 'أذونات جرد', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' },
+  { key: 'special', label: 'أذونات خاصة', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+] as const
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -198,32 +256,66 @@ function buildDB() {
     }
   })
 
-  // ---- Seed: vouchers (each conceptually linked to a journal entry) ----
-  const V = (n: number) => `V-${String(n).padStart(4, '0')}`
-  const voucherDefs: any[] = [
-    { type: 'receipt', partyName: 'ADEL HASSAN', amount: 5000, day: 8, desc: 'تحصيل دفعة نولون' },
-    { type: 'payment', contractor: 'السيد ربيع', amount: 120000, day: 15, desc: 'دفعة مستحقات نقل' },
-    { type: 'receipt', partyName: 'Abd al hakeim', amount: 3500, day: 17, desc: 'تحصيل جزئي' },
-    { type: 'payment', contractor: 'المنسي', amount: 80000, day: 19, desc: 'دفعة مستحقات نقل' },
-    { type: 'receipt', partyName: 'Abdelaziz', amount: 2500, day: 24, desc: 'تحصيل نولون شحنات' },
-    { type: 'payment', contractor: 'جعلص', amount: 50000, day: 26, desc: 'دفعة على الحساب' },
+  // ---- Seed: vouchers (unified operational + financial model) ----
+  // (1) حالات شحن جديدة تخدم دورة الأذونات التشغيلية
+  const opStatusDefs: any[] = [
+    { key: 'received', label: 'مستلمة بالفرع', tone: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300', sortOrder: 12 },
+    { key: 'loaded', label: 'محمّلة على المركبة', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', sortOrder: 13 },
+    { key: 'in_transit', label: 'في الطريق بين الفروع', tone: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300', sortOrder: 14 },
+    { key: 'arrived', label: 'وصلت فرع الوجهة', tone: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', sortOrder: 15 },
+    { key: 'assigned_courier', label: 'مُسلّمة لمندوب التوصيل', tone: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300', sortOrder: 16 },
+    { key: 'received_returned', label: 'مرتجعة مستلمة بالفرع', tone: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', sortOrder: 17 },
+    { key: 'written_off', label: 'شطبت من المخزون', tone: 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300', sortOrder: 18 },
   ]
-  db.vouchers = voucherDefs.map((v, i) => {
-    const party = v.type === 'receipt' ? customer(v.partyName) : contractor(v.contractor)
-    return {
-      id: `seed-vc-${i + 1}`,
-      voucherNo: V(i + 1),
-      type: v.type,
-      date: d(v.day),
-      partyId: party?.id ?? null,
-      party: party ? { id: party.id, name: party.name } : null,
-      amount: v.amount,
-      description: v.desc,
-      accountName: 'الصندوق',
-      journalEntryNo: J(v.type === 'receipt' ? 2 : 3),
-      userName: 'admin',
-      createdAt: d(v.day),
+  const opCreatedAt = d(1)
+  for (const os of opStatusDefs) {
+    if (!db.lookups.find((l: any) => l.category === 'shipment_status' && l.key === os.key)) {
+      db.lookups.push({ id: uid('lk'), category: 'shipment_status', key: os.key, label: os.label, labelEn: null, tone: os.tone, icon: null, active: 1, sortOrder: os.sortOrder, isSystem: 1, createdAt: opCreatedAt, updatedAt: opCreatedAt })
     }
+  }
+  // (2) بناء الأذونات الموحدة
+  const adminId = 'seed-user-admin'
+  const mkApproval = (action: string, at: string, notes?: string): any => ({ action, userId: adminId, userName: 'admin', at, notes: notes ?? null })
+  const branchId = mainBranch?.id ?? null
+  const contractorId = db.parties.find((p: any) => p.isContractor)?.id ?? null
+  const byStatus = (st: string, n: number, offset = 0) => db.shipments.slice(offset, offset + n).map((s: any) => s.id)
+  const mkItems = (ids: string[], at: string) => ids.map((sid) => ({ id: uid('it'), shipmentId: sid, notes: null, addedAt: at, addedBy: 'admin' }))
+  const sumFreight = (ids: string[]) => ids.reduce((acc, sid) => acc + (Number(db.shipments.find((s: any) => s.id === sid)?.freightTotal ?? 0)), 0)
+  const newShip = byStatus('new', 3, 0), prepShip = byStatus('preparing', 3, 10), ofdShip = byStatus('out_for_delivery', 3, 20), delShip = byStatus('delivered', 4, 30), retShip = byStatus('returned', 2, 40)
+  const mkV = (o: any) => ({
+    id: o.id, voucherNo: o.voucherNo, type: o.type, status: o.status,
+    sourceBranchId: branchId, destBranchId: o.dest ?? branchId,
+    employeeId: adminId, courierId: o.courier ?? null, partyId: o.party ?? null,
+    party: o.party ? { id: o.party, name: db.parties.find((p: any) => p.id === o.party)?.name ?? null } : null,
+    items: o.items ?? [], totalValue: o.total ?? 0, amount: o.amount ?? null, notes: o.notes ?? null, attachments: [],
+    accountName: o.account ?? null, journalEntryNo: o.je ?? null,
+    createdBy: adminId, createdByName: 'admin', createdAt: o.date, updatedBy: null, updatedAt: o.date,
+    approvalLog: o.log ?? [mkApproval('create', o.date)],
+  })
+  db.vouchers = []
+  // أذونات تشغيلية مكتملة بأطوار مختلفة
+  if (newShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-1', voucherNo: 'RCV-0001', type: 'receiving', status: 'completed', date: d(2), items: mkItems(newShip.slice(0, 3), d(2)), total: sumFreight(newShip.slice(0, 3)), log: [mkApproval('create', d(2)), mkApproval('submit', d(2)), mkApproval('approve', d(2)), mkApproval('execute', d(2)), mkApproval('complete', d(2))] }))
+  if (prepShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-2', voucherNo: 'LDG-0001', type: 'loading', status: 'completed', dest: branchId, date: d(4), items: mkItems(prepShip.slice(0, 3), d(4)), total: sumFreight(prepShip.slice(0, 3)), log: [mkApproval('create', d(4)), mkApproval('submit', d(4)), mkApproval('approve', d(4)), mkApproval('execute', d(4)), mkApproval('complete', d(4))] }))
+  if (ofdShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-3', voucherNo: 'CRA-0001', type: 'courier_assignment', status: 'completed', courier: contractorId, date: d(6), items: mkItems(ofdShip.slice(0, 3), d(6)), total: sumFreight(ofdShip.slice(0, 3)), log: [mkApproval('create', d(6)), mkApproval('submit', d(6)), mkApproval('approve', d(6)), mkApproval('execute', d(6)), mkApproval('complete', d(6))] }))
+  if (delShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-4', voucherNo: 'DLV-0001', type: 'delivery', status: 'completed', courier: contractorId, date: d(8), items: mkItems(delShip.slice(0, 4), d(8)), total: sumFreight(delShip.slice(0, 4)), log: [mkApproval('create', d(8)), mkApproval('submit', d(8)), mkApproval('approve', d(8)), mkApproval('execute', d(8)), mkApproval('complete', d(8))] }))
+  // إذن قيد الاعتماد
+  if (prepShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-5', voucherNo: 'LDG-0002', type: 'loading', status: 'pending', dest: branchId, date: d(20), items: mkItems(prepShip.slice(0, 2), d(20)), total: sumFreight(prepShip.slice(0, 2)), notes: 'دفعة تحميل مسائية', log: [mkApproval('create', d(20)), mkApproval('submit', d(20))] }))
+  // إذن مسودة
+  if (retShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-6', voucherNo: 'RTR-0001', type: 'returned_receiving', status: 'draft', date: d(22), items: mkItems(retShip.slice(0, 2), d(22)), total: sumFreight(retShip.slice(0, 2)), notes: 'استلام مرتجعات من المندوب' }))
+  // إذن معتمد بانتظار التنفيذ
+  if (ofdShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-7', voucherNo: 'RET-0001', type: 'return', status: 'approved', courier: contractorId, date: d(24), items: mkItems(ofdShip.slice(0, 2), d(24)), total: sumFreight(ofdShip.slice(0, 2)), notes: 'مرتجع فشل التسليم', log: [mkApproval('create', d(24)), mkApproval('submit', d(24)), mkApproval('approve', d(24))] }))
+  // 6 سندات مالية (مهاجرة من النموذج القديم)
+  const finDefs: any[] = [
+    { type: 'collection', party: customer('ADEL HASSAN')?.id ?? null, amount: 5000, day: 8, notes: 'تحصيل دفعة نولون', je: 'JE-0002' },
+    { type: 'cash_disbursement', party: contractor('السيد ربيع')?.id ?? null, amount: 120000, day: 15, notes: 'دفعة مستحقات نقل', je: 'JE-0003' },
+    { type: 'collection', party: customer('Abd al hakeim')?.id ?? null, amount: 3500, day: 17, notes: 'تحصيل جزئي', je: 'JE-0002' },
+    { type: 'cash_disbursement', party: contractor('المنسي')?.id ?? null, amount: 80000, day: 19, notes: 'دفعة مستحقات نقل', je: 'JE-0003' },
+    { type: 'collection', party: customer('Abdelaziz')?.id ?? null, amount: 2500, day: 24, notes: 'تحصيل نولون شحنات', je: 'JE-0002' },
+    { type: 'cash_disbursement', party: contractor('جعلص')?.id ?? null, amount: 50000, day: 26, notes: 'دفعة على الحساب', je: 'JE-0003' },
+  ]
+  finDefs.forEach((f, i) => {
+    const tdef = VOUCHER_TYPES.find((t) => t.code === f.type)!
+    db.vouchers.push(mkV({ id: `seed-ovc-fin-${i + 1}`, voucherNo: `${tdef.prefix}-${String(i + 1).padStart(4, '0')}`, type: f.type, status: 'completed', party: f.party, amount: f.amount, total: f.amount, account: 'الصندوق', je: f.je, date: d(f.day), notes: f.notes, log: [mkApproval('create', d(f.day)), mkApproval('submit', d(f.day)), mkApproval('approve', d(f.day)), mkApproval('execute', d(f.day)), mkApproval('complete', d(f.day))] }))
   })
 
   // ---- Seed: roles normalization + defaults ----
@@ -239,14 +331,17 @@ function buildDB() {
       db.roles.push(role)
     } else {
       role.label = role.label || label
+      // إجبار تحديث صلاحيات الأدوار النظامية المعرفة هنا (تتجاوز بذور mock-data القديمة)
+      role.permissions = JSON.stringify(permissions)
     }
     return role
   }
   ensureRole('admin', 'مدير النظام', ['*'])
-  ensureRole('finance_manager', 'مدير مالي', ['accounting.*', 'reports.*', 'shipments.read', 'parties.*', 'audit.view', 'dashboard.view'])
-  ensureRole('branch_manager', 'مدير فرع', ['shipments.*', 'parties.*', 'inventory.*', 'branch.read', 'dashboard.view'])
-  ensureRole('operations', 'موظف عمليات', ['shipments.view', 'shipments.create', 'shipments.edit', 'shipments.status', 'shipments.assign', 'shipments.print', 'shipments.export', 'parties.view', 'inventory.view', 'accounting.vouchers', 'accounting.vouchers.create', 'dashboard.view'])
-  ensureRole('viewer', 'عارض (مشاهدة فقط)', ['dashboard.view', 'shipments.view', 'parties.view', 'inventory.view', 'accounting.view', 'reports.view'])
+  ensureRole('finance_manager', 'مدير مالي', ['accounting.*', 'reports.*', 'shipments.read', 'parties.*', 'audit.view', 'dashboard.view', 'vouchers.view', 'vouchers.view.all', 'vouchers.create', 'vouchers.approve', 'vouchers.reject', 'vouchers.execute', 'vouchers.cancel', 'vouchers.print', 'vouchers.export'])
+  ensureRole('branch_manager', 'مدير فرع', ['shipments.*', 'parties.*', 'inventory.*', 'structure.view', 'dashboard.view', 'vouchers.view', 'vouchers.create', 'vouchers.edit', 'vouchers.submit', 'vouchers.approve', 'vouchers.execute', 'vouchers.cancel', 'vouchers.print', 'vouchers.export'])
+  ensureRole('operations', 'موظف عمليات', ['shipments.view', 'shipments.create', 'shipments.edit', 'shipments.status', 'shipments.assign', 'shipments.print', 'shipments.export', 'parties.view', 'inventory.view', 'dashboard.view', 'vouchers.view', 'vouchers.create', 'vouchers.edit', 'vouchers.submit', 'vouchers.print', 'vouchers.export'])
+  ensureRole('voucher_clerk', 'كاتب أذونات', ['dashboard.view', 'shipments.view', 'parties.view', 'structure.view', 'vouchers.view', 'vouchers.create', 'vouchers.edit', 'vouchers.submit', 'vouchers.print'])
+  ensureRole('viewer', 'عارض (مشاهدة فقط)', ['dashboard.view', 'shipments.view', 'parties.view', 'inventory.view', 'accounting.view', 'reports.view', 'vouchers.view'])
   // توحيد الصلاحيات كمصفوفات
   db.roles.forEach((r: any) => { r.permissions = parsePerms(r) })
 
@@ -272,7 +367,7 @@ function buildDB() {
   // ---- Seed: extra audit entries (in addition to the import record) ----
   const extraAudit: any[] = [
     { action: 'create', entity: 'journal_entry', entityId: db.journal[0]?.id, notes: 'قيد افتتاحي رأس المال', day: 1, userName: 'admin' },
-    { action: 'create', entity: 'voucher', entityId: db.vouchers[0]?.id, notes: 'سند قبض V-0001', day: 8, userName: 'admin' },
+    { action: 'create', entity: 'voucher', entityId: db.vouchers[0]?.id, notes: 'إذن استلام شحنات RCV-0001', day: 8, userName: 'admin' },
     { action: 'create', entity: 'inventory_movement', entityId: db.movements[0]?.id, notes: 'توريد افتتاحي للمخزن', day: 1, userName: 'admin' },
     { action: 'post', entity: 'journal_entry', entityId: db.journal[1]?.id, notes: 'ترحيل قيد تحصيل النولون', day: 9, userName: 'admin' },
     { action: 'update', entity: 'freight_price', entityId: db.freight[0]?.id, notes: 'تحديث أسعار خط القاهرة 1', day: 12, userName: 'admin' },
@@ -292,11 +387,15 @@ function buildDB() {
 
 const db = buildDB() as any
 
-// تسلسل أرقام الأذونات (يمنع تكرار الأرقام بعد الحذف)
+// تسلسل أرقام الأذونات (لكل نوع بادئة خاصة) — يمنع تكرار الأرقام بعد الحذف
 db.seq = { voucher: db.vouchers.length }
-function nextVoucherNo(): string {
-  db.seq.voucher += 1
-  return `V-${String(db.seq.voucher).padStart(4, '0')}`
+const __vcCounters: Record<string, number> = {}
+function nextVoucherNo(type: string): string {
+  const tdef = VOUCHER_TYPES.find((t) => t.code === type)
+  const prefix = tdef?.prefix ?? 'VCH'
+  const existing = db.vouchers.filter((v: any) => v.type === type).length
+  __vcCounters[prefix] = Math.max(__vcCounters[prefix] ?? 0, existing) + 1
+  return `${prefix}-${String(__vcCounters[prefix]).padStart(4, '0')}`
 }
 
 // ---------------------------------------------------------------------------
@@ -331,11 +430,109 @@ function enrichShipment(s: any) {
   const sell = Number(st.freightTotal ?? 0)
   const cost = Number(st.totalSuppliers ?? 0)
   st.margin = Math.round((sell - cost) * 100) / 100
-  // Linked vouchers (with shipmentId === s.id)
-  st.vouchers = db.vouchers.filter((v: any) => v.shipmentId === s.id).map((v: any) => ({
-    id: v.id, voucherNo: v.voucherNo, type: v.type, amount: v.amount, date: v.date, description: v.description ?? null,
-  }))
+  // Linked vouchers (operational model: items-based linkage)
+  st.vouchers = db.vouchers
+    .filter((v: any) => Array.isArray(v.items) && v.items.some((it: any) => it.shipmentId === s.id))
+    .map((v: any) => ({ id: v.id, voucherNo: v.voucherNo, type: v.type, status: v.status, date: v.createdAt, amount: v.amount, notes: v.notes ?? null }))
+    .sort((a: any, b: any) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
   return st
+}
+
+// ============================================================================
+// محرك الأذونات التشغيلية: الانتقالات، الإثراء، تأثيرات الشحنة، القيود
+// ============================================================================
+const TRANSITIONS: Record<string, { action: string; to: string; perm: string }[]> = {
+  draft: [
+    { action: 'submit', to: 'pending', perm: 'vouchers.submit' },
+    { action: 'cancel', to: 'cancelled', perm: 'vouchers.cancel' },
+  ],
+  pending: [
+    { action: 'approve', to: 'approved', perm: 'vouchers.approve' },
+    { action: 'reject', to: 'rejected', perm: 'vouchers.reject' },
+    { action: 'cancel', to: 'cancelled', perm: 'vouchers.cancel' },
+  ],
+  rejected: [
+    { action: 'resubmit', to: 'draft', perm: 'vouchers.edit' },
+  ],
+  approved: [
+    { action: 'execute', to: 'in_progress', perm: 'vouchers.execute' },
+    { action: 'cancel', to: 'cancelled', perm: 'vouchers.cancel' },
+  ],
+  in_progress: [
+    { action: 'complete', to: 'completed', perm: 'vouchers.execute' },
+    { action: 'cancel', to: 'cancelled', perm: 'vouchers.cancel' },
+  ],
+  completed: [],
+  cancelled: [],
+}
+
+function actionLabel(action: string): string {
+  const map: Record<string, string> = { submit: 'رفع', approve: 'اعتماد', reject: 'رفض', execute: 'تنفيذ', complete: 'إكمال', cancel: 'إلغاء', resubmit: 'إعادة', edit: 'تعديل', create: 'إنشاء' }
+  return map[action] ?? action
+}
+
+function enrichOpVoucher(v: any, full = false): any {
+  const tdef = VOUCHER_TYPES.find((t) => t.code === v.type)
+  const stateDef = VOUCHER_STATES.find((s) => s.key === v.status)
+  const srcBranch = v.sourceBranchId ? (branchById.get(v.sourceBranchId) ? { id: v.sourceBranchId, name: branchById.get(v.sourceBranchId).name } : null) : null
+  const dstBranch = v.destBranchId ? (branchById.get(v.destBranchId) ? { id: v.destBranchId, name: branchById.get(v.destBranchId).name } : null) : null
+  const emp = v.employeeId ? (db.users.find((u: any) => u.id === v.employeeId) ? { id: v.employeeId, name: db.users.find((u: any) => u.id === v.employeeId).name } : null) : null
+  const courier = v.courierId ? partyRef(v.courierId) : null
+  const party = v.partyId ? partyRef(v.partyId) : null
+  const items = (v.items ?? []).map((it: any) => {
+    const s = db.shipments.find((sh: any) => sh.id === it.shipmentId)
+    return { ...it, shipment: s ? { id: s.id, shipmentNo: s.shipmentNo, status: s.status, destination: s.destination, recipientName: s.recipientName, freightTotal: s.freightTotal, customer: partyRef(s.customerId) } : null }
+  })
+  const itemCount = items.length
+  const totalValue = tdef?.isFinancial ? (v.amount ?? 0) : (v.totalValue ?? items.reduce((acc: number, it: any) => acc + (Number(it.shipment?.freightTotal ?? 0)), 0))
+  return {
+    ...v,
+    typeLabel: tdef?.label ?? v.type,
+    typeLabelEn: tdef?.labelEn ?? v.type,
+    typeCategory: tdef?.category ?? 'operational',
+    typeColor: tdef?.color ?? '',
+    typeIcon: tdef?.icon ?? 'FileText',
+    typePrefix: tdef?.prefix ?? 'VCH',
+    isFinancial: tdef?.isFinancial ?? false,
+    requiresShipments: tdef?.requiresShipments ?? false,
+    statusLabel: stateDef?.label ?? v.status,
+    statusColor: stateDef?.color ?? '',
+    sourceBranch: srcBranch,
+    destBranch: dstBranch,
+    employee: emp,
+    courier,
+    party,
+    items: items.map((it: any) => ({ id: it.id, shipmentId: it.shipmentId, shipment: it.shipment, notes: it.notes, addedAt: it.addedAt, addedBy: it.addedBy })),
+    itemCount,
+    totalValue: Math.round(totalValue * 100) / 100,
+  }
+}
+
+function postVoucherJournal(v: any, kind: 'receipt' | 'payment'): void {
+  const cashAcc = db.accounts.find((a: any) => a.code === '1101')
+  const partyAcc = kind === 'receipt'
+    ? db.accounts.find((a: any) => a.code === '1103')
+    : db.accounts.find((a: any) => a.code === '2102')
+  if (!cashAcc || !partyAcc || !v.amount) return
+  const entryNo = `JE-${String(db.journal.length + 1).padStart(4, '0')}`
+  v.journalEntryNo = entryNo
+  const party = partyRef(v.partyId)
+  const linkedNos = (v.items ?? []).map((it: any) => db.shipments.find((s: any) => s.id === it.shipmentId)?.shipmentNo).filter(Boolean)
+  db.journal.unshift({
+    id: uid('je'), entryNo, date: v.createdAt,
+    description: `${kind === 'receipt' ? 'سند قبض' : 'سند صرف'} ${v.voucherNo} — ${party?.name ?? ''}${linkedNos.length ? ` (شحنات: ${linkedNos.join('، ')})` : ''}`,
+    reference: v.voucherNo, branchId: null, status: 'posted', totalDebit: v.amount, totalCredit: v.amount,
+    lines: kind === 'receipt'
+      ? [
+        { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: v.amount, credit: 0, description: 'نقدية مستلمة', partyId: v.partyId, party },
+        { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: 0, credit: v.amount, description: 'تحصيل', partyId: v.partyId, party },
+      ]
+      : [
+        { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: v.amount, credit: 0, description: 'مستحقات', partyId: v.partyId, party },
+        { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: 0, credit: v.amount, description: 'نقدية مدفوعة', partyId: v.partyId, party },
+      ],
+    createdAt: nowISO, updatedAt: nowISO,
+  })
 }
 
 function itemBalance(itemId: string): number {
@@ -450,6 +647,7 @@ function handleGet(url: string): any {
   const p = u.pathname.replace(/\/+$/, '')
   const q = u.searchParams
   const qs = (k: string) => q.get(k)?.trim() ?? ''
+  let m: RegExpMatchArray | null = null
 
   // ----- stats -----
   if (p === '/api/stats') {
@@ -589,18 +787,75 @@ function handleGet(url: string): any {
     return { items, total: items.length }
   }
 
-  // ----- vouchers -----
+  // ----- vouchers (unified operational + financial) -----
+  if (p === '/api/vouchers/stats') {
+    const all = db.vouchers
+    const byStatus: Record<string, number> = {}
+    const byType: Record<string, number> = {}
+    const byBranch: Record<string, number> = {}
+    const byEmployee: Record<string, number> = {}
+    for (const v of all) {
+      byStatus[v.status] = (byStatus[v.status] ?? 0) + 1
+      byType[v.type] = (byType[v.type] ?? 0) + 1
+      const br = v.sourceBranchId ?? '_none'
+      byBranch[br] = (byBranch[br] ?? 0) + 1
+      const em = v.employeeId ?? '_none'
+      byEmployee[em] = (byEmployee[em] ?? 0) + 1
+    }
+    return {
+      total: all.length,
+      byStatus, byType, byBranch, byEmployee,
+      draft: byStatus.draft ?? 0,
+      pendingApproval: byStatus.pending ?? 0,
+      approved: byStatus.approved ?? 0,
+      inProgress: byStatus.in_progress ?? 0,
+      completed: byStatus.completed ?? 0,
+      rejected: byStatus.rejected ?? 0,
+      cancelled: byStatus.cancelled ?? 0,
+      collectionTotal: all.filter((v: any) => v.status === 'completed' && v.type === 'collection').reduce((s: number, v: any) => s + (v.amount || 0), 0),
+      disbursementTotal: all.filter((v: any) => v.status === 'completed' && v.type === 'cash_disbursement').reduce((s: number, v: any) => s + (v.amount || 0), 0),
+      shipmentsLinked: new Set(all.flatMap((v: any) => (v.items ?? []).map((it: any) => it.shipmentId))).size,
+    }
+  }
+  if (p === '/api/vouchers/types') {
+    return { types: VOUCHER_TYPES, states: VOUCHER_STATES, categories: VOUCHER_CATEGORIES }
+  }
   if (p === '/api/vouchers') {
     const type = qs('type')
+    const status = qs('status')
+    const branchId = qs('branchId')
+    const employeeId = qs('employeeId')
+    const courierId = qs('courierId')
     const shipmentId = qs('shipmentId')
-    let items = db.vouchers.map((v: any) => ({
-      ...v,
-      party: partyRef(v.partyId),
-      shipment: v.shipmentId ? (db.shipments.find((s: any) => s.id === v.shipmentId) ? { id: v.shipmentId, shipmentNo: db.shipments.find((s: any) => s.id === v.shipmentId).shipmentNo } : null) : null,
-    }))
-      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    if (type) items = items.filter((v: any) => v.type === type)
-    if (shipmentId) items = items.filter((v: any) => v.shipmentId === shipmentId)
+    const from = q.get('from')
+    const to = q.get('to')
+    const search = qs('q').toLowerCase()
+    let items = db.vouchers.map((v: any) => enrichOpVoucher(v))
+    if (type && type !== 'all') items = items.filter((v: any) => v.type === type)
+    if (status && status !== 'all') items = items.filter((v: any) => v.status === status)
+    if (branchId && branchId !== 'all') items = items.filter((v: any) => v.sourceBranchId === branchId || v.destBranchId === branchId)
+    if (employeeId && employeeId !== 'all') items = items.filter((v: any) => v.employeeId === employeeId)
+    if (courierId && courierId !== 'all') items = items.filter((v: any) => v.courierId === courierId)
+    if (shipmentId) items = items.filter((v: any) => Array.isArray(v.items) && v.items.some((it: any) => it.shipmentId === shipmentId))
+    if (from) items = items.filter((v: any) => inRange(v.createdAt, from, null))
+    if (to) items = items.filter((v: any) => inRange(v.createdAt, null, to))
+    if (search) items = items.filter((v: any) => (v.voucherNo || '').toLowerCase().includes(search) || (v.party?.name || '').toLowerCase().includes(search) || (v.notes || '').toLowerCase().includes(search) || (v.typeLabel || '').toLowerCase().includes(search))
+    items.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    return { items, total: items.length }
+  }
+  m = p.match(/^\/api\/vouchers\/([^/]+)$/)
+  if (m && !['stats', 'types'].includes(m[1])) {
+    const v = db.vouchers.find((x: any) => x.id === m[1])
+    if (!v) throw new Error('الإذن غير موجود')
+    return enrichOpVoucher(v, true)
+  }
+  m = p.match(/^\/api\/shipments\/([^/]+)\/vouchers$/)
+  if (m) {
+    const sid = m[1]
+    const items = db.vouchers
+      .filter((v: any) => Array.isArray(v.items) && v.items.some((it: any) => it.shipmentId === sid))
+      .map((v: any) => enrichOpVoucher(v))
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     return { items, total: items.length }
   }
 
@@ -662,7 +917,7 @@ function handleGet(url: string): any {
         map.set(s.contractorId, cur)
       }
       const items = [...map.values()].map((c: any) => {
-        const paid = db.vouchers.filter((v: any) => v.type === 'payment' && v.partyId === c.id).reduce((s: number, v: any) => s + (v.amount || 0), 0)
+        const paid = db.vouchers.filter((v: any) => v.type === 'cash_disbursement' && v.status === 'completed' && v.partyId === c.id).reduce((s: number, v: any) => s + (v.amount || 0), 0)
         return { ...c, paid, due: c.totalSuppliers - paid }
       }).sort((a: any, b: any) => b.due - a.due)
       return { items }
@@ -797,74 +1052,64 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
     return { ok: true }
   }
 
-  // ---- settle COD (cash on delivery): pay the contractor and receive from customer ----
+  // ---- settle COD (cash on delivery): create collection + cash_disbursement vouchers ----
   let mSettle = p.match(/^\/api\/shipments\/([^/]+)\/settle-cod$/)
   if (mSettle && method === 'POST') {
     const s = findIn(db.shipments, mSettle[1])
     if (!s) throw new Error('الشحنة غير موجودة')
     if (!s.customerId && !s.contractorId) throw new Error('الشحنة لا تحتوي على عميل أو مقاول')
     const created: any = {}
-    const cashAcc = db.accounts.find((a: any) => a.code === '1101')
-    const custAcc = db.accounts.find((a: any) => a.code === '1103')
-    const contrAcc = db.accounts.find((a: any) => a.code === '2102')
-    // 1) receipt voucher from customer (COD amount)
+    const uname = b.userName ?? 'admin'
+    // 1) collection voucher (from customer)
     const customerAmount = Number(b.customerAmount ?? s.freightTotal ?? 0)
     if (s.customerId && customerAmount > 0) {
       const v1: any = {
-        id: uid('vc'),
-        voucherNo: nextVoucherNo(),
-        type: 'receipt', date: nowISO, partyId: s.customerId, party: partyRef(s.customerId),
-        amount: customerAmount, description: `تسوية COD — تحصيل من العميل ضد الشحنة ${s.shipmentNo}`,
-        accountName: 'الصندوق', journalEntryNo: `JE-${String(db.journal.length + 1).padStart(4, '0')}`,
-        shipmentId: s.id, userName: b.userName ?? 'admin', createdAt: nowISO,
+        id: uid('vc'), voucherNo: nextVoucherNo('collection'), type: 'collection', status: 'completed',
+        sourceBranchId: s.branchId ?? null, destBranchId: null, employeeId: null, courierId: null, partyId: s.customerId,
+        items: [{ id: uid('it'), shipmentId: s.id, notes: 'تسوية COD', addedAt: nowISO, addedBy: uname }],
+        totalValue: customerAmount, amount: customerAmount, notes: `تسوية COD — تحصيل من العميل ضد الشحنة ${s.shipmentNo}`,
+        attachments: [], accountName: 'الصندوق', journalEntryNo: null,
+        createdBy: null, createdByName: uname, createdAt: nowISO, updatedBy: null, updatedAt: nowISO,
+        approvalLog: [
+          { action: 'create', userId: null, userName: uname, at: nowISO, notes: 'إنشاء' },
+          { action: 'submit', userId: null, userName: uname, at: nowISO, notes: null },
+          { action: 'approve', userId: null, userName: uname, at: nowISO, notes: 'اعتماد تلقائي للتسوية' },
+          { action: 'execute', userId: null, userName: uname, at: nowISO, notes: null },
+          { action: 'complete', userId: null, userName: uname, at: nowISO, notes: 'إكمال تلقائي للتسوية' },
+        ],
       }
       db.vouchers.unshift(v1)
-      if (cashAcc && custAcc) {
-        db.journal.unshift({
-          id: uid('je'), entryNo: v1.journalEntryNo, date: nowISO,
-          description: `سند قبض تسوية ${v1.voucherNo} — ${v1.party?.name ?? ''} (شحنة ${s.shipmentNo})`,
-          reference: v1.voucherNo, branchId: null, status: 'posted', totalDebit: customerAmount, totalCredit: customerAmount,
-          lines: [
-            { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: customerAmount, credit: 0, description: 'نقدية مستلمة من COD', partyId: v1.partyId, party: v1.party },
-            { id: uid('jl'), accountId: custAcc.id, account: { id: custAcc.id, code: custAcc.code, name: custAcc.name }, debit: 0, credit: customerAmount, description: `تحصيل COD لشحنة ${s.shipmentNo}`, partyId: v1.partyId, party: v1.party },
-          ],
-          createdAt: nowISO, updatedAt: nowISO,
-        })
-      }
+      postVoucherJournal(v1, 'receipt')
       created.receiptVoucherNo = v1.voucherNo
     }
-    // 2) payment voucher to contractor (cost)
+    // 2) cash_disbursement voucher (to contractor)
     const contractorAmount = Number(b.contractorAmount ?? s.totalSuppliers ?? s.freightCost ?? 0)
     if (s.contractorId && contractorAmount > 0) {
       const v2: any = {
-        id: uid('vc'),
-        voucherNo: nextVoucherNo(),
-        type: 'payment', date: nowISO, partyId: s.contractorId, party: partyRef(s.contractorId),
-        amount: contractorAmount, description: `تسوية COD — صرف للمقاول مقابل نقل الشحنة ${s.shipmentNo}`,
-        accountName: 'الصندوق', journalEntryNo: `JE-${String(db.journal.length + 1).padStart(4, '0')}`,
-        shipmentId: s.id, userName: b.userName ?? 'admin', createdAt: nowISO,
+        id: uid('vc'), voucherNo: nextVoucherNo('cash_disbursement'), type: 'cash_disbursement', status: 'completed',
+        sourceBranchId: s.branchId ?? null, destBranchId: null, employeeId: null, courierId: null, partyId: s.contractorId,
+        items: [{ id: uid('it'), shipmentId: s.id, notes: 'تسوية COD', addedAt: nowISO, addedBy: uname }],
+        totalValue: contractorAmount, amount: contractorAmount, notes: `تسوية COD — صرف للمقاول مقابل نقل الشحنة ${s.shipmentNo}`,
+        attachments: [], accountName: 'الصندوق', journalEntryNo: null,
+        createdBy: null, createdByName: uname, createdAt: nowISO, updatedBy: null, updatedAt: nowISO,
+        approvalLog: [
+          { action: 'create', userId: null, userName: uname, at: nowISO, notes: 'إنشاء' },
+          { action: 'submit', userId: null, userName: uname, at: nowISO, notes: null },
+          { action: 'approve', userId: null, userName: uname, at: nowISO, notes: 'اعتماد تلقائي للتسوية' },
+          { action: 'execute', userId: null, userName: uname, at: nowISO, notes: null },
+          { action: 'complete', userId: null, userName: uname, at: nowISO, notes: 'إكمال تلقائي للتسوية' },
+        ],
       }
       db.vouchers.unshift(v2)
-      if (cashAcc && contrAcc) {
-        db.journal.unshift({
-          id: uid('je'), entryNo: v2.journalEntryNo, date: nowISO,
-          description: `سند صرف تسوية ${v2.voucherNo} — ${v2.party?.name ?? ''} (شحنة ${s.shipmentNo})`,
-          reference: v2.voucherNo, branchId: null, status: 'posted', totalDebit: contractorAmount, totalCredit: contractorAmount,
-          lines: [
-            { id: uid('jl'), accountId: contrAcc.id, account: { id: contrAcc.id, code: contrAcc.code, name: contrAcc.name }, debit: contractorAmount, credit: 0, description: `صرف نقل لشحنة ${s.shipmentNo}`, partyId: v2.partyId, party: v2.party },
-            { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: 0, credit: contractorAmount, description: 'نقدية مدفوعة COD', partyId: v2.partyId, party: v2.party },
-          ],
-          createdAt: nowISO, updatedAt: nowISO,
-        })
-      }
+      postVoucherJournal(v2, 'payment')
       created.paymentVoucherNo = v2.voucherNo
     }
     // 3) mark collection status as settled
     s.collectionStatus = 'collected'
     s.statusHistory = s.statusHistory ?? []
-    s.statusHistory.push({ status: s.status, notes: `تسوية COD — قبض ${created.receiptVoucherNo ?? '—'} / صرف ${created.paymentVoucherNo ?? '—'}`, date: nowISO, userName: b.userName ?? 'admin' })
+    s.statusHistory.push({ status: s.status, notes: `تسوية COD — قبض ${created.receiptVoucherNo ?? '—'} / صرف ${created.paymentVoucherNo ?? '—'}`, date: nowISO, userName: uname })
     s.updatedAt = nowISO
-    addAudit('settle', 'shipment', s.id, `تسوية COD للشحنة ${s.shipmentNo}`, b.userName)
+    addAudit('settle', 'shipment', s.id, `تسوية COD للشحنة ${s.shipmentNo}`, uname)
     return { ok: true, ...created }
   }
 
@@ -1038,55 +1283,132 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
     return null
   }
 
-  // ---- vouchers ----
+  // ---- vouchers (unified operational + financial) ----
   if (p === '/api/vouchers' && method === 'POST') {
-    const shipmentId = b.shipmentId || null
-    const linkedShipment = shipmentId ? db.shipments.find((s: any) => s.id === shipmentId) : null
-    const v = {
-      id: uid('vc'), voucherNo: nextVoucherNo(),
-      type: b.type ?? 'receipt', date: b.date ? new Date(b.date).toISOString() : nowISO,
-      partyId: b.partyId || null, party: partyRef(b.partyId || null),
-      amount: Number(b.amount) || 0, description: b.description ?? null,
-      accountName: b.accountName ?? 'الصندوق',
-      journalEntryNo: `JE-${String(db.journal.length + 1).padStart(4, '0')}`,
-      shipmentId: linkedShipment ? shipmentId : null,
-      userName: b.userName ?? 'admin', createdAt: nowISO,
+    const type = b.type ?? 'receiving'
+    const tdef = VOUCHER_TYPES.find((t) => t.code === type)
+    if (!tdef) throw new Error('نوع الإذن غير معروف')
+    const branchId = b.sourceBranchId || null
+    const shipmentIds: string[] = Array.isArray(b.shipmentIds) ? b.shipmentIds : (b.shipmentId ? [b.shipmentId] : [])
+    if (tdef.requiresShipments && shipmentIds.length === 0) throw new Error('هذا الإذن يتطلب شحنة واحدة على الأقل')
+    if (tdef.requiresParty && !b.partyId) throw new Error('هذا الإذن يتطلب تحديد الطرف (العميل/المورد)')
+    if (tdef.requiresCourier && !b.courierId) throw new Error('هذا الإذن يتطلب تحديد المندوب')
+    if (tdef.requiresEmployee && !b.employeeId) throw new Error('هذا الإذن يتطلب تحديد الموظف المسؤول')
+    if (tdef.isFinancial && (!b.amount || Number(b.amount) <= 0)) throw new Error('المبلغ مطلوب للأذونات المالية')
+    const items: any[] = []
+    for (const sid of shipmentIds) {
+      const s = db.shipments.find((sh: any) => sh.id === sid)
+      if (!s) throw new Error(`الشحنة ${sid} غير موجودة`)
+      if (tdef.preStatuses && !tdef.preStatuses.includes(s.status)) throw new Error(`الشحنة ${s.shipmentNo} حالتها "${s.status}" لا تصلح لهذا الإذن — المطلوب: ${tdef.preStatuses.join(' أو ')}`)
+      if (items.some((it) => it.shipmentId === sid)) throw new Error(`الشحنة ${s.shipmentNo} مضافة مرتين`)
+      items.push({ id: uid('it'), shipmentId: sid, notes: null, addedAt: nowISO, addedBy: b.userName ?? 'admin' })
     }
-    if (!v.partyId) throw new Error('اختر الطرف')
+    const amount = tdef.isFinancial ? (Number(b.amount) || 0) : null
+    const totalValue = tdef.isFinancial ? (amount ?? 0) : items.reduce((acc, it) => {
+      const s = db.shipments.find((sh: any) => sh.id === it.shipmentId)
+      return acc + (Number(s?.freightTotal ?? 0))
+    }, 0)
+    const v: any = {
+      id: uid('vc'), voucherNo: nextVoucherNo(type), type, status: 'draft',
+      sourceBranchId: branchId, destBranchId: tdef.requiresDestBranch ? (b.destBranchId || branchId) : null,
+      employeeId: b.employeeId ?? null, courierId: b.courierId ?? null, partyId: b.partyId ?? null,
+      items, totalValue: Math.round(totalValue * 100) / 100, amount, notes: b.notes ?? null, attachments: [],
+      accountName: tdef.isFinancial ? (b.accountName ?? 'الصندوق') : null, journalEntryNo: null,
+      createdBy: null, createdByName: b.userName ?? 'admin', createdAt: nowISO, updatedBy: null, updatedAt: nowISO,
+      approvalLog: [{ action: 'create', userId: null, userName: b.userName ?? 'admin', at: nowISO, notes: 'إنشاء الإذن' }],
+    }
     db.vouchers.unshift(v)
-    // auto journal entry (receipt: cash D / customer C — payment: contractor D / cash C)
-    const cashAcc = db.accounts.find((a: any) => a.code === '1101')
-    const partyAcc = v.type === 'receipt'
-      ? db.accounts.find((a: any) => a.code === '1103')
-      : db.accounts.find((a: any) => a.code === '2102')
-    if (cashAcc && partyAcc) {
-      db.journal.unshift({
-        id: uid('je'), entryNo: v.journalEntryNo, date: v.date,
-        description: `${v.type === 'receipt' ? 'سند قبض' : 'سند صرف'} ${v.voucherNo} — ${v.party?.name ?? ''}${linkedShipment ? ` (شحنة ${linkedShipment.shipmentNo})` : ''}`,
-        reference: v.voucherNo, branchId: null, status: 'posted',
-        totalDebit: v.amount, totalCredit: v.amount,
-        lines: v.type === 'receipt'
-          ? [
-              { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: v.amount, credit: 0, description: 'نقدية مستلمة', partyId: v.partyId, party: v.party },
-              { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: 0, credit: v.amount, description: linkedShipment ? `تحصيل لشحنة ${linkedShipment.shipmentNo}` : 'تحصيل من العميل', partyId: v.partyId, party: v.party },
-            ]
-          : [
-              { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: v.amount, credit: 0, description: linkedShipment ? `مستحقات نقل لشحنة ${linkedShipment.shipmentNo}` : 'مستحقات مقاول', partyId: v.partyId, party: v.party },
-              { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: 0, credit: v.amount, description: 'نقدية مدفوعة', partyId: v.partyId, party: v.party },
-            ],
-        createdAt: nowISO, updatedAt: nowISO,
-      })
-    }
-    addAudit('create', 'voucher', v.id, `${v.type === 'receipt' ? 'سند قبض' : 'سند صرف'} ${v.voucherNo} بمبلغ ${v.amount}${linkedShipment ? ` (شحنة ${linkedShipment.shipmentNo})` : ''}`, b.userName)
+    addAudit('create', 'voucher', v.id, `إنشاء ${tdef.label} ${v.voucherNo}${items.length ? ` (${items.length} شحنة)` : ''}${amount ? ` بمبلغ ${amount}` : ''}`, b.userName)
     return { id: v.id, voucherNo: v.voucherNo }
   }
-  m = p.match(/^\/api\/vouchers\/([^/]+)$/)
+  m = p.match(/^\/api\/vouchers\/([^/]+)\/items$/)
+  if (m && method === 'POST') {
+    const v = findIn(db.vouchers, m[1])
+    if (!v) throw new Error('الإذن غير موجود')
+    if (v.status !== 'draft') throw new Error('لا يمكن إضافة شحنات إلا في إذن مسودة')
+    const tdef = VOUCHER_TYPES.find((t: any) => t.code === v.type)
+    const sid = b.shipmentId
+    const s = db.shipments.find((sh: any) => sh.id === sid)
+    if (!s) throw new Error('الشحنة غير موجودة')
+    if (v.items.some((it: any) => it.shipmentId === sid)) throw new Error('الشحنة مضافة لهذا الإذن بالفعل')
+    if (tdef?.preStatuses && !tdef.preStatuses.includes(s.status)) throw new Error(`حالة الشحنة ${s.shipmentNo} (${s.status}) لا تصلح — المطلوب: ${tdef.preStatuses.join(' أو ')}`)
+    v.items.push({ id: uid('it'), shipmentId: sid, notes: b.notes ?? null, addedAt: nowISO, addedBy: b.userName ?? 'admin' })
+    v.totalValue = Math.round((v.items.reduce((acc: number, it: any) => { const sh = db.shipments.find((x: any) => x.id === it.shipmentId); return acc + Number(sh?.freightTotal ?? 0) }, 0)) * 100) / 100
+    v.updatedAt = nowISO
+    addAudit('update', 'voucher', v.id, `إضافة شحنة ${s.shipmentNo} للإذن ${v.voucherNo}`, b.userName)
+    return { ok: true, itemCount: v.items.length }
+  }
+  m = p.match(/^\/api\/vouchers\/([^/]+)\/items\/([^/]+)$/)
   if (m && method === 'DELETE') {
     const v = findIn(db.vouchers, m[1])
-    if (v) {
-      db.vouchers = db.vouchers.filter((x: any) => x.id !== m[1])
-      addAudit('delete', 'voucher', m[1], `حذف سند ${v.voucherNo}`, b?.userName)
+    if (!v) throw new Error('الإذن غير موجود')
+    if (v.status !== 'draft') throw new Error('لا يمكن حذف شحنات إلا من إذن مسودة')
+    v.items = v.items.filter((it: any) => it.id !== m[2])
+    v.totalValue = Math.round((v.items.reduce((acc: number, it: any) => { const sh = db.shipments.find((x: any) => x.id === it.shipmentId); return acc + Number(sh?.freightTotal ?? 0) }, 0)) * 100) / 100
+    v.updatedAt = nowISO
+    return { ok: true, itemCount: v.items.length }
+  }
+  m = p.match(/^\/api\/vouchers\/([^/]+)\/transition$/)
+  if (m && method === 'POST') {
+    const v = findIn(db.vouchers, m[1])
+    if (!v) throw new Error('الإذن غير موجود')
+    const action = b.action
+    const allowed = TRANSITIONS[v.status] ?? []
+    const tr = allowed.find((t: any) => t.action === action)
+    if (!tr) throw new Error(`الإجراء "${action}" غير مسموح للحالة "${v.status}"`)
+    if (action === 'approve' && v.createdByName === (b.userName ?? 'admin')) throw new Error('لا يمكن اعتماد إذن أنشأته بنفسك (فصل المهام)')
+    const tdef = VOUCHER_TYPES.find((t: any) => t.code === v.type)
+    v.status = tr.to
+    v.updatedAt = nowISO
+    v.approvalLog = v.approvalLog ?? []
+    v.approvalLog.push({ action, userId: null, userName: b.userName ?? 'admin', at: nowISO, notes: b.notes ?? null })
+    addAudit(action, 'voucher', v.id, `${actionLabel(action)} ${v.voucherNo} → ${tr.to}`, b.userName)
+    if (action === 'complete') {
+      if (tdef?.postStatus && v.items?.length) {
+        for (const it of v.items) {
+          const s = db.shipments.find((sh: any) => sh.id === it.shipmentId)
+          if (s) {
+            s.status = tdef.postStatus
+            s.statusHistory = s.statusHistory ?? []
+            s.statusHistory.push({ status: tdef.postStatus, notes: `${tdef.label} ${v.voucherNo} — اكتمل`, date: nowISO, userName: b.userName ?? 'admin' })
+            if (v.type === 'delivery') s.collectionStatus = 'collected'
+            s.updatedAt = nowISO
+          }
+        }
+      }
+      if (tdef?.isFinancial && v.type === 'collection' && v.amount) postVoucherJournal(v, 'receipt')
+      else if (tdef?.isFinancial && v.type === 'cash_disbursement' && v.amount) postVoucherJournal(v, 'payment')
     }
+    return { ok: true, status: v.status }
+  }
+  m = p.match(/^\/api\/vouchers\/([^/]+)$/)
+  if (m && method === 'PATCH') {
+    const v = findIn(db.vouchers, m[1])
+    if (!v) throw new Error('الإذن غير موجود')
+    if (v.status !== 'draft' && v.status !== 'rejected') throw new Error('لا يمكن تعديل إذن بهذه الحالة')
+    if (b.type && b.type !== v.type) throw new Error('لا يمكن تغيير نوع الإذن بعد الإنشاء')
+    const tdef = VOUCHER_TYPES.find((t: any) => t.code === v.type)
+    if (tdef?.isFinancial && b.amount != null) v.amount = Number(b.amount)
+    if (b.notes != null) v.notes = b.notes
+    if (b.partyId != null) v.partyId = b.partyId || null
+    if (b.courierId != null) v.courierId = b.courierId || null
+    if (b.employeeId != null) v.employeeId = b.employeeId || null
+    if (b.sourceBranchId != null) v.sourceBranchId = b.sourceBranchId || null
+    if (b.destBranchId != null) v.destBranchId = b.destBranchId || null
+    if (b.accountName != null) v.accountName = b.accountName
+    if (tdef && !tdef.isFinancial) v.totalValue = Math.round((v.items.reduce((acc: number, it: any) => { const sh = db.shipments.find((x: any) => x.id === it.shipmentId); return acc + Number(sh?.freightTotal ?? 0) }, 0)) * 100) / 100
+    else if (tdef?.isFinancial && v.amount != null) v.totalValue = v.amount
+    v.updatedAt = nowISO
+    v.approvalLog.push({ action: 'edit', userId: null, userName: b.userName ?? 'admin', at: nowISO, notes: 'تعديل بيانات الإذن' })
+    addAudit('update', 'voucher', v.id, `تعديل الإذن ${v.voucherNo}`, b.userName)
+    return { ok: true }
+  }
+  if (m && method === 'DELETE') {
+    const v = findIn(db.vouchers, m[1])
+    if (!v) return null
+    if (v.status !== 'draft' && v.status !== 'cancelled') throw new Error('لا يمكن حذف إذن إلا في حالة المسودة أو الملغي')
+    db.vouchers = db.vouchers.filter((x: any) => x.id !== m[1])
+    addAudit('delete', 'voucher', m[1], `حذف الإذن ${v.voucherNo}`, b?.userName)
     return null
   }
 

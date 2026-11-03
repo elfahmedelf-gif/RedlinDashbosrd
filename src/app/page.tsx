@@ -13,7 +13,8 @@ import { ShipmentsModule } from '@/components/dashboard/modules/shipments'
 import { PartiesModule } from '@/components/dashboard/modules/parties'
 import { BranchesModule, WarehousesModule } from '@/components/dashboard/modules/structure'
 import { InventoryModule, MovementsModule, FreightModule } from '@/components/dashboard/modules/inventory'
-import { AccountsModule, JournalModule, VouchersModule } from '@/components/dashboard/modules/accounting'
+import { AccountsModule, JournalModule } from '@/components/dashboard/modules/accounting'
+import { VouchersModule } from '@/components/dashboard/modules/vouchers-ops'
 import { ReportsModule } from '@/components/dashboard/modules/reports'
 import { ImportModule } from '@/components/dashboard/modules/import-wizard'
 import { UsersModule, RolesModule, SettingsModule, AuditModule } from '@/components/dashboard/modules/system'
@@ -35,7 +36,7 @@ const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
   freight: { title: 'أسعار النولون', subtitle: 'جدول أسعار المناطق' },
   accounts: { title: 'شجرة الحسابات', subtitle: 'دليل الحسابات والأرصدة' },
   journal: { title: 'القيود اليومية', subtitle: 'القيد المزدوج والترحيل' },
-  vouchers: { title: 'الأذونات (قبض/صرف)', subtitle: 'تسجيل الأذونات وطباعتها وعدّاداتها' },
+  vouchers: { title: 'الأذونات التشغيلية', subtitle: 'إدارة أذونات الشحن والمالية بدورة حياة كاملة' },
   reports: { title: 'التقارير', subtitle: 'تقارير شاملة قابلة للتصدير' },
   import: { title: 'استيراد البيانات', subtitle: 'معالج استيراد Excel' },
   users: { title: 'المستخدمون', subtitle: 'حسابات المستخدمين وكلمات المرور' },
