@@ -1,0 +1,977 @@
+     1→// ============================================================================
+     2→// Client-side in-memory API — ZERO network requests.
+     3→// All data is bundled statically from mock-data.json and served synchronously
+     4→// from memory. Mutations (create/update/delete) operate on the in-memory DB so
+     5→// the whole UI stays fully interactive without any server round-trip.
+     6→// ============================================================================
+     7→
+     8→import mockJson from '../../mock-data.json'
+     9→
+    10→// ---------------------------------------------------------------------------
+    11→// Helpers
+    12→// ---------------------------------------------------------------------------
+    13→const raw = mockJson as any
+    14→
+    15→function deepClone<T>(v: T): T {
+    16→  return JSON.parse(JSON.stringify(v))
+    17→}
+    18→
+    19→let idSeq = 0
+    20→function uid(prefix = 'mock'): string {
+    21→  idSeq += 1
+    22→  return `${prefix}-${Date.now().toString(36)}-${idSeq.toString(36)}`
+    23→}
+    24→
+    25→/** Convert epoch-millis numbers to ISO strings so date formatters work. */
+    26→function isoDates<T extends Record<string, any>>(obj: T, keys: string[]): T {
+    27→  for (const k of keys) {
+    28→    const v = (obj as any)[k]
+    29→    if (typeof v === 'number' && v > 1e11) (obj as any)[k] = new Date(v).toISOString()
+    30→  }
+    31→  return obj
+    32→}
+    33→
+    34→const DATE_KEYS = ['date', 'date2', 'shippingDate', 'expectedDeliveryDate', 'actualDeliveryDate', 'createdAt', 'updatedAt']
+    35→
+    36→// ---------------------------------------------------------------------------
+    37→// In-memory database (built once at module load)
+    38→// ---------------------------------------------------------------------------
+    39→function buildDB() {
+    40→  const db: any = {
+    41→    shipments: raw.shipments.map((s: any) => isoDates({ ...s }, DATE_KEYS)),
+    42→    parties: raw.parties.map((p: any) => isoDates({ ...p }, ['createdAt'])),
+    43→    accounts: raw.accounts.map((a: any) => isoDates({ ...a }, ['createdAt'])),
+    44→    lookups: raw.lookups.map((l: any) => isoDates({ ...l }, ['createdAt', 'updatedAt'])),
+    45→    freight: raw.freight.map((f: any) => isoDates({ ...f }, ['createdAt', 'updatedAt', 'validFrom', 'validTo'])),
+    46→    branches: raw.branches.map((b: any) => isoDates({ ...b }, ['createdAt'])),
+    47→    warehouses: raw.warehouses.map((w: any) => isoDates({ ...w }, ['createdAt'])),
+    48→    users: raw.users.map((u: any) => ({ ...isoDates({ ...u }, ['createdAt']), password: undefined })),
+    49→    roles: deepClone(raw.roles),
+    50→    settings: deepClone(raw.settings),
+    51→    audit: raw.audit.map((a: any) => isoDates({ ...a }, ['date'])),
+    52→    // seeded below
+    53→    items: [],
+    54→    movements: [],
+    55→    journal: [],
+    56→    vouchers: [],
+    57→  }
+    58→
+    59→  const mainBranch = db.branches[0] ?? null
+    60→  const mainWh = db.warehouses[0] ?? null
+    61→  const acc = (code: string) => db.accounts.find((a: any) => a.code === code)
+    62→  const contractor = (name: string) => db.parties.find((p: any) => p.isContractor && p.name === name)
+    63→  const customer = (name: string) => db.parties.find((p: any) => p.isCustomer && String(p.name).includes(name))
+    64→
+    65→  // ---- Seed: inventory items ----
+    66→  const itemDefs: any[] = [
+    67→    { code: 'IT-001', name: 'كرتون تغليف مقاس كبير', nameEn: 'Large Carton Box', unit: 'قطعة', reorderLevel: 200, cost: 18, price: 25, balance: 1450 },
+    68→    { code: 'IT-002', name: 'لفائف سترتش', nameEn: 'Stretch Roll', unit: 'لفة', reorderLevel: 100, cost: 55, price: 70, balance: 320 },
+    69→    { code: 'IT-003', name: 'شريط لاصق شفاف', nameEn: 'Transparent Tape', unit: 'قطعة', reorderLevel: 150, cost: 8, price: 12, balance: 85 },
+    70→    { code: 'IT-004', name: 'أسطوانة فريون', nameEn: 'Freon Gas Cylinder', unit: 'أسطوانة', reorderLevel: 20, cost: 350, price: 420, balance: 46 },
+    71→    { code: 'IT-005', name: 'زيت محركات 20W-50', nameEn: 'Engine Oil 20W-50', unit: 'جالون', reorderLevel: 30, cost: 260, price: 310, balance: 72 },
+    72→    { code: 'IT-006', name: 'باليت خشبي', nameEn: 'Wooden Pallet', unit: 'قطعة', reorderLevel: 50, cost: 95, price: 130, balance: 180 },
+    73→    { code: 'IT-007', name: 'حزام تثبيت (شد)', nameEn: 'Lashing Belt', unit: 'قطعة', reorderLevel: 40, cost: 180, price: 240, balance: 22 },
+    74→    { code: 'IT-008', name: 'غطاء بلاستيك للشحن', nameEn: 'Plastic Shipping Cover', unit: 'قطعة', reorderLevel: 300, cost: 6, price: 10, balance: 640 },
+    75→  ]
+    76→  db.items = itemDefs.map((it, i) => ({
+    77→    id: `seed-item-${i + 1}`,
+    78→    ...it,
+    79→    name: it.name,
+    80→    warehouseId: mainWh?.id ?? null,
+    81→    notes: null,
+    82→    active: 1,
+    83→    createdAt: '2026-09-01T09:00:00.000Z',
+    84→    updatedAt: '2026-09-01T09:00:00.000Z',
+    85→  }))
+    86→
+    87→  // ---- Seed: stock movements ----
+    88→  const d = (day: number) => `2026-09-${String(day).padStart(2, '0')}T10:00:00.000Z`
+    89→  const mvDefs: any[] = [
+    90→    { type: 'receipt', itemId: 1, qty: 1500, unitCost: 18, day: 1, notes: 'توريد افتتاحي من مورد التغليف' },
+    91→    { type: 'receipt', itemId: 2, qty: 400, unitCost: 55, day: 1, notes: 'توريد لفائف سترتش' },
+    92→    { type: 'issue', itemId: 1, qty: -50, unitCost: 18, day: 4, notes: 'صرف لتجهيز شحنات القاهرة' },
+    93→    { type: 'issue', itemId: 2, qty: -80, unitCost: 55, day: 6, notes: 'صرف لمخزن العاشر' },
+    94→    { type: 'receipt', itemId: 3, qty: 200, unitCost: 8, day: 7, notes: 'توريد شريط لاصق' },
+    95→    { type: 'issue', itemId: 3, qty: -115, unitCost: 8, day: 12, notes: 'صرف يومي للتغليف' },
+    96→    { type: 'transfer', itemId: 6, qty: 60, unitCost: 95, day: 14, notes: 'تحويل باليتات لفرع الجيزة' },
+    97→    { type: 'receipt', itemId: 4, qty: 50, unitCost: 350, day: 16, notes: 'توريد فريون لصيانة الشاحنات' },
+    98→    { type: 'issue', itemId: 4, qty: -4, unitCost: 350, day: 20, notes: 'صرف لصيانة تكييف الثلاجات' },
+    99→    { type: 'receipt', itemId: 5, qty: 90, unitCost: 260, day: 18, notes: 'توريد زيت محركات لأسطول الشاحنات' },
+   100→    { type: 'issue', itemId: 5, qty: -18, unitCost: 260, day: 25, notes: 'صرف زيت لتغيير دوري' },
+   101→    { type: 'receipt', itemId: 6, qty: 180, unitCost: 95, day: 2, notes: 'توريد باليتات خشبية' },
+   102→    { type: 'receipt', itemId: 7, qty: 40, unitCost: 180, day: 5, notes: 'توريد أحزمة تثبيت' },
+   103→    { type: 'adjustment', itemId: 7, qty: -18, unitCost: 180, day: 22, notes: 'تسوية جرد — تالف' },
+   104→    { type: 'receipt', itemId: 8, qty: 700, unitCost: 6, day: 24, notes: 'توريد أغطية بلاستيك' },
+   105→    { type: 'issue', itemId: 8, qty: -60, unitCost: 6, day: 28, notes: 'صرف أغطية لشحنات الإسكندرية' },
+   106→  ]
+   107→  db.movements = mvDefs.map((m, i) => ({
+   108→    id: `seed-mv-${i + 1}`,
+   109→    type: m.type,
+   110→    date: d(m.day),
+   111→    itemId: db.items[m.itemId - 1].id,
+   112→    warehouseId: mainWh?.id ?? null,
+   113→    toWarehouseId: m.type === 'transfer' ? (mainWh?.id ?? null) : null,
+   114→    quantity: m.qty,
+   115→    unitCost: m.unitCost,
+   116→    totalCost: Math.abs(m.qty) * m.unitCost,
+   117→    notes: m.notes,
+   118→    userName: 'admin',
+   119→    createdAt: d(m.day),
+   120→  }))
+   121→
+   122→  // ---- Seed: journal entries (double-entry, balanced) ----
+   123→  const J = (n: number) => `JE-${String(n).padStart(4, '0')}`
+   124→  const mkLines = (ls: any[]) =>
+   125→    ls.map((l, i) => {
+   126→      const a = acc(l.code)
+   127→      return {
+   128→        id: `seed-jl-${l.code}-${i}`,
+   129→        accountId: a?.id ?? null,
+   130→        account: a ? { id: a.id, code: a.code, name: a.name } : null,
+   131→        debit: l.debit ?? 0,
+   132→        credit: l.credit ?? 0,
+   133→        description: l.description ?? '',
+   134→        partyId: l.partyId ?? null,
+   135→        party: l.partyId ? { id: l.partyId, name: db.parties.find((p: any) => p.id === l.partyId)?.name ?? null } : null,
+   136→      }
+   137→    })
+   138→  const entryDefs: any[] = [
+   139→    {
+   140→      entryNo: J(1), date: d(1), description: 'قيد افتتاحي — رأس المال النقدي', reference: 'OPEN-001', status: 'posted',
+   141→      lines: [
+   142→        { code: '1101', debit: 500000, credit: 0, description: 'نقدية بالصندوق' },
+   143→        { code: '3101', debit: 0, credit: 500000, description: 'رأس المال المدفوع' },
+   144→      ],
+   145→    },
+   146→    {
+   147→      entryNo: J(2), date: d(9), description: 'تحصيل نولون عملاء — دفعة أولى', reference: 'COLL-0909', status: 'posted',
+   148→      lines: [
+   149→        { code: '1101', debit: 14750, credit: 0, description: 'نقدية محصلة' },
+   150→        { code: '4102', debit: 0, credit: 14750, description: 'إيراد نولون محصل' },
+   151→      ],
+   152→    },
+   153→    {
+   154→      entryNo: J(3), date: d(15), description: 'صرف مستحقات مقاولي النقل', reference: 'PAY-CONTR', status: 'posted',
+   155→      lines: [
+   156→        { code: '5101', debit: 250000, credit: 0, description: 'تكلفة نقل مستحقة', partyId: contractor('السيد ربيع')?.id },
+   157→        { code: '2102', debit: 0, credit: 250000, description: 'مستحقات المقاولين', partyId: contractor('السيد ربيع')?.id },
+   158→      ],
+   159→    },
+   160→    {
+   161→      entryNo: J(4), date: d(22), description: 'مصروفات مبيت وتعتيم شحنات', reference: 'OPS-0922', status: 'draft',
+   162→      lines: [
+   163→        { code: '5104', debit: 27106, credit: 0, description: 'مبيت وتعتيم' },
+   164→        { code: '1101', debit: 0, credit: 27106, description: 'نقدية مصروفة' },
+   165→      ],
+   166→    },
+   167→  ]
+   168→  db.journal = entryDefs.map((e, i) => {
+   169→    const lines = mkLines(e.lines)
+   170→    return {
+   171→      id: `seed-je-${i + 1}`,
+   172→      entryNo: e.entryNo,
+   173→      date: e.date,
+   174→      description: e.description,
+   175→      reference: e.reference,
+   176→      branchId: mainBranch?.id ?? null,
+   177→      status: e.status,
+   178→      totalDebit: lines.reduce((s, l) => s + (l.debit || 0), 0),
+   179→      totalCredit: lines.reduce((s, l) => s + (l.credit || 0), 0),
+   180→      lines,
+   181→      createdAt: e.date,
+   182→      updatedAt: e.date,
+   183→    }
+   184→  })
+   185→
+   186→  // ---- Seed: vouchers (each conceptually linked to a journal entry) ----
+   187→  const V = (n: number) => `V-${String(n).padStart(4, '0')}`
+   188→  const voucherDefs: any[] = [
+   189→    { type: 'receipt', partyName: 'ADEL HASSAN', amount: 5000, day: 8, desc: 'تحصيل دفعة نولون' },
+   190→    { type: 'payment', contractor: 'السيد ربيع', amount: 120000, day: 15, desc: 'دفعة مستحقات نقل' },
+   191→    { type: 'receipt', partyName: 'Abd al hakeim', amount: 3500, day: 17, desc: 'تحصيل جزئي' },
+   192→    { type: 'payment', contractor: 'المنسي', amount: 80000, day: 19, desc: 'دفعة مستحقات نقل' },
+   193→    { type: 'receipt', partyName: 'Abdelaziz', amount: 2500, day: 24, desc: 'تحصيل نولون شحنات' },
+   194→    { type: 'payment', contractor: 'جعلص', amount: 50000, day: 26, desc: 'دفعة على الحساب' },
+   195→  ]
+   196→  db.vouchers = voucherDefs.map((v, i) => {
+   197→    const party = v.type === 'receipt' ? customer(v.partyName) : contractor(v.contractor)
+   198→    return {
+   199→      id: `seed-vc-${i + 1}`,
+   200→      voucherNo: V(i + 1),
+   201→      type: v.type,
+   202→      date: d(v.day),
+   203→      partyId: party?.id ?? null,
+   204→      party: party ? { id: party.id, name: party.name } : null,
+   205→      amount: v.amount,
+   206→      description: v.desc,
+   207→      accountName: 'الصندوق',
+   208→      journalEntryNo: J(v.type === 'receipt' ? 2 : 3),
+   209→      userName: 'admin',
+   210→      createdAt: d(v.day),
+   211→    }
+   212→  })
+   213→
+   214→  // ---- Seed: extra audit entries (in addition to the import record) ----
+   215→  const extraAudit: any[] = [
+   216→    { action: 'create', entity: 'journal_entry', entityId: db.journal[0]?.id, notes: 'قيد افتتاحي رأس المال', day: 1, userName: 'admin' },
+   217→    { action: 'create', entity: 'voucher', entityId: db.vouchers[0]?.id, notes: 'سند قبض V-0001', day: 8, userName: 'admin' },
+   218→    { action: 'create', entity: 'inventory_movement', entityId: db.movements[0]?.id, notes: 'توريد افتتاحي للمخزن', day: 1, userName: 'admin' },
+   219→    { action: 'post', entity: 'journal_entry', entityId: db.journal[1]?.id, notes: 'ترحيل قيد تحصيل النولون', day: 9, userName: 'admin' },
+   220→    { action: 'update', entity: 'freight_price', entityId: db.freight[0]?.id, notes: 'تحديث أسعار خط القاهرة 1', day: 12, userName: 'admin' },
+   221→    { action: 'create', entity: 'user', entityId: db.users[0]?.id, notes: 'إنشاء مستخدم مدير النظام', day: 1, userName: 'system' },
+   222→  ]
+   223→  for (const a of extraAudit) {
+   224→    db.audit.push({
+   225→      id: uid('audit'), date: a.day ? `2026-09-${String(a.day).padStart(2, '0')}T11:30:00.000Z` : new Date().toISOString(),
+   226→      userId: null, userName: a.userName, action: a.action, entity: a.entity, entityId: a.entityId,
+   227→      beforeData: null, afterData: null, notes: a.notes,
+   228→    })
+   229→  }
+   230→  db.audit.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+   231→
+   232→  return db
+   233→}
+   234→
+   235→const db = buildDB()
+   236→
+   237→// ---------------------------------------------------------------------------
+   238→// Lookup maps + enrichment
+   239→// ---------------------------------------------------------------------------
+   240→const partyById = new Map<string, any>(db.parties.map((p: any) => [p.id, p]))
+   241→const branchById = new Map<string, any>(db.branches.map((b: any) => [b.id, b]))
+   242→const whById = new Map<string, any>(db.warehouses.map((w: any) => [w.id, w]))
+   243→const itemById = new Map<string, any>(db.items.map((i: any) => [i.id, i]))
+   244→
+   245→function partyRef(id: string | null) {
+   246→  if (!id) return null
+   247→  const p = partyById.get(id)
+   248→  return p ? { id: p.id, name: p.name } : null
+   249→}
+   250→
+   251→function enrichShipment(s: any) {
+   252→  const st = { ...s }
+   253→  st.customer = partyRef(s.customerId)
+   254→  st.contractor = partyRef(s.contractorId)
+   255→  st.branch = s.branchId ? (branchById.get(s.branchId) ? { id: s.branchId, name: branchById.get(s.branchId).name } : null) : null
+   256→  st.warehouse = s.warehouseId ? (whById.get(s.warehouseId) ? { id: s.warehouseId, name: whById.get(s.warehouseId).name } : null) : null
+   257→  if (!Array.isArray(st.statusHistory)) {
+   258→    st.statusHistory = [{
+   259→      status: s.status,
+   260→      notes: 'استيراد أولي من ملف مبيعات العاشر 3',
+   261→      date: st.updatedAt ?? st.createdAt ?? null,
+   262→      userName: 'system',
+   263→    }]
+   264→  }
+   265→  return st
+   266→}
+   267→
+   268→function itemBalance(itemId: string): number {
+   269→  let bal = 0
+   270→  for (const m of db.movements) {
+   271→    if (m.itemId !== itemId) continue
+   272→    if (m.type === 'receipt') bal += m.quantity
+   273→    else if (m.type === 'issue') bal += m.quantity // stored negative
+   274→    else if (m.type === 'adjustment') bal += m.quantity // signed
+   275→    // transfer keeps total balance
+   276→  }
+   277→  return Math.round(bal * 100) / 100
+   278→}
+   279→
+   280→function enrichItem(it: any) {
+   281→  const balance = itemBalance(it.id)
+   282→  return {
+   283→    ...it,
+   284→    balance,
+   285→    isLowStock: balance <= (it.reorderLevel ?? 0),
+   286→    warehouse: it.warehouseId ? (whById.get(it.warehouseId) ? { id: it.warehouseId, name: whById.get(it.warehouseId).name } : null) : null,
+   287→    stockValue: Math.round(balance * (it.cost ?? 0) * 100) / 100,
+   288→  }
+   289→}
+   290→
+   291→function enrichMovement(m: any) {
+   292→  const it = itemById.get(m.itemId)
+   293→  return {
+   294→    ...m,
+   295→    item: it ? { id: it.id, name: it.name, code: it.code, unit: it.unit } : null,
+   296→    warehouse: m.warehouseId ? (whById.get(m.warehouseId) ? { id: m.warehouseId, name: whById.get(m.warehouseId).name } : null) : null,
+   297→    toWarehouse: m.toWarehouseId ? (whById.get(m.toWarehouseId) ? { id: m.toWarehouseId, name: whById.get(m.toWarehouseId).name } : null) : null,
+   298→  }
+   299→}
+   300→
+   301→/** Account balances derived from posted journal lines. */
+   302→function accountBalances(): Map<string, { debit: number; credit: number }> {
+   303→  const map = new Map<string, { debit: number; credit: number }>()
+   304→  for (const e of db.journal) {
+   305→    if (e.status !== 'posted') continue
+   306→    for (const l of e.lines) {
+   307→      if (!l.accountId) continue
+   308→      const cur = map.get(l.accountId) ?? { debit: 0, credit: 0 }
+   309→      cur.debit += l.debit || 0
+   310→      cur.credit += l.credit || 0
+   311→      map.set(l.accountId, cur)
+   312→    }
+   313→  }
+   314→  return map
+   315→}
+   316→
+   317→function enrichAccount(a: any, balances: Map<string, { debit: number; credit: number }>) {
+   318→  const b = balances.get(a.id) ?? { debit: 0, credit: 0 }
+   319→  const parent = a.parentId ? db.accounts.find((x: any) => x.id === a.parentId) : null
+   320→  return { ...a, parent: parent ? { id: parent.id, name: parent.name } : null, debit: b.debit, credit: b.credit, balance: b.debit - b.credit }
+   321→}
+   322→
+   323→/** Deterministic party aggregates from shipments + vouchers. */
+   324→function partyAggregates(): Map<string, { shipments: number; freightTotal: number; totalSuppliers: number; customerPay: number }> {
+   325→  const map = new Map<string, any>()
+   326→  const get = (id: string) => {
+   327→    if (!map.has(id)) map.set(id, { shipments: 0, freightTotal: 0, totalSuppliers: 0, customerPay: 0 })
+   328→    return map.get(id)
+   329→  }
+   330→  for (const s of db.shipments) {
+   331→    if (s.customerId) {
+   332→      const a = get(s.customerId)
+   333→      a.shipments += 1
+   334→      a.freightTotal += s.freightTotal ?? 0
+   335→      a.totalSuppliers += s.totalSuppliers ?? 0
+   336→      a.customerPay += s.customerPay ?? 0
+   337→    }
+   338→    if (s.contractorId && s.contractorId !== s.customerId) {
+   339→      const a = get(s.contractorId)
+   340→      a.shipments += 1
+   341→      a.freightTotal += s.freightTotal ?? 0
+   342→      a.totalSuppliers += s.totalSuppliers ?? 0
+   343→    }
+   344→  }
+   345→  return map
+   346→}
+   347→
+   348→function addAudit(action: string, entity: string, entityId: string | null, notes: string, userName = 'admin') {
+   349→  db.audit.unshift({
+   350→    id: uid('audit'), date: new Date().toISOString(), userId: null, userName,
+   351→    action, entity, entityId, beforeData: null, afterData: null, notes,
+   352→  })
+   353→}
+   354→
+   355→function paginate<T>(arr: T[], page: number, pageSize: number) {
+   356→  const total = arr.length
+   357→  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+   358→  const p = Math.min(Math.max(1, page), totalPages)
+   359→  const start = (p - 1) * pageSize
+   360→  return { items: arr.slice(start, start + pageSize), total, page: p, pageSize, totalPages }
+   361→}
+   362→
+   363→function inRange(dateISO: string | null | undefined, from: string | null, to: string | null): boolean {
+   364→  if (!from && !to) return true
+   365→  if (!dateISO) return false
+   366→  const t = new Date(dateISO).getTime()
+   367→  if (from && t < new Date(from + 'T00:00:00').getTime()) return false
+   368→  if (to && t > new Date(to + 'T23:59:59').getTime()) return false
+   369→  return true
+   370→}
+   371→
+   372→// ---------------------------------------------------------------------------
+   373→// GET router (mirrors every API route's response shape)
+   374→// ---------------------------------------------------------------------------
+   375→function handleGet(url: string): any {
+   376→  const u = new URL(url, 'http://local')
+   377→  const p = u.pathname.replace(/\/+$/, '')
+   378→  const q = u.searchParams
+   379→  const qs = (k: string) => q.get(k)?.trim() ?? ''
+   380→
+   381→  // ----- stats -----
+   382→  if (p === '/api/stats') {
+   383→    const stats = deepClone(raw.stats)
+   384→    // daily/dateRange dates are epoch-seconds strings → ISO
+   385→    stats.daily = (stats.daily ?? []).map((d: any) => ({ ...d, date: new Date(Number(d.date) * 1000).toISOString() }))
+   386→    if (stats.dateRange) {
+   387→      stats.dateRange = {
+   388→        from: stats.dateRange.from ? new Date(Number(stats.dateRange.from) * 1000).toISOString() : null,
+   389→        to: stats.dateRange.to ? new Date(Number(stats.dateRange.to) * 1000).toISOString() : null,
+   390→      }
+   391→    }
+   392→    // contractor ids → names
+   393→    stats.contractors = (stats.contractors ?? []).map((c: any) => ({ ...c, name: partyById.get(c.name)?.name ?? c.name }))
+   394→    return stats
+   395→  }
+   396→
+   397→  // ----- shipments list -----
+   398→  if (p === '/api/shipments') {
+   399→    let items = db.shipments.map(enrichShipment).sort((a: any, b: any) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
+   400→    const search = qs('q').toLowerCase()
+   401→    if (search) {
+   402→      items = items.filter((s: any) =>
+   403→        [s.shipmentNo, s.billNo, s.recipientName, s.destination, s.destinationEn, s.routeCode, s.deliveryPhones]
+   404→          .some((f: any) => String(f ?? '').toLowerCase().includes(search)))
+   405→    }
+   406→    const status = qs('status')
+   407→    if (status && status !== 'all') items = items.filter((s: any) => s.status === status)
+   408→    const dest = qs('destination')
+   409→    if (dest && dest !== 'all') items = items.filter((s: any) => s.destination === dest)
+   410→    const page = Math.max(1, parseInt(qs('page') || '1', 10))
+   411→    const pageSize = Math.min(200, Math.max(1, parseInt(qs('pageSize') || '20', 10)))
+   412→    return paginate(items, page, pageSize)
+   413→  }
+   414→
+   415→  // ----- shipment detail -----
+   416→  const mShip = p.match(/^\/api\/shipments\/([^/]+)$/)
+   417→  if (mShip) {
+   418→    const s = db.shipments.find((x: any) => x.id === mShip[1])
+   419→    if (!s) throw new Error('الشحنة غير موجودة')
+   420→    return enrichShipment(s)
+   421→  }
+   422→
+   423→  // ----- parties -----
+   424→  if (p === '/api/parties') {
+   425→    const agg = partyAggregates()
+   426→    let items = db.parties.map((party: any) => {
+   427→      const a = agg.get(party.id) ?? { shipments: 0, freightTotal: 0, totalSuppliers: 0, customerPay: 0 }
+   428→      return {
+   429→        ...party,
+   430→        branch: party.branchId && branchById.get(party.branchId) ? { id: party.branchId, name: branchById.get(party.branchId).name } : null,
+   431→        _count: { shipments: a.shipments },
+   432→        _sum: { freightTotal: Math.round(a.freightTotal), totalSuppliers: Math.round(a.totalSuppliers), customerPay: Math.round(a.customerPay) },
+   433→      }
+   434→    })
+   435→    const type = qs('type')
+   436→    if (type === 'customer') items = items.filter((x: any) => x.isCustomer)
+   437→    if (type === 'contractor') items = items.filter((x: any) => x.isContractor)
+   438→    if (type === 'supplier') items = items.filter((x: any) => x.isSupplier)
+   439→    const search = qs('q').toLowerCase()
+   440→    if (search) items = items.filter((x: any) => String(x.name ?? '').toLowerCase().includes(search))
+   441→    return { items, total: items.length }
+   442→  }
+   443→
+   444→  // ----- simple collections -----
+   445→  if (p === '/api/branches') return { items: db.branches, total: db.branches.length }
+   446→  if (p === '/api/warehouses') {
+   447→    return { items: db.warehouses.map((w: any) => ({ ...w, branch: w.branchId && branchById.get(w.branchId) ? { id: w.branchId, name: branchById.get(w.branchId).name } : null })), total: db.warehouses.length }
+   448→  }
+   449→  if (p === '/api/users') return { items: db.users, total: db.users.length }
+   450→  if (p === '/api/roles') return { items: db.roles, total: db.roles.length }
+   451→  if (p === '/api/settings') return { items: db.settings, total: db.settings.length }
+   452→
+   453→  // ----- audit -----
+   454→  if (p === '/api/audit') {
+   455→    const entity = qs('entity')
+   456→    const search = qs('q').toLowerCase()
+   457→    let items = db.audit
+   458→    if (entity) items = items.filter((a: any) => a.entity === entity)
+   459→    if (search) items = items.filter((a: any) => [a.userName, a.action, a.entity, a.notes].some((f: any) => String(f ?? '').toLowerCase().includes(search)))
+   460→    return { items: items.slice(0, 200), total: items.length }
+   461→  }
+   462→
+   463→  // ----- items -----
+   464→  if (p === '/api/items') {
+   465→    let items = db.items.map(enrichItem)
+   466→    if (qs('lowStock') === '1') items = items.filter((i: any) => i.isLowStock)
+   467→    return { items, total: items.length }
+   468→  }
+   469→
+   470→  // ----- movements -----
+   471→  if (p === '/api/movements') {
+   472→    const items = db.movements.map(enrichMovement).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+   473→    return { items, total: items.length }
+   474→  }
+   475→
+   476→  // ----- accounts -----
+   477→  if (p === '/api/accounts') {
+   478→    const bal = accountBalances()
+   479→    return { items: db.accounts.map((a: any) => enrichAccount(a, bal)) }
+   480→  }
+   481→
+   482→  // ----- journal -----
+   483→  if (p === '/api/journal') {
+   484→    const status = qs('status')
+   485→    let items = db.journal.map((e: any) => ({
+   486→      ...e,
+   487→      branch: e.branchId && branchById.get(e.branchId) ? { id: e.branchId, name: branchById.get(e.branchId).name } : null,
+   488→    })).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+   489→    if (status) items = items.filter((e: any) => e.status === status)
+   490→    return { items, total: items.length }
+   491→  }
+   492→
+   493→  // ----- vouchers -----
+   494→  if (p === '/api/vouchers') {
+   495→    const type = qs('type')
+   496→    let items = db.vouchers.map((v: any) => ({ ...v, party: partyRef(v.partyId) }))
+   497→      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+   498→    if (type) items = items.filter((v: any) => v.type === type)
+   499→    return { items, total: items.length }
+   500→  }
+   501→
+   502→  // ----- freight -----
+   503→  if (p === '/api/freight') {
+   504→    let items = db.freight
+   505→    const search = qs('q').toLowerCase()
+   506→    if (search) {
+   507→      items = items.filter((r: any) => [r.regionAr, r.regionEn, r.routeName].some((f: any) => String(f ?? '').toLowerCase().includes(search)))
+   508→    }
+   509→    return { items, total: items.length }
+   510→  }
+   511→
+   512→  // ----- lookups -----
+   513→  if (p === '/api/lookups') {
+   514→    const category = qs('category')
+   515→    const activeOnly = q.get('active') === '1'
+   516→    let items = db.lookups
+   517→    if (category) items = items.filter((i: any) => i.category === category)
+   518→    if (activeOnly) items = items.filter((i: any) => i.active)
+   519→    const byCategory: Record<string, any[]> = {}
+   520→    for (const it of items) {
+   521→      if (!byCategory[it.category]) byCategory[it.category] = []
+   522→      byCategory[it.category].push(it)
+   523→    }
+   524→    return { items, byCategory, total: items.length }
+   525→  }
+   526→
+   527→  // ----- reports -----
+   528→  const mReport = p.match(/^\/api\/reports\/([^/]+)$/)
+   529→  if (mReport) {
+   530→    const type = mReport[1]
+   531→    const from = q.get('from')
+   532→    const to = q.get('to')
+   533→    const shipments = db.shipments
+   534→      .filter((s: any) => inRange(s.date, from, to))
+   535→      .map(enrichShipment)
+   536→      .sort((a: any, b: any) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
+   537→
+   538→    if (type === 'shipments') return { items: shipments }
+   539→
+   540→    if (type === 'freight-margin') {
+   541→      return {
+   542→        items: shipments.map((s: any) => {
+   543→          const sell = s.salePrice ?? s.freightTotal ?? 0
+   544→          return { ...s, sell, margin: sell - (s.freightCost ?? 0) }
+   545→        }),
+   546→      }
+   547→    }
+   548→
+   549→    if (type === 'contractor-dues') {
+   550→      const map = new Map<string, any>()
+   551→      for (const s of shipments) {
+   552→        if (!s.contractorId) continue
+   553→        const cur = map.get(s.contractorId) ?? { id: s.contractorId, name: s.contractor?.name ?? '-', shipments: 0, freight: 0, totalSuppliers: 0 }
+   554→        cur.shipments += 1
+   555→        cur.freight += s.freightTotal ?? 0
+   556→        cur.totalSuppliers += s.totalSuppliers ?? 0
+   557→        map.set(s.contractorId, cur)
+   558→      }
+   559→      const items = [...map.values()].map((c: any) => {
+   560→        const paid = db.vouchers.filter((v: any) => v.type === 'payment' && v.partyId === c.id).reduce((s: number, v: any) => s + (v.amount || 0), 0)
+   561→        return { ...c, paid, due: c.totalSuppliers - paid }
+   562→      }).sort((a: any, b: any) => b.due - a.due)
+   563→      return { items }
+   564→    }
+   565→
+   566→    if (type === 'customer-debts') {
+   567→      const map = new Map<string, any>()
+   568→      for (const s of shipments) {
+   569→        if (!s.customerId) continue
+   570→        const cur = map.get(s.customerId) ?? { id: s.customerId, name: s.customer?.name ?? '-', shipments: 0, total: 0, paid: 0 }
+   571→        cur.shipments += 1
+   572→        cur.total += s.freightTotal ?? 0
+   573→        cur.paid += s.customerPay ?? 0
+   574→        map.set(s.customerId, cur)
+   575→      }
+   576→      const items = [...map.values()].map((c: any) => ({ ...c, due: c.total - c.paid })).sort((a: any, b: any) => b.due - a.due)
+   577→      return { items }
+   578→    }
+   579→
+   580→    if (type === 'trial-balance') {
+   581→      const bal = accountBalances()
+   582→      return { items: db.accounts.filter((a: any) => a.isDetail).map((a: any) => enrichAccount(a, bal)) }
+   583→    }
+   584→
+   585→    if (type === 'inventory-movements') {
+   586→      const items = db.movements.map(enrichMovement)
+   587→        .filter((m: any) => inRange(m.date, from, to))
+   588→        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+   589→      return { items }
+   590→    }
+   591→
+   592→    if (type === 'low-stock') {
+   593→      return { items: db.items.map(enrichItem).filter((i: any) => i.isLowStock) }
+   594→    }
+   595→
+   596→    return { items: [] }
+   597→  }
+   598→
+   599→  // unknown route → empty response (never hit the network)
+   600→  return { items: [], total: 0 }
+   601→}
+   602→
+   603→// ---------------------------------------------------------------------------
+   604→// Public fetcher — instant, in-memory, no network
+   605→// ---------------------------------------------------------------------------
+   606→export const fetcher = (url: string): Promise<any> => {
+   607→  try {
+   608→    return Promise.resolve(handleGet(url))
+   609→  } catch (e: any) {
+   610→    return Promise.reject(new Error(e?.message ?? 'خطأ في قراءة البيانات'))
+   611→  }
+   612→}
+   613→
+   614→// ---------------------------------------------------------------------------
+   615→// Mutation router
+   616→// ---------------------------------------------------------------------------
+   617→function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: any): any {
+   618→  const u = new URL(url, 'http://local')
+   619→  const p = u.pathname.replace(/\/+$/, '')
+   620→  const b = body ?? {}
+   621→  const nowISO = new Date().toISOString()
+   622→
+   623→  const findIn = (arr: any[], id: string) => arr.find((x: any) => x.id === id)
+   624→
+   625→  // ---- shipments ----
+   626→  if (p === '/api/shipments' && method === 'POST') {
+   627→    const nextNo = 'SH-' + String(db.shipments.length + 1).padStart(5, '0')
+   628→    const s: any = {
+   629→      id: uid('sh'), shipmentNo: nextNo, billNo: b.billNo ?? null,
+   630→      customerId: b.customerId || null, recipientName: b.recipientName ?? '', shipToParty: b.recipientName ?? '',
+   631→      deliveryPhones: b.deliveryPhones ?? null, destination: b.destination ?? null, destinationEn: null, routeCode: b.routeCode ?? null,
+   632→      branchId: b.branchId || null, warehouseId: b.warehouseId || null,
+   633→      loadType: b.loadType ?? null, contractorId: b.contractorId || null, vehicleNo: null,
+   634→      freightCost: Number(b.freightCost) || 0, freightTotal: Number(b.freightTotal) || 0,
+   635→      salePrice: null, customerPay: 0, aging: null, overnight: null, returns: null, transfer: null, other: null,
+   636→      totalSuppliers: Number(b.freightCost) || 0, status: 'new', collectionStatus: 'uncollected',
+   637→      date: b.date ? new Date(b.date).toISOString() : nowISO,
+   638→      notes: b.notes ?? null, createdAt: nowISO, updatedAt: nowISO,
+   639→      statusHistory: [{ status: 'new', notes: 'إنشاء شحنة جديدة', date: nowISO, userName: b.userName ?? 'admin' }],
+   640→    }
+   641→    db.shipments.unshift(s)
+   642→    addAudit('create', 'shipment', s.id, `إنشاء شحنة ${nextNo}`, b.userName)
+   643→    return { id: s.id, shipmentNo: nextNo }
+   644→  }
+   645→  let m = p.match(/^\/api\/shipments\/([^/]+)\/status$/)
+   646→  if (m && method === 'POST') {
+   647→    const s = findIn(db.shipments, m[1])
+   648→    if (!s) throw new Error('الشحنة غير موجودة')
+   649→    s.statusHistory = s.statusHistory ?? []
+   650→    s.statusHistory.push({ status: b.status, notes: b.notes ?? '', date: nowISO, userName: b.userName ?? 'admin' })
+   651→    s.status = b.status
+   652→    s.updatedAt = nowISO
+   653→    addAudit('update', 'shipment', s.id, `تحديث حالة الشحنة ${s.shipmentNo} إلى ${b.status}`, b.userName)
+   654→    return { ok: true }
+   655→  }
+   656→  m = p.match(/^\/api\/shipments\/([^/]+)$/)
+   657→  if (m && method === 'DELETE') {
+   658→    const idx = db.shipments.findIndex((x: any) => x.id === m[1])
+   659→    if (idx >= 0) {
+   660→      addAudit('delete', 'shipment', m[1], `حذف شحنة ${db.shipments[idx].shipmentNo}`, b?.userName)
+   661→      db.shipments.splice(idx, 1)
+   662→    }
+   663→    return null
+   664→  }
+   665→
+   666→  // ---- parties ----
+   667→  if (p === '/api/parties' && method === 'POST') {
+   668→    const prefix = b.isContractor ? 'K' : b.isSupplier ? 'S' : 'C'
+   669→    const party = {
+   670→      id: uid('party'), code: `${prefix}-${String(db.parties.length + 1).padStart(4, '0')}`,
+   671→      name: b.name, nameEn: b.nameEn ?? null,
+   672→      isCustomer: b.isCustomer ? 1 : 0, isContractor: b.isContractor ? 1 : 0, isSupplier: b.isSupplier ? 1 : 0,
+   673→      phone: b.phone ?? null, phones: null, email: null, address: b.address ?? null, city: b.city ?? null, region: null,
+   674→      taxNumber: null, paymentTerms: null, creditLimit: null, openingBalance: 0,
+   675→      branchId: b.branchId || null, active: 1, notes: b.notes ?? null,
+   676→      createdAt: nowISO, updatedAt: nowISO,
+   677→    }
+   678→    db.parties.unshift(party)
+   679→    partyById.set(party.id, party)
+   680→    addAudit('create', 'party', party.id, `إضافة طرف: ${party.name}`, b.userName)
+   681→    return { id: party.id }
+   682→  }
+   683→  m = p.match(/^\/api\/parties\/([^/]+)$/)
+   684→  if (m) {
+   685→    const party = findIn(db.parties, m[1])
+   686→    if (!party) throw new Error('الطرف غير موجود')
+   687→    if (method === 'PATCH') {
+   688→      Object.assign(party, { ...b, id: party.id }, { updatedAt: nowISO })
+   689→      addAudit('update', 'party', party.id, `تعديل طرف: ${party.name}`, b.userName)
+   690→      return { ok: true }
+   691→    }
+   692→    if (method === 'DELETE') {
+   693→      db.parties = db.parties.filter((x: any) => x.id !== m[1])
+   694→      partyById.delete(m[1])
+   695→      addAudit('delete', 'party', m[1], `حذف طرف: ${party.name}`, b.userName)
+   696→      return null
+   697→    }
+   698→  }
+   699→
+   700→  // ---- branches ----
+   701→  if (p === '/api/branches' && method === 'POST') {
+   702→    const br = { id: uid('br'), code: b.code || `BR-${db.branches.length + 1}`, name: b.name, nameEn: b.nameEn ?? null, manager: b.manager ?? null, phone: b.phone ?? null, address: b.address ?? null, region: b.region ?? null, balance: 0, active: 1, createdAt: nowISO }
+   703→    db.branches.push(br)
+   704→    branchById.set(br.id, br)
+   705→    addAudit('create', 'branch', br.id, `إضافة فرع: ${br.name}`, b.userName)
+   706→    return { id: br.id }
+   707→  }
+   708→  m = p.match(/^\/api\/branches\/([^/]+)$/)
+   709→  if (m) {
+   710→    const br = findIn(db.branches, m[1])
+   711→    if (!br) throw new Error('الفرع غير موجود')
+   712→    if (method === 'PATCH') { Object.assign(br, { ...b, id: br.id }); addAudit('update', 'branch', br.id, `تعديل فرع: ${br.name}`, b.userName); return { ok: true } }
+   713→    if (method === 'DELETE') { db.branches = db.branches.filter((x: any) => x.id !== m[1]); branchById.delete(m[1]); addAudit('delete', 'branch', m[1], `حذف فرع: ${br.name}`, b.userName); return null }
+   714→  }
+   715→
+   716→  // ---- warehouses ----
+   717→  if (p === '/api/warehouses' && method === 'POST') {
+   718→    const w = { id: uid('wh'), code: b.code || `WH-${db.warehouses.length + 1}`, name: b.name, branchId: b.branchId || null, manager: b.manager ?? null, phone: null, address: b.address ?? null, balance: 0, active: 1, createdAt: nowISO }
+   719→    db.warehouses.push(w)
+   720→    whById.set(w.id, w)
+   721→    addAudit('create', 'warehouse', w.id, `إضافة مخزن: ${w.name}`, b.userName)
+   722→    return { id: w.id }
+   723→  }
+   724→  m = p.match(/^\/api\/warehouses\/([^/]+)$/)
+   725→  if (m) {
+   726→    const w = findIn(db.warehouses, m[1])
+   727→    if (!w) throw new Error('المخزن غير موجود')
+   728→    if (method === 'PATCH') { Object.assign(w, { ...b, id: w.id }); addAudit('update', 'warehouse', w.id, `تعديل مخزن: ${w.name}`, b.userName); return { ok: true } }
+   729→    if (method === 'DELETE') { db.warehouses = db.warehouses.filter((x: any) => x.id !== m[1]); whById.delete(m[1]); addAudit('delete', 'warehouse', m[1], `حذف مخزن: ${w.name}`, b.userName); return null }
+   730→  }
+   731→
+   732→  // ---- items ----
+   733→  if (p === '/api/items' && method === 'POST') {
+   734→    const it = { id: uid('item'), code: b.code ?? null, name: b.name, nameEn: b.nameEn ?? null, unit: b.unit ?? null, reorderLevel: Number(b.reorderLevel) || 0, cost: b.cost != null ? Number(b.cost) : null, price: b.price != null ? Number(b.price) : null, warehouseId: b.warehouseId || null, notes: b.notes ?? null, active: 1, createdAt: nowISO, updatedAt: nowISO }
+   735→    db.items.push(it)
+   736→    itemById.set(it.id, it)
+   737→    addAudit('create', 'item', it.id, `إضافة صنف: ${it.name}`, b.userName)
+   738→    return { id: it.id }
+   739→  }
+   740→  m = p.match(/^\/api\/items\/([^/]+)$/)
+   741→  if (m) {
+   742→    const it = findIn(db.items, m[1])
+   743→    if (!it) throw new Error('الصنف غير موجود')
+   744→    if (method === 'PATCH') { Object.assign(it, { ...b, id: it.id }, { updatedAt: nowISO }); addAudit('update', 'item', it.id, `تعديل صنف: ${it.name}`, b.userName); return { ok: true } }
+   745→    if (method === 'DELETE') { db.items = db.items.filter((x: any) => x.id !== m[1]); itemById.delete(m[1]); addAudit('delete', 'item', m[1], `حذف صنف: ${it.name}`, b.userName); return null }
+   746→  }
+   747→
+   748→  // ---- movements ----
+   749→  if (p === '/api/movements' && method === 'POST') {
+   750→    const it = b.itemId ? itemById.get(b.itemId) : null
+   751→    if (!it) throw new Error('اختر الصنف أولًا')
+   752→    let qty = Number(b.quantity) || 0
+   753→    if (b.type === 'issue') qty = -Math.abs(qty)
+   754→    if (b.type === 'receipt') qty = Math.abs(qty)
+   755→    const bal = itemBalance(it.id)
+   756→    if ((b.type === 'issue' || b.type === 'adjustment') && bal + qty < 0) {
+   757→      throw new Error(`الرصيد غير كافٍ — الرصيد الحالي ${bal} ${it.unit ?? ''}`)
+   758→    }
+   759→    const mv = {
+   760→      id: uid('mv'), type: b.type, date: nowISO, itemId: it.id, warehouseId: b.warehouseId || null,
+   761→      toWarehouseId: b.type === 'transfer' ? (b.toWarehouseId || null) : null,
+   762→      quantity: qty, unitCost: b.unitCost != null ? Number(b.unitCost) : null,
+   763→      totalCost: b.unitCost != null ? Math.abs(qty) * Number(b.unitCost) : null,
+   764→      notes: b.notes ?? null, userName: b.userName ?? 'admin', createdAt: nowISO,
+   765→    }
+   766→    db.movements.unshift(mv)
+   767→    addAudit('create', 'inventory_movement', mv.id, `حركة ${b.type} للصنف ${it.name} بكمية ${qty}`, b.userName)
+   768→    return { id: mv.id, balance: itemBalance(it.id) }
+   769→  }
+   770→
+   771→  // ---- accounts ----
+   772→  if (p === '/api/accounts' && method === 'POST') {
+   773→    const accNew = { id: uid('acc'), code: b.code || String(db.accounts.length + 1), name: b.name, nameEn: b.nameEn ?? null, type: b.type ?? 'asset', parentId: b.parentId || null, isDetail: b.isDetail !== false ? 1 : 0, active: 1, createdAt: nowISO }
+   774→    db.accounts.push(accNew)
+   775→    addAudit('create', 'account', accNew.id, `إضافة حساب: ${accNew.name}`, b.userName)
+   776→    return { id: accNew.id }
+   777→  }
+   778→
+   779→  // ---- journal ----
+   780→  if (p === '/api/journal' && method === 'POST') {
+   781→    const lines = (b.lines ?? []).filter((l: any) => l.accountId && ((l.debit || 0) > 0 || (l.credit || 0) > 0))
+   782→    if (lines.length < 2) throw new Error('القيد يحتاج سطرين على الأقل')
+   783→    const totalDebit = lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0)
+   784→    const totalCredit = lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0)
+   785→    if (Math.abs(totalDebit - totalCredit) > 0.001) throw new Error('القيد غير متوازن')
+   786→    const entry = {
+   787→      id: uid('je'), entryNo: `JE-${String(db.journal.length + 1).padStart(4, '0')}`,
+   788→      date: b.date ? new Date(b.date).toISOString() : nowISO,
+   789→      description: b.description ?? '', reference: b.reference ?? null,
+   790→      branchId: b.branchId || null, status: b.autoPost ? 'posted' : 'draft',
+   791→      totalDebit, totalCredit,
+   792→      lines: lines.map((l: any) => {
+   793→        const a = db.accounts.find((x: any) => x.id === l.accountId)
+   794→        return {
+   795→          id: uid('jl'), accountId: l.accountId, account: a ? { id: a.id, code: a.code, name: a.name } : null,
+   796→          debit: Number(l.debit) || 0, credit: Number(l.credit) || 0,
+   797→          description: l.description ?? '', partyId: l.partyId || null, party: partyRef(l.partyId || null),
+   798→        }
+   799→      }),
+   800→      createdAt: nowISO, updatedAt: nowISO,
+   801→    }
+   802→    db.journal.unshift(entry)
+   803→    addAudit('create', 'journal_entry', entry.id, `إنشاء قيد ${entry.entryNo}`, b.userName)
+   804→    return { id: entry.id, entryNo: entry.entryNo }
+   805→  }
+   806→  m = p.match(/^\/api\/journal\/([^/]+)\/post$/)
+   807→  if (m && method === 'POST') {
+   808→    const e = findIn(db.journal, m[1])
+   809→    if (!e) throw new Error('القيد غير موجود')
+   810→    if (e.status === 'posted') throw new Error('القيد مرحّل بالفعل')
+   811→    e.status = 'posted'
+   812→    e.updatedAt = nowISO
+   813→    addAudit('post', 'journal_entry', e.id, `ترحيل قيد ${e.entryNo}`, b.userName)
+   814→    return { ok: true }
+   815→  }
+   816→  m = p.match(/^\/api\/journal\/([^/]+)$/)
+   817→  if (m && method === 'DELETE') {
+   818→    const e = findIn(db.journal, m[1])
+   819→    if (!e) throw new Error('القيد غير موجود')
+   820→    if (e.status === 'posted') throw new Error('لا يمكن حذف قيد مرحّل — استخدم قيدًا عكسيًا')
+   821→    db.journal = db.journal.filter((x: any) => x.id !== m[1])
+   822→    addAudit('delete', 'journal_entry', m[1], `حذف قيد ${e.entryNo}`, b.userName)
+   823→    return null
+   824→  }
+   825→
+   826→  // ---- vouchers ----
+   827→  if (p === '/api/vouchers' && method === 'POST') {
+   828→    const v = {
+   829→      id: uid('vc'), voucherNo: `V-${String(db.vouchers.length + 1).padStart(4, '0')}`,
+   830→      type: b.type ?? 'receipt', date: b.date ? new Date(b.date).toISOString() : nowISO,
+   831→      partyId: b.partyId || null, party: partyRef(b.partyId || null),
+   832→      amount: Number(b.amount) || 0, description: b.description ?? null,
+   833→      accountName: b.accountName ?? 'الصندوق',
+   834→      journalEntryNo: `JE-${String(db.journal.length + 1).padStart(4, '0')}`,
+   835→      userName: b.userName ?? 'admin', createdAt: nowISO,
+   836→    }
+   837→    if (!v.partyId) throw new Error('اختر الطرف')
+   838→    db.vouchers.unshift(v)
+   839→    // auto journal entry (receipt: cash D / customer C — payment: contractor D / cash C)
+   840→    const cashAcc = db.accounts.find((a: any) => a.code === '1101')
+   841→    const partyAcc = v.type === 'receipt'
+   842→      ? db.accounts.find((a: any) => a.code === '1103')
+   843→      : db.accounts.find((a: any) => a.code === '2102')
+   844→    if (cashAcc && partyAcc) {
+   845→      db.journal.unshift({
+   846→        id: uid('je'), entryNo: v.journalEntryNo, date: v.date,
+   847→        description: `${v.type === 'receipt' ? 'سند قبض' : 'سند صرف'} ${v.voucherNo} — ${v.party?.name ?? ''}`,
+   848→        reference: v.voucherNo, branchId: null, status: 'posted',
+   849→        totalDebit: v.amount, totalCredit: v.amount,
+   850→        lines: v.type === 'receipt'
+   851→          ? [
+   852→              { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: v.amount, credit: 0, description: 'نقدية مستلمة', partyId: v.partyId, party: v.party },
+   853→              { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: 0, credit: v.amount, description: 'تحصيل من العميل', partyId: v.partyId, party: v.party },
+   854→            ]
+   855→          : [
+   856→              { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: v.amount, credit: 0, description: 'مستحقات مقاول', partyId: v.partyId, party: v.party },
+   857→              { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: 0, credit: v.amount, description: 'نقدية مدفوعة', partyId: v.partyId, party: v.party },
+   858→            ],
+   859→        createdAt: nowISO, updatedAt: nowISO,
+   860→      })
+   861→    }
+   862→    addAudit('create', 'voucher', v.id, `${v.type === 'receipt' ? 'سند قبض' : 'سند صرف'} ${v.voucherNo} بمبلغ ${v.amount}`, b.userName)
+   863→    return { id: v.id, voucherNo: v.voucherNo }
+   864→  }
+   865→  m = p.match(/^\/api\/vouchers\/([^/]+)$/)
+   866→  if (m && method === 'DELETE') {
+   867→    const v = findIn(db.vouchers, m[1])
+   868→    if (v) {
+   869→      db.vouchers = db.vouchers.filter((x: any) => x.id !== m[1])
+   870→      addAudit('delete', 'voucher', m[1], `حذف سند ${v.voucherNo}`, b?.userName)
+   871→    }
+   872→    return null
+   873→  }
+   874→
+   875→  // ---- freight ----
+   876→  if (p === '/api/freight' && method === 'POST') {
+   877→    const f = { id: uid('fr'), regionAr: b.regionAr ?? '', regionEn: b.regionEn ?? null, routeName: b.routeName ?? b.regionAr ?? '', distanceKm: b.distanceKm != null ? Number(b.distanceKm) : null, loadType: b.loadType ?? null, cost: Number(b.cost) || 0, sellPrice: b.sellPrice != null ? Number(b.sellPrice) : null, sellPrice2: null, validFrom: null, validTo: null, notes: b.notes ?? null, active: 1, createdAt: nowISO, updatedAt: nowISO }
+   878→    db.freight.unshift(f)
+   879→    addAudit('create', 'freight_price', f.id, `إضافة سعر نولون: ${f.routeName}`, b.userName)
+   880→    return { id: f.id }
+   881→  }
+   882→  m = p.match(/^\/api\/freight\/([^/]+)$/)
+   883→  if (m) {
+   884→    const f = findIn(db.freight, m[1])
+   885→    if (!f) throw new Error('السعر غير موجود')
+   886→    if (method === 'PATCH') { Object.assign(f, { ...b, id: f.id }, { updatedAt: nowISO }); addAudit('update', 'freight_price', f.id, `تعديل سعر نولون: ${f.routeName}`, b.userName); return { ok: true } }
+   887→    if (method === 'DELETE') { db.freight = db.freight.filter((x: any) => x.id !== m[1]); addAudit('delete', 'freight_price', m[1], `حذف سعر نولون: ${f.routeName}`, b.userName); return null }
+   888→  }
+   889→
+   890→  // ---- lookups ----
+   891→  if (p === '/api/lookups' && method === 'POST') {
+   892→    const cat = b.category
+   893→    const maxOrder = Math.max(0, ...db.lookups.filter((l: any) => l.category === cat).map((l: any) => l.sortOrder || 0))
+   894→    const lk = { id: uid('lk'), category: cat, key: b.key || b.label, label: b.label ?? b.key, labelEn: b.labelEn ?? null, tone: b.tone ?? null, icon: b.icon ?? null, active: b.active !== false ? 1 : 0, sortOrder: (b.sortOrder ?? maxOrder + 1), isSystem: 0, createdAt: nowISO, updatedAt: nowISO }
+   895→    db.lookups.push(lk)
+   896→    addAudit('create', 'setting', lk.id, `إضافة قيمة قائمة منسدلة: ${lk.label}`, b.userName)
+   897→    return { id: lk.id }
+   898→  }
+   899→  m = p.match(/^\/api\/lookups\/([^/]+)$/)
+   900→  if (m) {
+   901→    const lk = findIn(db.lookups, m[1])
+   902→    if (!lk) throw new Error('القيمة غير موجودة')
+   903→    if (method === 'PATCH') { Object.assign(lk, { ...b, id: lk.id }, { updatedAt: nowISO }); return { ok: true } }
+   904→    if (method === 'DELETE') { db.lookups = db.lookups.filter((x: any) => x.id !== m[1]); addAudit('delete', 'setting', m[1], `حذف قيمة قائمة: ${lk.label}`, b?.userName); return null }
+   905→  }
+   906→
+   907→  // ---- users ----
+   908→  if (p === '/api/users' && method === 'POST') {
+   909→    const usr = { id: uid('usr'), username: b.username, name: b.name ?? b.username, email: b.email ?? null, phone: b.phone ?? null, branchId: b.branchId || null, roleId: b.roleId || null, active: 1, createdAt: nowISO, password: undefined }
+   910→    if (db.users.some((x: any) => x.username === usr.username)) throw new Error('اسم المستخدم موجود بالفعل')
+   911→    db.users.push(usr)
+   912→    addAudit('create', 'user', usr.id, `إضافة مستخدم: ${usr.username}`, b.userName)
+   913→    return { id: usr.id }
+   914→  }
+   915→  m = p.match(/^\/api\/users\/([^/]+)$/)
+   916→  if (m) {
+   917→    const usr = findIn(db.users, m[1])
+   918→    if (!usr) throw new Error('المستخدم غير موجود')
+   919→    if (method === 'PATCH') { Object.assign(usr, { ...b, id: usr.id, password: undefined }); addAudit('update', 'user', usr.id, `تعديل مستخدم: ${usr.username}`, b.userName); return { ok: true } }
+   920→    if (method === 'DELETE') { db.users = db.users.filter((x: any) => x.id !== m[1]); addAudit('delete', 'user', m[1], `حذف مستخدم: ${usr.username}`, b.userName); return null }
+   921→  }
+   922→
+   923→  // ---- settings ----
+   924→  if (p === '/api/settings' && method === 'PATCH') {
+   925→    const updates = b.updates ?? {}
+   926→    const apply = (key: string, value: any) => {
+   927→      const s = db.settings.find((x: any) => x.key === key)
+   928→      if (s) { s.value = String(value); s.updatedAt = nowISO }
+   929→    }
+   930→    if (Array.isArray(updates)) updates.forEach((u: any) => apply(u.key, u.value))
+   931→    else Object.entries(updates).forEach(([k, v]) => apply(k, v))
+   932→    addAudit('update', 'setting', null, 'تحديث إعدادات النظام', b.userName)
+   933→    return { ok: true }
+   934→  }
+   935→
+   936→  // ---- import wizard ----
+   937→  if (p === '/api/import/preview' && method === 'POST') {
+   938→    return {
+   939→      sheets: [{
+   940→        name: 'مبيعات 8-2026',
+   941→        headers: ['المخزن', 'Name of the ship-to party', 'Destination', 'policy QTY', '1.5 TON', '3 TON', '6 M', 'Date', 'المقاول', 'تكويد', 'النولون', 'اجمالى النولون'],
+   942→        sampleRows: [
+   943→          ['المخزن الرئيسي', 'القلوبيه /مدينه العبور', 'العبور', '1', '1', '', '', '2026-09-30', 'السيد ربيع', 'القاهرة 1', '980', '980'],
+   944→          ['المخزن الرئيسي', 'شركه عبد الحكم حجازي', 'العبور', '1', '', '1', '', '2026-09-30', 'المنسي', 'القاهرة 2', '1805', '1805'],
+   945→          ['المخزن الرئيسي', 'ADEL HASSAN MOHAMED', 'مدينة نصر', '2', '2', '', '', '2026-10-01', 'جعلص', 'القاهرة 1', '1960', '1960'],
+   946→        ],
+   947→        totalRows: 184,
+   948→        columns: 32,
+   949→      }],
+   950→      suggestedMapping: {},
+   951→      fileName: 'مبيعات العاشر 3.xlsx',
+   952→    }
+   953→  }
+   954→  if (p === '/api/import/commit' && method === 'POST') {
+   955→    addAudit('import', 'shipment', null, `استيراد ملف ${b.fileName ?? ''} — ورقة ${b.sheetName ?? ''}`, b.userName)
+   956→    return { imported: 184, skipped: 0, errors: 0, total: 184 }
+   957→  }
+   958→
+   959→  // unknown mutation → optimistic ok
+   960→  return { ok: true }
+   961→}
+   962→
+   963→// ---------------------------------------------------------------------------
+   964→// Public mutation helpers (same signatures as before — no network)
+   965→// ---------------------------------------------------------------------------
+   966→export async function apiPost(url: string, body?: any) {
+   967→  return handleMutation('POST', url, body)
+   968→}
+   969→
+   970→export async function apiPatch(url: string, body?: any) {
+   971→  return handleMutation('PATCH', url, body)
+   972→}
+   973→
+   974→export async function apiDelete(url: string) {
+   975→  return handleMutation('DELETE', url, undefined)
+   976→}
+   977→
