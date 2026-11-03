@@ -138,7 +138,7 @@ export function UsersModule() {
           {users.map((u) => (
             <Card key={u.id} className={cn(!u.active && 'opacity-70')}>
               <CardContent className="p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center justify-between gap-2.5">
                   <div className="flex items-center gap-2.5 flex-1 min-w-0">
                     <div className={cn(
                       'flex items-center justify-center size-10 rounded-xl font-bold text-sm shrink-0',
@@ -157,6 +157,7 @@ export function UsersModule() {
                     onCheckedChange={() => toggleActive(u)}
                     aria-label={u.active ? 'إيقاف الحساب' : 'تنشيط الحساب'}
                     disabled={u.username === 'admin'}
+                    className="shrink-0"
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-1">

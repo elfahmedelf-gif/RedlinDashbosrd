@@ -279,3 +279,47 @@ For more information, see https://radix-ui.com/primitives/docs/components/dialog
  GET / 200 in 28ms (next.js: 1.0ms, application-code: 27ms)
  GET / 200 in 28ms (next.js: 1.0ms, application-code: 27ms)
  GET / 200 in 193ms (next.js: 1.0ms, application-code: 192ms)
+ GET / 200 in 31ms (next.js: 0.9ms, application-code: 30ms)
+ GET / 200 in 31ms (next.js: 1.3ms, application-code: 29ms)
+ GET / 200 in 30ms (next.js: 0.9ms, application-code: 29ms)
+ GET / 200 in 28ms (next.js: 0.8ms, application-code: 27ms)
+ GET / 200 in 196ms (next.js: 1.0ms, application-code: 195ms)
+ GET / 200 in 31ms (next.js: 0.9ms, application-code: 30ms)
+ GET / 200 in 27ms (next.js: 0.8ms, application-code: 26ms)
+ GET / 200 in 43ms (next.js: 0.8ms, application-code: 42ms)
+ GET / 200 in 35ms (next.js: 0.8ms, application-code: 34ms)
+ GET / 200 in 27ms (next.js: 0.8ms, application-code: 26ms)
+ GET / 200 in 37ms (next.js: 1.9ms, application-code: 35ms)
+ GET / 200 in 29ms (next.js: 0.7ms, application-code: 28ms)
+ GET / 200 in 27ms (next.js: 0.8ms, application-code: 26ms)
+ GET / 200 in 27ms (next.js: 0.8ms, application-code: 26ms)
+✓ Compiled in 317ms
+ GET / 200 in 38ms (next.js: 1.2ms, application-code: 36ms)
+✓ Compiled in 257ms
+ GET / 200 in 30ms (next.js: 1.5ms, application-code: 29ms)
+ GET / 200 in 50ms (next.js: 1.4ms, application-code: 49ms)
+[browser] `DialogContent` requires a `DialogTitle` for the component to be accessible for screen reader users.
+
+If you want to hide the `DialogTitle`, you can wrap it with our VisuallyHidden component.
+
+For more information, see https://radix-ui.com/primitives/docs/components/dialog 
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+[browser] `DialogContent` requires a `DialogTitle` for the component to be accessible for screen reader users.
+
+If you want to hide the `DialogTitle`, you can wrap it with our VisuallyHidden component.
+
+For more information, see https://radix-ui.com/primitives/docs/components/dialog 
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+[browser] `DialogContent` requires a `DialogTitle` for the component to be accessible for screen reader users.
+
+If you want to hide the `DialogTitle`, you can wrap it with our VisuallyHidden component.
+
+For more information, see https://radix-ui.com/primitives/docs/components/dialog 
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+ GET / 200 in 51ms (next.js: 1.0ms, application-code: 50ms)
+ GET / 200 in 75ms (next.js: 0.9ms, application-code: 74ms)
+ GET / 200 in 31ms (next.js: 0.8ms, application-code: 30ms)
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+ GET / 200 in 31ms (next.js: 1.1ms, application-code: 30ms)
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+ GET / 200 in 27ms (next.js: 0.8ms, application-code: 27ms)
