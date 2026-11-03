@@ -1,8 +1,15 @@
-import { NextResponse } from 'next/server'
-import { mock } from '@/lib/mock-data'
+import { handle } from '@/lib/server/http'
+import { requirePerm } from '@/lib/server/session'
+import { ensureSeeded } from '@/lib/server/seed'
+import { report } from '@/lib/server/queries'
 
-export const dynamic = 'force-static'
+export const dynamic = 'force-dynamic'
 
-export function GET(req: Request, { params }: { params: Promise<{ type: string }> }) {
-  return NextResponse.json({ items: [] })
+export async function GET(req: Request, { params }: { params: Promise<{ type: string }> }) {
+  return handle(async () => {
+    await ensureSeeded()
+    const { type } = await params
+    await requirePerm(req, 'reports.view')
+    return report(type, new URL(req.url).searchParams)
+  })
 }

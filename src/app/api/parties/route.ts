@@ -1,35 +1,37 @@
-import { NextResponse } from 'next/server'
-import { mock } from '@/lib/mock-data'
+import { handle, readBody } from '@/lib/server/http'
+import { requirePerm, requireUser } from '@/lib/server/session'
+import { ensureSeeded } from '@/lib/server/seed'
+import { logAudit } from '@/lib/server/audit'
+import { db } from '@/lib/db'
+import { listParties } from '@/lib/server/queries'
 
 export const dynamic = 'force-dynamic'
 
-export function GET(req: Request) {
-  const url = new URL(req.url)
-  const type = url.searchParams.get('type')
-  const q = url.searchParams.get('q')?.trim() ?? ''
-
-  let items = mock.parties.map((p: any) => ({
-    ...p,
-    branch: p.branchId ? { id: p.branchId, name: 'الفرع الرئيسي' } : null,
-    _count: { shipments: Math.floor(Math.random() * 10) + 1 },
-    _sum: {
-      freightTotal: Math.floor(Math.random() * 50000) + 5000,
-      totalSuppliers: Math.floor(Math.random() * 60000) + 5000,
-      customerPay: Math.floor(Math.random() * 5000),
-    },
-  }))
-
-  if (type === 'customer') items = items.filter((p: any) => p.isCustomer)
-  if (type === 'contractor') items = items.filter((p: any) => p.isContractor)
-  if (type === 'supplier') items = items.filter((p: any) => p.isSupplier)
-  if (q) {
-    const ql = q.toLowerCase()
-    items = items.filter((p: any) => String(p.name ?? '').toLowerCase().includes(ql))
-  }
-
-  return NextResponse.json({ items, total: items.length })
+export async function GET(req: Request) {
+  return handle(async () => {
+    await ensureSeeded()
+    await requirePerm(req, 'parties.view')
+    return listParties(new URL(req.url).searchParams)
+  })
 }
 
-export function POST() {
-  return NextResponse.json({ id: 'mock-' + Date.now() }, { status: 201 })
+export async function POST(req: Request) {
+  return handle(async () => {
+    await ensureSeeded()
+    const user = await requirePerm(req, 'parties.manage')
+    const b = await readBody(req)
+    const prefix = b.isContractor ? 'K' : b.isSupplier ? 'S' : 'C'
+    const count = await db.party.count()
+    const p = await db.party.create({
+      data: {
+        code: `${prefix}-${String(count + 1).padStart(4, '0')}`,
+        name: b.name, nameEn: b.nameEn ?? null,
+        isCustomer: !!b.isCustomer, isContractor: !!b.isContractor, isSupplier: !!b.isSupplier,
+        phone: b.phone ?? null, address: b.address ?? null, city: b.city ?? null,
+        branchId: b.branchId || null, notes: b.notes ?? null,
+      },
+    })
+    await logAudit(db, { action: 'create', entity: 'party', entityId: p.id, notes: `إضافة طرف: ${p.name}`, user: { userId: user.userId, username: user.username } })
+    return { id: p.id }
+  })
 }
