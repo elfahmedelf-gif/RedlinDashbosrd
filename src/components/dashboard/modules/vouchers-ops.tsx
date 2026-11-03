@@ -764,6 +764,7 @@ export function VouchersModule() {
         loading={isLoading}
         getRowKey={(vch: any) => vch.id}
         minW={1100}
+        resetKey={listUrl}
         onRowClick={(vch) => setDetailId(vch.id)}
         searchFn={(vch: any, q: string) =>
           (vch.voucherNo || '').toLowerCase().includes(q) ||

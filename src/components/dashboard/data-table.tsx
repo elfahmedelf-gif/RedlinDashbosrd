@@ -2,10 +2,11 @@
 
 import * as React from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { DataTablePagination } from './data-table-pagination'
 
 interface Column<T> {
   key: string
@@ -30,7 +31,10 @@ interface DataTableProps<T> {
   getRowKey: (row: T, index: number) => string
   onRowClick?: (row: T) => void
   minW?: number
+  /** Initial rows per page (default 10). Changeable from the pagination bar. */
   pageSize?: number
+  /** When this value changes (external filters/search URL), the page resets to 1. */
+  resetKey?: string | number
   initialQ?: string
   searchPlaceholder?: string
   searchFn?: (row: T, q: string) => boolean
@@ -46,12 +50,14 @@ export function DataTable<T>({
   getRowKey,
   onRowClick,
   minW = 800,
-  pageSize = 15,
+  pageSize: initialPageSize = 10,
+  resetKey,
   searchPlaceholder = 'بحث...',
   searchFn,
   cardRender,
 }: DataTableProps<T>) {
   const [page, setPage] = React.useState(1)
+  const [pageSize, setPageSize] = React.useState(initialPageSize)
   const [q, setQ] = React.useState('')
 
   const filtered = React.useMemo(() => {
@@ -64,7 +70,15 @@ export function DataTable<T>({
   const safePage = Math.min(page, totalPages)
   const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
 
-  React.useEffect(() => { setPage(1) }, [q])
+  // Reset to page 1 whenever the search term or external filters (resetKey) change.
+  React.useEffect(() => { setPage(1) }, [q, resetKey])
+  // Clamp page if the dataset shrinks below the current page.
+  React.useEffect(() => { if (page > totalPages) setPage(totalPages) }, [page, totalPages])
+
+  const handlePageSizeChange = React.useCallback((n: number) => {
+    setPageSize(n)
+    setPage(1)
+  }, [])
 
   const alignClass = (a?: string) =>
     a === 'center' ? 'text-center' : a === 'left' ? 'text-left' : 'text-right'
@@ -199,24 +213,30 @@ export function DataTable<T>({
                 </tbody>
               </table>
             </div>
+            {/* Unified pagination bar — directly below the table container */}
+            <DataTablePagination
+              currentPage={safePage}
+              totalPages={totalPages}
+              totalItems={filtered.length}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
+            />
+          </div>
+
+          {/* Mobile: pagination bar below the cards */}
+          <div className="sm:hidden rounded-2xl border border-border bg-card elev-sm overflow-hidden">
+            <DataTablePagination
+              currentPage={safePage}
+              totalPages={totalPages}
+              totalItems={filtered.length}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
+              className="border-t-0"
+            />
           </div>
         </>
-      )}
-
-      {filtered.length > pageSize && (
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span className="tnum">
-            {fmt(filtered.length)} سجل • صفحة {safePage} من {totalPages}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <Button variant="outline" size="sm" disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-              <ChevronRight className="size-4" /> السابق
-            </Button>
-            <Button variant="outline" size="sm" disabled={safePage >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-              التالي <ChevronLeft className="size-4" />
-            </Button>
-          </div>
-        </div>
       )}
     </div>
   )

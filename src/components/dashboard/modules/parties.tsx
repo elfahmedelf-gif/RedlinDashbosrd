@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EntityFormDialog, type Field } from '../entity-dialog'
-import { DataTable } from '../data-table'
+import { DataTablePagination } from '../data-table-pagination'
 import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import { exportToCSV } from '@/lib/export'
 import { fmtNum } from '@/lib/format'
@@ -32,8 +32,26 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
   const { toast } = useToast()
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Party | null>(null)
+  // Client-side pagination for the card grid
+  const [page, setPage] = React.useState(1)
+  const [pageSize, setPageSize] = React.useState(10)
   const { data, isLoading, mutate } = useSWR<{ items: Party[] }>(`/api/parties?type=${type}`, fetcher, { refreshInterval: 30000 })
   const { data: branches } = useSWR<{ items: any[] }>('/api/branches', fetcher)
+
+  const partyItems = data?.items ?? []
+  const totalParties = partyItems.length
+  const totalPages = Math.max(1, Math.ceil(totalParties / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const pageItems = partyItems.slice((safePage - 1) * pageSize, safePage * pageSize)
+
+  // Reset to page 1 when switching between customer/contractor/supplier
+  React.useEffect(() => { setPage(1) }, [type])
+  React.useEffect(() => { if (page > totalPages) setPage(totalPages) }, [page, totalPages])
+
+  const handlePageSizeChange = React.useCallback((n: number) => {
+    setPageSize(n)
+    setPage(1)
+  }, [])
 
   const onEdit = (p: Party) => { setEditing(p); setOpen(true) }
   const onAdd = () => { setEditing(null); setOpen(true) }
@@ -94,7 +112,7 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm text-muted-foreground tnum">
-          {data?.items.length ?? 0} {title}
+          {totalParties} {title}
         </div>
         <div className="flex gap-2 shrink-0">
           <Button variant="outline" onClick={exportParties} size="sm" disabled={!data?.items?.length}>
@@ -111,8 +129,9 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
       ) : data && data.items.length === 0 ? (
         <Card><CardContent className="py-12 text-center text-muted-foreground">لا يوجد {title} بعد</CardContent></Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {data?.items.map((p) => (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {pageItems.map((p) => (
             <Card key={p.id} className="overflow-hidden">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-2">
@@ -149,8 +168,22 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
                 ) : null}
               </CardContent>
             </Card>
-          ))}
-        </div>
+            ))}
+          </div>
+          {/* Unified pagination bar below the cards grid */}
+          <div className="rounded-2xl border border-border bg-card elev-sm overflow-hidden">
+            <DataTablePagination
+              currentPage={safePage}
+              totalPages={totalPages}
+              totalItems={totalParties}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
+              itemLabel="طرف"
+              className="border-t-0"
+            />
+          </div>
+        </>
       )}
 
       <EntityFormDialog

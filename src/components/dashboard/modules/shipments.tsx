@@ -17,6 +17,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { WaybillPrint } from '../waybill-print'
 import { EntityFormDialog } from '../entity-dialog'
+import { DataTablePagination } from '../data-table-pagination'
 import { fetcher, apiPost, apiDelete } from '@/lib/api'
 import { exportToCSV } from '@/lib/export'
 import { fmtNum, fmtDate, fmtDateTime } from '@/lib/format'
@@ -55,7 +56,7 @@ export function ShipmentsModule() {
   const [contractor, setContractor] = React.useState<string>('all')
   const [province, setProvince] = React.useState<string>('all')
   const [page, setPage] = React.useState(1)
-  const [pageSize] = React.useState(50) // larger page so bulk ops have meaningful coverage
+  const [pageSize, setPageSize] = React.useState(10) // rows-per-page selectable from the unified pagination bar
   const [debouncedQ, setDebouncedQ] = React.useState('')
   const [showFilters, setShowFilters] = React.useState(false)
   const [addOpen, setAddOpen] = React.useState(false)
@@ -240,7 +241,7 @@ export function ShipmentsModule() {
         </Card>
       )}
 
-      <div className="text-xs text-muted-foreground tnum">إجمالي النتائج: <b className="text-foreground">{fmtNum(data?.total ?? 0)}</b>{data && ` • صفحة ${data.page} من ${data.totalPages}`}</div>
+      <div className="text-xs text-muted-foreground tnum">إجمالي النتائج: <b className="text-foreground">{fmtNum(data?.total ?? 0)}</b></div>
 
       {/* Mobile: card view */}
       {data && data.items.length > 0 && (
@@ -416,13 +417,17 @@ export function ShipmentsModule() {
         </CardContent></Card>
       )}
 
-      {/* Pagination */}
-      {data && data.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>السابق</Button>
-          <span className="text-xs text-muted-foreground tnum">{page} / {data.totalPages}</span>
-          <Button variant="outline" size="sm" disabled={page >= data.totalPages} onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}>التالي</Button>
-        </div>
+      {/* Pagination — unified server-side pagination bar */}
+      {data && (
+        <DataTablePagination
+          currentPage={data.page}
+          totalPages={data.totalPages}
+          totalItems={data.total}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
+          itemLabel="شحنة"
+        />
       )}
 
       {/* Add dialog */}
