@@ -3,8 +3,11 @@
 import * as React from 'react'
 import useSWR from 'swr'
 import { Calendar, X } from 'lucide-react'
-import { Sidebar, MobileNav, MobileHeader, type ModuleKey, MODULES } from '@/components/dashboard/sidebar'
+import { Sidebar, MobileNav, MobileHeader, type ModuleKey, MODULES, MODULE_PERMISSIONS, visibleModules } from '@/components/dashboard/sidebar'
 import { DarkModeToggle } from '@/components/dashboard/dark-mode-toggle'
+import { UserMenu } from '@/components/dashboard/user-menu'
+import { AuthProvider, useAuth } from '@/components/dashboard/auth-provider'
+import { LoginScreen, AuthSplash } from '@/components/dashboard/login-screen'
 import { DashboardModule } from '@/components/dashboard/modules/dashboard'
 import { ShipmentsModule } from '@/components/dashboard/modules/shipments'
 import { PartiesModule } from '@/components/dashboard/modules/parties'
@@ -15,7 +18,6 @@ import { ReportsModule } from '@/components/dashboard/modules/reports'
 import { ImportModule } from '@/components/dashboard/modules/import-wizard'
 import { UsersModule, RolesModule, SettingsModule, AuditModule } from '@/components/dashboard/modules/system'
 import { LookupsModule } from '@/components/dashboard/modules/lookups'
-import { Button } from '@/components/ui/button'
 import { fetcher } from '@/lib/api'
 
 const fetcherCounts = fetcher
@@ -33,19 +35,30 @@ const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
   freight: { title: 'أسعار النولون', subtitle: 'جدول أسعار المناطق' },
   accounts: { title: 'شجرة الحسابات', subtitle: 'دليل الحسابات والأرصدة' },
   journal: { title: 'القيود اليومية', subtitle: 'القيد المزدوج والترحيل' },
-  vouchers: { title: 'سندات القبض/الصرف', subtitle: 'التحصيل والسداد' },
+  vouchers: { title: 'الأذونات (قبض/صرف)', subtitle: 'تسجيل الأذونات وطباعتها وعدّاداتها' },
   reports: { title: 'التقارير', subtitle: 'تقارير شاملة قابلة للتصدير' },
   import: { title: 'استيراد البيانات', subtitle: 'معالج استيراد Excel' },
-  users: { title: 'المستخدمون', subtitle: 'المستخدمون والأدوار' },
+  users: { title: 'المستخدمون', subtitle: 'حسابات المستخدمين وكلمات المرور' },
+  roles: { title: 'الصلاحيات والأدوار', subtitle: 'مصفوفة صلاحيات الوصول للوحدات' },
   settings: { title: 'الإعدادات', subtitle: 'إعدادات النظام وتعريفات الأعمدة' },
-  audit: { title: 'سجل التدقيق', subtitle: 'سجل عمليات النظام' },
+  audit: { title: 'سجل التدقيق', subtitle: 'سجل عمليات النظام والدخول والخروج' },
   lookups: { title: 'القوائم المنسدلة', subtitle: 'إدارة قوائم النظام المنسدلة' },
 }
 
-export default function Page() {
+function DashboardShell() {
+  const { user, logout, has } = useAuth()
   const [tab, setTab] = React.useState<ModuleKey>('overview')
   const [from, setFrom] = React.useState('')
   const [to, setTo] = React.useState('')
+
+  // إعادة توجيه تلقائية إذا فقد المستخدم صلاحية التبويب الحالي
+  React.useEffect(() => {
+    if (!user) return
+    if (!has(MODULE_PERMISSIONS[tab])) {
+      const first = visibleModules(user.permissions)[0]
+      if (first) setTab(first.key)
+    }
+  }, [user, tab, has])
 
   const { data: statsData } = useSWR<any>('/api/stats', fetcherCounts, { refreshInterval: 0 })
   const { data: freightData } = useSWR<any>('/api/freight', fetcherCounts, { refreshInterval: 0 })
@@ -87,7 +100,7 @@ export default function Page() {
     <div className="min-h-screen flex flex-col bg-background" dir="rtl">
       <MobileHeader />
       <div className="flex flex-1 min-h-0">
-        <Sidebar active={tab} onChange={setTab} counts={counts} />
+        <Sidebar active={tab} onChange={setTab} counts={counts} permissions={user?.permissions} user={user} onLogout={logout} />
         <main className="flex-1 min-w-0 flex flex-col pb-20 md:pb-0">
           <header className="h-16 px-6 bg-white dark:bg-slate-900 border-b border-slate-250 dark:border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-3.5">
@@ -110,7 +123,7 @@ export default function Page() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {tab === 'overview' && (
-                <div className="flex items-center gap-1.5 bg-card border border-border rounded-xl p-1 px-2 min-w-0">
+                <div className="hidden lg:flex items-center gap-1.5 bg-card border border-border rounded-xl p-1 px-2 min-w-0">
                   <Calendar className="size-4 text-muted-foreground shrink-0" />
                   <input
                     type="date"
@@ -136,6 +149,7 @@ export default function Page() {
                 </div>
               )}
               <DarkModeToggle />
+              <UserMenu />
             </div>
           </header>
           <div className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 w-full mx-auto max-w-[1600px]">
@@ -156,6 +170,7 @@ export default function Page() {
               {tab === 'reports' && <ReportsModule />}
               {tab === 'import' && <ImportModule />}
               {tab === 'users' && <UsersModule />}
+              {tab === 'roles' && <RolesModule />}
               {tab === 'lookups' && <LookupsModule />}
               {tab === 'settings' && <SettingsModule />}
               {tab === 'audit' && <AuditModule />}
@@ -163,7 +178,22 @@ export default function Page() {
           </div>
         </main>
       </div>
-      <MobileNav active={tab} onChange={setTab} />
+      <MobileNav active={tab} onChange={setTab} permissions={user?.permissions} />
     </div>
+  )
+}
+
+function Gate() {
+  const { user, loading } = useAuth()
+  if (loading) return <AuthSplash />
+  if (!user) return <LoginScreen />
+  return <DashboardShell />
+}
+
+export default function Page() {
+  return (
+    <AuthProvider>
+      <Gate />
+    </AuthProvider>
   )
 }

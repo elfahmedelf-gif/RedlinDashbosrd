@@ -6,6 +6,7 @@
 // ============================================================================
 
 import mockJson from '../../mock-data.json'
+import type { SessionUser } from './permissions'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -20,6 +21,20 @@ let idSeq = 0
 function uid(prefix = 'mock'): string {
   idSeq += 1
   return `${prefix}-${Date.now().toString(36)}-${idSeq.toString(36)}`
+}
+
+/** Demo-grade deterministic password hash (sync, no deps) — suitable for the in-memory mock system. */
+export function hashPassword(pwd: string): string {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57
+  const s = `shipping::${pwd}::v1`
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36) + '.' + (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36)
 }
 
 /** Convert epoch-millis numbers to ISO strings so date formatters work. */
@@ -211,6 +226,49 @@ function buildDB() {
     }
   })
 
+  // ---- Seed: roles normalization + defaults ----
+  const parsePerms = (r: any): string[] => {
+    if (Array.isArray(r?.permissions)) return r.permissions
+    try { const arr = JSON.parse(String(r?.permissions ?? '[]')); return Array.isArray(arr) ? arr : [] } catch { return [] }
+  }
+  const now0 = '2026-09-01T09:00:00.000Z'
+  const ensureRole = (name: string, label: string, permissions: string[]) => {
+    let role = db.roles.find((r: any) => r.name === name)
+    if (!role) {
+      role = { id: `seed-role-${name}`, name, label, permissions: JSON.stringify(permissions), createdAt: now0 }
+      db.roles.push(role)
+    } else {
+      role.label = role.label || label
+    }
+    return role
+  }
+  ensureRole('admin', 'مدير النظام', ['*'])
+  ensureRole('finance_manager', 'مدير مالي', ['accounting.*', 'reports.*', 'shipments.read', 'parties.*', 'audit.view', 'dashboard.view'])
+  ensureRole('branch_manager', 'مدير فرع', ['shipments.*', 'parties.*', 'inventory.*', 'branch.read', 'dashboard.view'])
+  ensureRole('operations', 'موظف عمليات', ['shipments.view', 'shipments.create', 'shipments.edit', 'shipments.status', 'shipments.assign', 'shipments.print', 'shipments.export', 'parties.view', 'inventory.view', 'accounting.vouchers', 'accounting.vouchers.create', 'dashboard.view'])
+  ensureRole('viewer', 'عارض (مشاهدة فقط)', ['dashboard.view', 'shipments.view', 'parties.view', 'inventory.view', 'accounting.view', 'reports.view'])
+  // توحيد الصلاحيات كمصفوفات
+  db.roles.forEach((r: any) => { r.permissions = parsePerms(r) })
+
+  // ---- Seed: users with credentials ----
+  const ensureUser = (username: string, name: string, password: string, roleName: string) => {
+    const role = db.roles.find((r: any) => r.name === roleName)
+    let u = db.users.find((x: any) => x.username === username)
+    if (!u) {
+      u = { id: `seed-user-${username}`, username, name, email: null, phone: null, branchId: mainBranch?.id ?? null, active: 1, passwordHash: hashPassword(password), lastLoginAt: null, createdAt: now0 }
+      db.users.push(u)
+    } else {
+      u.passwordHash = hashPassword(password)
+      u.active = u.active ?? 1
+    }
+    u.roleId = role?.id ?? u.roleId ?? null
+    return u
+  }
+  ensureUser('admin', 'مدير النظام', 'admin123', 'admin')
+  ensureUser('finance', 'حسن — المدير المالي', 'fin123', 'finance_manager')
+  ensureUser('ops', 'محمود — العمليات', 'ops123', 'branch_manager')
+  ensureUser('viewer', 'سارة — مشاهدة فقط', 'view123', 'viewer')
+
   // ---- Seed: extra audit entries (in addition to the import record) ----
   const extraAudit: any[] = [
     { action: 'create', entity: 'journal_entry', entityId: db.journal[0]?.id, notes: 'قيد افتتاحي رأس المال', day: 1, userName: 'admin' },
@@ -232,7 +290,14 @@ function buildDB() {
   return db
 }
 
-const db = buildDB()
+const db = buildDB() as any
+
+// تسلسل أرقام الأذونات (يمنع تكرار الأرقام بعد الحذف)
+db.seq = { voucher: db.vouchers.length }
+function nextVoucherNo(): string {
+  db.seq.voucher += 1
+  return `V-${String(db.seq.voucher).padStart(4, '0')}`
+}
 
 // ---------------------------------------------------------------------------
 // Lookup maps + enrichment
@@ -463,8 +528,25 @@ function handleGet(url: string): any {
   if (p === '/api/warehouses') {
     return { items: db.warehouses.map((w: any) => ({ ...w, branch: w.branchId && branchById.get(w.branchId) ? { id: w.branchId, name: branchById.get(w.branchId).name } : null })), total: db.warehouses.length }
   }
-  if (p === '/api/users') return { items: db.users, total: db.users.length }
-  if (p === '/api/roles') return { items: db.roles, total: db.roles.length }
+  if (p === '/api/users') {
+    return {
+      items: db.users.map((u: any) => {
+        const role = db.roles.find((r: any) => r.id === u.roleId) ?? null
+        return { ...u, passwordHash: undefined, role: role ? { id: role.id, name: role.name, label: role.label } : null }
+      }),
+      total: db.users.length,
+    }
+  }
+  if (p === '/api/roles') {
+    return {
+      items: db.roles.map((r: any) => ({
+        ...r,
+        permissions: Array.isArray(r.permissions) ? r.permissions : [],
+        _count: { users: db.users.filter((u: any) => u.roleId === r.id).length },
+      })),
+      total: db.roles.length,
+    }
+  }
   if (p === '/api/settings') return { items: db.settings, total: db.settings.length }
 
   // ----- audit -----
@@ -660,6 +742,7 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
       date: b.date ? new Date(b.date).toISOString() : nowISO,
       notes: b.notes ?? null, createdAt: nowISO, updatedAt: nowISO,
       statusHistory: [{ status: 'new', notes: 'إنشاء شحنة جديدة', date: nowISO, userName: b.userName ?? 'admin' }],
+      createdBy: b.userName ?? 'admin',
     }
     db.shipments.unshift(s)
     addAudit('create', 'shipment', s.id, `إنشاء شحنة ${nextNo}`, b.userName)
@@ -729,7 +812,7 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
     if (s.customerId && customerAmount > 0) {
       const v1: any = {
         id: uid('vc'),
-        voucherNo: `V-${String(db.vouchers.length + 1).padStart(4, '0')}`,
+        voucherNo: nextVoucherNo(),
         type: 'receipt', date: nowISO, partyId: s.customerId, party: partyRef(s.customerId),
         amount: customerAmount, description: `تسوية COD — تحصيل من العميل ضد الشحنة ${s.shipmentNo}`,
         accountName: 'الصندوق', journalEntryNo: `JE-${String(db.journal.length + 1).padStart(4, '0')}`,
@@ -755,7 +838,7 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
     if (s.contractorId && contractorAmount > 0) {
       const v2: any = {
         id: uid('vc'),
-        voucherNo: `V-${String(db.vouchers.length + 1).padStart(4, '0')}`,
+        voucherNo: nextVoucherNo(),
         type: 'payment', date: nowISO, partyId: s.contractorId, party: partyRef(s.contractorId),
         amount: contractorAmount, description: `تسوية COD — صرف للمقاول مقابل نقل الشحنة ${s.shipmentNo}`,
         accountName: 'الصندوق', journalEntryNo: `JE-${String(db.journal.length + 1).padStart(4, '0')}`,
@@ -960,7 +1043,7 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
     const shipmentId = b.shipmentId || null
     const linkedShipment = shipmentId ? db.shipments.find((s: any) => s.id === shipmentId) : null
     const v = {
-      id: uid('vc'), voucherNo: `V-${String(db.vouchers.length + 1).padStart(4, '0')}`,
+      id: uid('vc'), voucherNo: nextVoucherNo(),
       type: b.type ?? 'receipt', date: b.date ? new Date(b.date).toISOString() : nowISO,
       partyId: b.partyId || null, party: partyRef(b.partyId || null),
       amount: Number(b.amount) || 0, description: b.description ?? null,
@@ -1039,10 +1122,42 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
     if (method === 'DELETE') { db.lookups = db.lookups.filter((x: any) => x.id !== m[1]); addAudit('delete', 'setting', m[1], `حذف قيمة قائمة: ${lk.label}`, b?.userName); return null }
   }
 
+  // ---- roles ----
+  if (p === '/api/roles' && method === 'POST') {
+    if (!String(b.name ?? '').trim()) throw new Error('اسم الدور مطلوب')
+    if (db.roles.some((r: any) => r.name === b.name)) throw new Error('اسم الدور موجود بالفعل')
+    const role = { id: uid('role'), name: String(b.name).trim(), label: b.label || b.name, permissions: Array.isArray(b.permissions) ? b.permissions : [], createdAt: nowISO }
+    db.roles.push(role)
+    addAudit('create', 'role', role.id, `إضافة دور: ${role.label} (${Array.isArray(b.permissions) ? b.permissions.length : 0} صلاحية)`, b.userName)
+    return { id: role.id }
+  }
+  m = p.match(/^\/api\/roles\/([^/]+)$/)
+  if (m) {
+    const role = findIn(db.roles, m[1])
+    if (!role) throw new Error('الدور غير موجود')
+    if (method === 'PATCH') {
+      if (role.name === 'admin' && b.permissions !== undefined) throw new Error('صلاحيات دور مدير النظام ثابتة (كل الصلاحيات)')
+      if (b.name && b.name !== role.name && db.roles.some((r: any) => r.name === b.name)) throw new Error('اسم الدور موجود بالفعل')
+      Object.assign(role, { ...b, id: role.id, name: b.name || role.name, permissions: Array.isArray(b.permissions) ? b.permissions : role.permissions })
+      addAudit('update', 'role', role.id, `تعديل دور: ${role.label} (${Array.isArray(role.permissions) ? role.permissions.length : 0} صلاحية)`, b.userName)
+      return { ok: true }
+    }
+    if (method === 'DELETE') {
+      if (role.name === 'admin') throw new Error('لا يمكن حذف دور مدير النظام')
+      if (db.users.some((u: any) => u.roleId === role.id)) throw new Error('لا يمكن حذف دور مرتبط بمستخدمين — انقل المستخدمين لدور آخر أولًا')
+      db.roles = db.roles.filter((r: any) => r.id !== m[1])
+      addAudit('delete', 'role', m[1], `حذف دور: ${role.label}`, b.userName)
+      return null
+    }
+  }
+
   // ---- users ----
   if (p === '/api/users' && method === 'POST') {
-    const usr = { id: uid('usr'), username: b.username, name: b.name ?? b.username, email: b.email ?? null, phone: b.phone ?? null, branchId: b.branchId || null, roleId: b.roleId || null, active: 1, createdAt: nowISO, password: undefined }
-    if (db.users.some((x: any) => x.username === usr.username)) throw new Error('اسم المستخدم موجود بالفعل')
+    const username = String(b.username ?? '').trim()
+    if (!username) throw new Error('اسم المستخدم مطلوب')
+    if (String(b.password ?? '').length < 4) throw new Error('كلمة المرور يجب أن تكون 4 أحرف على الأقل')
+    if (db.users.some((x: any) => x.username === username)) throw new Error('اسم المستخدم موجود بالفعل')
+    const usr = { id: uid('usr'), username, name: b.name ?? username, email: b.email ?? null, phone: b.phone ?? null, branchId: b.branchId || null, roleId: b.roleId || null, active: b.active === false ? 0 : 1, passwordHash: hashPassword(String(b.password)), lastLoginAt: null, createdAt: nowISO }
     db.users.push(usr)
     addAudit('create', 'user', usr.id, `إضافة مستخدم: ${usr.username}`, b.userName)
     return { id: usr.id }
@@ -1051,8 +1166,28 @@ function handleMutation(method: 'POST' | 'PATCH' | 'DELETE', url: string, body: 
   if (m) {
     const usr = findIn(db.users, m[1])
     if (!usr) throw new Error('المستخدم غير موجود')
-    if (method === 'PATCH') { Object.assign(usr, { ...b, id: usr.id, password: undefined }); addAudit('update', 'user', usr.id, `تعديل مستخدم: ${usr.username}`, b.userName); return { ok: true } }
-    if (method === 'DELETE') { db.users = db.users.filter((x: any) => x.id !== m[1]); addAudit('delete', 'user', m[1], `حذف مستخدم: ${usr.username}`, b.userName); return null }
+    if (method === 'PATCH') {
+      const { password, ...rest } = b
+      if (password != null && password !== '') {
+        if (String(password).length < 4) throw new Error('كلمة المرور قصيرة جدًا (4 أحرف على الأقل)')
+        usr.passwordHash = hashPassword(String(password))
+      }
+      if (rest.username && rest.username !== usr.username) {
+        if (db.users.some((x: any) => x.username === rest.username)) throw new Error('اسم المستخدم موجود بالفعل')
+      }
+      if (usr.username === 'admin' && rest.active === false) throw new Error('لا يمكن إيقاف حساب مدير النظام الأساسي')
+      delete rest.roleIds
+      Object.assign(usr, { ...rest, id: usr.id })
+      addAudit('update', 'user', usr.id, `تعديل مستخدم: ${usr.username}${password ? ' — تغيير كلمة المرور' : ''}`, b.userName)
+      return { ok: true }
+    }
+    if (method === 'DELETE') {
+      if (usr.username === 'admin') throw new Error('لا يمكن حذف حساب مدير النظام الأساسي')
+      if (usr.id === b?.currentUserId) throw new Error('لا يمكن حذف حسابك الحالي')
+      db.users = db.users.filter((x: any) => x.id !== m[1])
+      addAudit('delete', 'user', m[1], `حذف مستخدم: ${usr.username}`, b.userName)
+      return null
+    }
   }
 
   // ---- settings ----
@@ -1108,4 +1243,54 @@ export async function apiPatch(url: string, body?: any) {
 
 export async function apiDelete(url: string) {
   return handleMutation('DELETE', url, undefined)
+}
+
+// ---------------------------------------------------------------------------
+// المصادقة — تسجيل الدخول/الخروج والتحقق من الجلسة
+// ---------------------------------------------------------------------------
+export function authLogin(username: string, password: string): SessionUser {
+  const uname = String(username ?? '').trim()
+  const u = db.users.find((x: any) => x.username === uname)
+  if (!u) throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة')
+  if (u.passwordHash !== hashPassword(String(password ?? ''))) throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة')
+  if (!u.active) throw new Error('هذا الحساب موقوف — راجع مدير النظام')
+  const role = db.roles.find((r: any) => r.id === u.roleId) ?? null
+  const perms: string[] = role ? (Array.isArray(role.permissions) ? role.permissions : []) : []
+  if (!perms.length && role?.name === 'admin') perms.push('*')
+  u.lastLoginAt = new Date().toISOString()
+  addAudit('login', 'user', u.id, `تسجيل دخول المستخدم ${u.name} (${u.username})`, u.username)
+  return {
+    userId: u.id,
+    username: u.username,
+    name: u.name,
+    roleId: role?.id ?? null,
+    roleName: role?.name ?? null,
+    roleLabel: role?.label ?? null,
+    permissions: perms,
+    loginAt: u.lastLoginAt,
+  }
+}
+
+/** التحقق من صلاحية الجلسة المحفوظة — يُلغي تلقائيًا إذا حُذف المستخدم أو أُوقف */
+export function authValidate(session: any): SessionUser | null {
+  if (!session?.userId || !session?.loginAt) return null
+  const u = db.users.find((x: any) => x.id === session.userId)
+  if (!u || !u.active) return null
+  const role = db.roles.find((r: any) => r.id === u.roleId) ?? null
+  const perms: string[] = role ? (Array.isArray(role.permissions) ? role.permissions : []) : []
+  if (!perms.length && role?.name === 'admin') perms.push('*')
+  return {
+    userId: u.id,
+    username: u.username,
+    name: u.name,
+    roleId: role?.id ?? null,
+    roleName: role?.name ?? null,
+    roleLabel: role?.label ?? null,
+    permissions: perms,
+    loginAt: session.loginAt,
+  }
+}
+
+export function authLogout(user: SessionUser | null) {
+  if (user) addAudit('logout', 'user', user.userId, `تسجيل خروج المستخدم ${user.name} (${user.username})`, user.username)
 }

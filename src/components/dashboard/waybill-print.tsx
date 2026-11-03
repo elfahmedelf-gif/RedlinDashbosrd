@@ -76,7 +76,7 @@ export function WaybillPrint({ shipment, open, onOpenChange }: WaybillProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto waybill-dialog" dir="rtl">
+      <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto waybill-dialog" dir="rtl" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>طباعة بوليصة الشحن — {shipment.shipmentNo}</DialogTitle>
         </DialogHeader>

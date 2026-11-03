@@ -1,22 +1,169 @@
-▲ Next.js 16.1.3 (Turbopack)
+▲ Next.js 16.4.2 (Turbopack)
 - Local:         http://localhost:3000
-- Network:       http://21.0.21.226:3000
+- Network:       http://21.0.3.213:3000
 - Environments: .env
+✓ Ready in 300ms
+✓ Running next.config.ts took 38ms
 
-✓ Starting...
-Attention: Next.js now collects completely anonymous telemetry regarding usage.
-This information is used to shape Next.js' roadmap and prioritize features.
-You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
-https://nextjs.org/telemetry
-
-✓ Ready in 926ms
 ○ Compiling / ...
- GET / 200 in 8.5s (compile: 8.2s, render: 310ms)
- GET / 200 in 52ms (compile: 4ms, render: 48ms)
- GET / 200 in 43ms (compile: 2ms, render: 41ms)
- GET / 200 in 35ms (compile: 2ms, render: 33ms)
- GET / 200 in 259ms (compile: 2ms, render: 257ms)
- GET / 200 in 60ms (compile: 4ms, render: 56ms)
- GET / 200 in 54ms (compile: 3ms, render: 51ms)
- GET / 200 in 53ms (compile: 3ms, render: 51ms)
- GET / 200 in 52ms (compile: 3ms, render: 49ms)
+ GET / 200 in 385ms (next.js: 116ms, application-code: 269ms)
+ GET / 200 in 67ms (next.js: 1.6ms, application-code: 66ms)
+ GET / 200 in 59ms (next.js: 1.6ms, application-code: 58ms)
+ GET / 200 in 53ms (next.js: 1.1ms, application-code: 51ms)
+ GET / 200 in 50ms (next.js: 1.2ms, application-code: 49ms)
+✓ Compiled in 426ms
+⚠ Blocked cross-origin request to Next.js dev resource /__nextjs_font/geist-latin.woff2 from "preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+ GET / 200 in 57ms (next.js: 1.7ms, application-code: 56ms)
+ GET / 200 in 53ms (next.js: 1.3ms, application-code: 52ms)
+✓ Compiled in 208ms
+✓ Compiled in 204ms
+✓ Compiled in 221ms
+✓ Compiled in 500ms
+⨯ ReferenceError: Shield is not defined
+    at Module.eval (src/components/dashboard/sidebar.tsx:46:54)
+    at module evaluation (src/app/page.tsx:6:1)
+  44 |   { key: 'import', label: 'استيراد البيانات', icon: Upload, desc: 'استيراد Excel', group: 'system' },
+  45 |   { key: 'users', label: 'المستخدمون', icon: UserCircle, desc: 'حسابات المستخدمين', group: 'system' },
+> 46 |   { key: 'roles', label: 'الصلاحيات والأدوار', icon: Shield, desc: 'مصفوفة الصلاحيات', group: 'system' },
+     |                                         ^
+  47 |   { key: 'lookups', label: 'القوائم المنسدلة', icon: ListChecks, desc: 'إدارة قوائم النظام', group: 'system' },
+  48 |   { key: 'settings', label: 'الإعدادات', icon: Settings, desc: 'إعدادات النظام', group: 'system' },
+  49 |   { key: 'audit', label: 'سجل التدقيق', icon: History, desc: 'سجل العمليات', group: 'system' }, {
+  digest: '3473865676'
+}
+ GET / 500 in 544ms (next.js: 1.6ms, application-code: 542ms)
+[browser] Encountered a script tag while rendering React component. Scripts inside React components are never executed when rendering on the client. Consider using template tag instead (https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template). 
+[browser] Uncaught ReferenceError: Shield is not defined
+    at module evaluation (src/components/dashboard/sidebar.tsx:46:54)
+    at module evaluation (src/app/page.tsx:6:1)
+  44 |   { key: 'import', label: 'استيراد البيانات', icon: Upload, desc: 'استيراد Excel', group: 'system' },
+  45 |   { key: 'users', label: 'المستخدمون', icon: UserCircle, desc: 'حسابات المستخدمين', group: 'system' },
+> 46 |   { key: 'roles', label: 'الصلاحيات والأدوار', icon: Shield, desc: 'مصفوفة الصلاحيات', group: 'system' },
+     |                                         ^
+  47 |   { key: 'lookups', label: 'القوائم المنسدلة', icon: ListChecks, desc: 'إدارة قوائم النظام', group: 'system' },
+  48 |   { key: 'settings', label: 'الإعدادات', icon: Settings, desc: 'إعدادات النظام', group: 'system' },
+  49 |   { key: 'audit', label: 'سجل التدقيق', icon: History, desc: 'سجل العمليات', group: 'system' },
+⚠ Blocked cross-origin request to Next.js dev resource /__nextjs_original-stack-frames from "preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⚠ Blocked cross-origin request to Next.js dev resource /__nextjs_font/geist-mono-latin.woff2 from "preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⨯ ReferenceError: Shield is not defined
+    at Module.eval (src/components/dashboard/sidebar.tsx:46:54)
+    at module evaluation (src/app/page.tsx:6:1)
+  44 |   { key: 'import', label: 'استيراد البيانات', icon: Upload, desc: 'استيراد Excel', group: 'system' },
+  45 |   { key: 'users', label: 'المستخدمون', icon: UserCircle, desc: 'حسابات المستخدمين', group: 'system' },
+> 46 |   { key: 'roles', label: 'الصلاحيات والأدوار', icon: Shield, desc: 'مصفوفة الصلاحيات', group: 'system' },
+     |                                         ^
+  47 |   { key: 'lookups', label: 'القوائم المنسدلة', icon: ListChecks, desc: 'إدارة قوائم النظام', group: 'system' },
+  48 |   { key: 'settings', label: 'الإعدادات', icon: Settings, desc: 'إعدادات النظام', group: 'system' },
+  49 |   { key: 'audit', label: 'سجل التدقيق', icon: History, desc: 'سجل العمليات', group: 'system' }, {
+  digest: '3473865676'
+}
+ GET / 500 in 341ms (next.js: 5ms, application-code: 336ms)
+[browser] Encountered a script tag while rendering React component. Scripts inside React components are never executed when rendering on the client. Consider using template tag instead (https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template). 
+[browser] Uncaught ReferenceError: Shield is not defined
+    at module evaluation (src/components/dashboard/sidebar.tsx:46:54)
+    at module evaluation (src/app/page.tsx:6:1)
+  44 |   { key: 'import', label: 'استيراد البيانات', icon: Upload, desc: 'استيراد Excel', group: 'system' },
+  45 |   { key: 'users', label: 'المستخدمون', icon: UserCircle, desc: 'حسابات المستخدمين', group: 'system' },
+> 46 |   { key: 'roles', label: 'الصلاحيات والأدوار', icon: Shield, desc: 'مصفوفة الصلاحيات', group: 'system' },
+     |                                         ^
+  47 |   { key: 'lookups', label: 'القوائم المنسدلة', icon: ListChecks, desc: 'إدارة قوائم النظام', group: 'system' },
+  48 |   { key: 'settings', label: 'الإعدادات', icon: Settings, desc: 'إعدادات النظام', group: 'system' },
+  49 |   { key: 'audit', label: 'سجل التدقيق', icon: History, desc: 'سجل العمليات', group: 'system' },
+ GET / 200 in 58ms (next.js: 1.9ms, application-code: 56ms)
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+[browser] In HTML, <button> cannot be a descendant of <button>.
+This will cause a hydration error.
+
+  ...
+    <Presence present={true}>
+      <FocusScope asChild={true} loop={true} trapped={true} onMountAutoFocus={undefined} ...>
+        <Primitive.div tabIndex={-1} asChild={true} ref={function} ...>
+          <Primitive.div.Slot tabIndex={-1} onKeyDown={function FocusScope.useCallback[handleKeyDown]} ref={function}>
+            <Primitive.div.SlotClone tabIndex={-1} onKeyDown={function FocusScope.useCallback[handleKeyDown]} ...>
+              <DismissableLayer role="dialog" id="radix-_r_ki_" aria-describedby="radix-_r_kk_" ...>
+                <Primitive.div role="dialog" id="radix-_r_ki_" aria-describedby="radix-_r_kk_" ...>
+                  <div role="dialog" id="radix-_r_ki_" aria-describedby="radix-_r_kk_" aria-labelledby="radix-_r_kj_" ...>
+                    <DialogHeader>
+                    <div>
+                    <div>
+                    <PermissionMatrix selected={[...]} onChange={function onChange}>
+                      <div className="space-y-3 ...">
+                        <div className="rounded-xl...">
+                          <div className="flex items...">
+>                           <button
+>                             type="button"
+>                             onClick={function onClick}
+>                             className="flex items-center gap-2 text-xs font-bold hover:text-primary transition-colors"
+>                           >
+                              ...
+                                <CheckboxTrigger data-slot="checkbox" className="peer borde..." ...>
+                                  <Primitive.button type="button" role="checkbox" aria-checked={false} ...>
+>                                   <button
+>                                     type="button"
+>                                     role="checkbox"
+>                                     aria-checked={false}
+>                                     aria-required={undefined}
+>                                     data-state="unchecked"
+>                                     data-disabled={undefined}
+>                                     disabled={undefined}
+>                                     value="on"
+>                                     data-slot="checkbox"
+>                                     className="peer border-input dark:bg-input/30 data-[state=checked]:bg-primary da..."
+>                                     aria-label="تحديد كل صلاحيات الرئيسية"
+>                                     onKeyDown={function handleEvent}
+>                                     onClick={function handleEvent}
+>                                     ref={function}
+>                                   >
+                                ...
+                              ...
+                            ...
+                          ...
+                        ...
+                    ...
+                    ...
+      ...
+ 
+[browser] <button> cannot contain a nested <button>.
+See this log for the ancestor stack trace. 
+✓ Compiled in 201ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET / 200 in 53ms (next.js: 1.5ms, application-code: 51ms)
+✓ Compiled in 167ms
+✓ Compiled in 159ms
+✓ Compiled in 150ms
+ GET / 200 in 42ms (next.js: 1.2ms, application-code: 41ms)
+ GET / 200 in 37ms (next.js: 1.9ms, application-code: 35ms)
+ GET / 200 in 33ms (next.js: 1.1ms, application-code: 32ms)
+ GET / 200 in 32ms (next.js: 1.0ms, application-code: 31ms)
+ GET / 200 in 30ms (next.js: 0.9ms, application-code: 29ms)
+ GET / 200 in 28ms (next.js: 1.0ms, application-code: 27ms)

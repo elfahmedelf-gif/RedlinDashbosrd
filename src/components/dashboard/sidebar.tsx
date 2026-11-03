@@ -6,15 +6,17 @@ import {
   Warehouse as WarehouseIcon, Boxes, ArrowRightLeft, Receipt, BookOpen,
   FileText, Landmark, FileBarChart, Upload, UserCircle, Settings, History,
   ChevronRight, ChevronLeft, ChevronDown, PanelRightClose, PanelRightOpen,
-  LogOut, ListChecks, type LucideIcon,
+  LogOut, ListChecks, Shield, type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { matchPermission } from '@/lib/permissions'
+import type { SessionUser } from '@/lib/permissions'
 
 export type ModuleKey =
   | 'overview' | 'shipments' | 'customers' | 'contractors' | 'suppliers'
   | 'branches' | 'warehouses' | 'inventory' | 'movements' | 'freight'
   | 'accounts' | 'journal' | 'vouchers' | 'reports' | 'import'
-  | 'users' | 'lookups' | 'settings' | 'audit'
+  | 'users' | 'roles' | 'lookups' | 'settings' | 'audit'
 
 export interface ModuleDef {
   key: ModuleKey
@@ -37,14 +39,44 @@ export const MODULES: ModuleDef[] = [
   { key: 'freight', label: 'أسعار النولون', icon: Receipt, desc: 'جدول الأسعار', group: 'inventory' },
   { key: 'accounts', label: 'شجرة الحسابات', icon: BookOpen, desc: 'دليل الحسابات', group: 'accounting' },
   { key: 'journal', label: 'القيود اليومية', icon: FileText, desc: 'القيد المزدوج', group: 'accounting' },
-  { key: 'vouchers', label: 'سندات القبض/الصرف', icon: Landmark, desc: 'السندات', group: 'accounting' },
+  { key: 'vouchers', label: 'الأذونات (قبض/صرف)', icon: Landmark, desc: 'سندات القبض والصرف', group: 'accounting' },
   { key: 'reports', label: 'التقارير', icon: FileBarChart, desc: 'التقارير', group: 'reports' },
   { key: 'import', label: 'استيراد البيانات', icon: Upload, desc: 'استيراد Excel', group: 'system' },
-  { key: 'users', label: 'المستخدمون', icon: UserCircle, desc: 'المستخدمون والأدوار', group: 'system' },
+  { key: 'users', label: 'المستخدمون', icon: UserCircle, desc: 'حسابات المستخدمين', group: 'system' },
+  { key: 'roles', label: 'الصلاحيات والأدوار', icon: Shield, desc: 'مصفوفة الصلاحيات', group: 'system' },
   { key: 'lookups', label: 'القوائم المنسدلة', icon: ListChecks, desc: 'إدارة قوائم النظام', group: 'system' },
   { key: 'settings', label: 'الإعدادات', icon: Settings, desc: 'إعدادات النظام', group: 'system' },
   { key: 'audit', label: 'سجل التدقيق', icon: History, desc: 'سجل العمليات', group: 'system' },
 ]
+
+/** الصلاحية المطلوبة لكل وحدة */
+export const MODULE_PERMISSIONS: Record<ModuleKey, string> = {
+  overview: 'dashboard.view',
+  shipments: 'shipments.view',
+  customers: 'parties.view',
+  contractors: 'parties.view',
+  suppliers: 'parties.view',
+  branches: 'structure.view',
+  warehouses: 'structure.view',
+  inventory: 'inventory.view',
+  movements: 'inventory.view',
+  freight: 'inventory.view',
+  accounts: 'accounting.view',
+  journal: 'accounting.journal',
+  vouchers: 'accounting.vouchers',
+  reports: 'reports.view',
+  import: 'import.manage',
+  users: 'users.manage',
+  roles: 'roles.manage',
+  lookups: 'settings.manage',
+  settings: 'settings.manage',
+  audit: 'audit.view',
+}
+
+/** الوحدات المسموحة حسب صلاحيات المستخدم */
+export function visibleModules(permissions: string[] | null | undefined): ModuleDef[] {
+  return MODULES.filter((m) => matchPermission(permissions, MODULE_PERMISSIONS[m.key]))
+}
 
 const GROUP_LABELS: Record<string, string> = {
   main: 'العمليات الرئيسية',
@@ -71,9 +103,13 @@ interface SidebarProps {
   active: ModuleKey
   onChange: (k: ModuleKey) => void
   counts: Partial<Record<ModuleKey, number>>
+  permissions?: string[] | null
+  user?: SessionUser | null
+  onLogout?: () => void
 }
 
-export function Sidebar({ active, onChange, counts }: SidebarProps) {
+export function Sidebar({ active, onChange, counts, permissions, user, onLogout }: SidebarProps) {
+  const mods = React.useMemo(() => visibleModules(permissions), [permissions])
 
   // Sidebar collapse state - persisted
   const [collapsed, setCollapsed] = React.useState(false)
@@ -91,17 +127,17 @@ export function Sidebar({ active, onChange, counts }: SidebarProps) {
 
   const groups = React.useMemo(() => {
     const m = new Map<string, ModuleDef[]>()
-    for (const mod of MODULES) {
+    for (const mod of mods) {
       if (!m.has(mod.group)) m.set(mod.group, [])
       m.get(mod.group)!.push(mod)
     }
     return Array.from(m.entries())
-  }, [])
+  }, [mods])
 
   // Which group is the active module in?
   const activeGroup = React.useMemo(
-    () => MODULES.find((m) => m.key === active)?.group ?? null,
-    [active],
+    () => mods.find((m) => m.key === active)?.group ?? null,
+    [active, mods],
   )
 
   // Accordion-style expanded groups: only ONE group open at a time.
@@ -320,17 +356,35 @@ export function Sidebar({ active, onChange, counts }: SidebarProps) {
         })}
       </nav>
 
-      {/* Footer: user info + version (dark mode toggle moved to header) */}
+      {/* Footer: user info + logout */}
       <div className={cn('border-t border-sidebar-border p-2 space-y-1', collapsed && 'flex flex-col items-center')}>
-        {!collapsed && (
-          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-sidebar-accent transition-colors cursor-pointer">
-            <div className="flex items-center justify-center size-7 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-[10px] font-bold shrink-0">م</div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[11px] font-semibold truncate">مدير النظام</div>
-              <div className="text-[10px] text-muted-foreground truncate">admin</div>
+        {!collapsed ? (
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-sidebar-accent transition-colors">
+            <div className="flex items-center justify-center size-7 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-[10px] font-bold shrink-0">
+              {(user?.name || 'م').charAt(0)}
             </div>
-            <LogOut className="size-3.5 text-muted-foreground shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-semibold truncate">{user?.name || 'مستخدم'}</div>
+              <div className="text-[10px] text-muted-foreground truncate">{user?.roleLabel || user?.username || ''}</div>
+            </div>
+            <button
+              onClick={onLogout}
+              title="تسجيل الخروج"
+              aria-label="تسجيل الخروج"
+              className="size-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+            >
+              <LogOut className="size-3.5" />
+            </button>
           </div>
+        ) : (
+          <button
+            onClick={onLogout}
+            title="تسجيل الخروج"
+            aria-label="تسجيل الخروج"
+            className="size-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            <LogOut className="size-4" />
+          </button>
         )}
         {!collapsed && (
           <div className="px-2.5 pt-1 text-[10px] text-muted-foreground/60 leading-relaxed truncate">
@@ -343,9 +397,12 @@ export function Sidebar({ active, onChange, counts }: SidebarProps) {
 }
 
 // Mobile bottom nav (refined) — 4 primary modules + "More" button for the full menu
-export function MobileNav({ active, onChange }: { active: ModuleKey; onChange: (k: ModuleKey) => void }) {
+export function MobileNav({ active, onChange, permissions }: { active: ModuleKey; onChange: (k: ModuleKey) => void; permissions?: string[] | null }) {
   const [open, setOpen] = React.useState(false)
-  const primary: ModuleKey[] = ['overview', 'shipments', 'customers', 'reports']
+  const allowed = React.useMemo(() => visibleModules(permissions), [permissions])
+  const allowedKeys = React.useMemo(() => new Set(allowed.map((m) => m.key)), [allowed])
+  const primary: ModuleKey[] = (['overview', 'shipments', 'customers', 'reports'] as ModuleKey[]).filter((k) => allowedKeys.has(k))
+  const primaryHas = primary.includes(active)
 
   return (
     <>
@@ -379,12 +436,12 @@ export function MobileNav({ active, onChange }: { active: ModuleKey; onChange: (
             onClick={() => setOpen(true)}
             className={cn(
               'flex flex-col items-center gap-1 py-1.5 rounded-xl text-[10px] font-medium transition-all',
-              !primary.includes(active) ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+              !primaryHas ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
             )}
           >
             <span className={cn(
               'flex items-center justify-center size-9 rounded-xl transition-all',
-              !primary.includes(active) && 'bg-primary/10 scale-105',
+              !primaryHas && 'bg-primary/10 scale-105',
             )}>
               <LayoutGrid className="size-5" />
             </span>
@@ -405,11 +462,11 @@ export function MobileNav({ active, onChange }: { active: ModuleKey; onChange: (
                 <ChevronLeft className="size-4" />
               </button>
             </div>
-            {Array.from(new Set(MODULES.map((m) => m.group))).map((g) => (
+            {Array.from(new Set(allowed.map((m) => m.group))).map((g) => (
               <div key={g} className="mb-3">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-bold px-2 mb-1">{GROUP_LABELS[g]}</div>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {MODULES.filter((m) => m.group === g).map((m) => {
+                  {allowed.filter((m) => m.group === g).map((m) => {
                     const Icon = m.icon
                     const isActive = active === m.key
                     return (
