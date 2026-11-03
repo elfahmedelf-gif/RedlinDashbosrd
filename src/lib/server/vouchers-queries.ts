@@ -12,7 +12,7 @@ export function voucherInclude() {
     party: { select: { id: true, name: true } },
     journalEntry: { select: { id: true, entryNo: true } },
     items: { include: { shipment: { include: { customer: { select: { id: true, name: true } } } } } },
-    actions: { orderBy: { at: 'asc' as any } },
+    actions: { orderBy: { at: 'asc' } },
   } satisfies Prisma.OpVoucherInclude
 }
 

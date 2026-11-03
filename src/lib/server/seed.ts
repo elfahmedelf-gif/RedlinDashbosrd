@@ -11,12 +11,35 @@ import { VOUCHER_TYPES } from '../voucher-catalog'
 
 let seedPromise: Promise<void> | null = null
 
-/** يُستدعى من كل مسارات API — يزرع البيانات مرة واحدة فقط */
-export function ensureSeeded(): Promise<void> {
-  seedPromise ??= runSeed().catch((e) => {
-    seedPromise = null
-    throw e
-  })
+/**
+ * يُستدعى من كل مسارات API — يزرع البيانات مرة واحدة فقط.
+ * يستخدم "قفل تهيئة" عبر قيد فريد في قاعدة البيانات نفسها لمنع
+ * تزامن أكثر من نافذة تشغيل (multiple module instances/processes).
+ */
+export async function ensureSeeded(): Promise<void> {
+  if (seedPromise) return seedPromise
+  seedPromise = (async () => {
+    if (await db.party.count() > 0) return
+    // محاولة اقتناء القفل — INSERT فريد: من ينجح يتولى البذر
+    try {
+      await db.seqCounter.create({ data: { key: '_seed_lock', value: 0 } })
+    } catch {
+      // آخر يشيّد الآن أو انتهى — انتظر اكتمال البيانات
+      for (let i = 0; i < 120; i++) {
+        if (await db.party.count() > 0) return
+        await new Promise((r) => setTimeout(r, 500))
+      }
+      throw new Error('انتهت مهلة انتظار تهيئة قاعدة البيانات')
+    }
+    try {
+      await runSeed()
+    } catch (e) {
+      // أطلق القفل ليُعاد المحاولة لاحقًا
+      await db.seqCounter.deleteMany({ where: { key: '_seed_lock' } }).catch(() => {})
+      throw e
+    }
+  })()
+  seedPromise.catch(() => { seedPromise = null })
   return seedPromise
 }
 
@@ -345,20 +368,20 @@ async function runSeed(): Promise<void> {
       const finDefs = [
         { type: 'collection', party: party('ADEL HASSAN'), amount: 5000, day: 8, notes: 'تحصيل دفعة نولون', je: J(2) },
         { type: 'cash_disbursement', party: partyByName('السيد ربيع')?.id ?? null, amount: 120000, day: 15, notes: 'دفعة مستحقات نقل', je: J(3) },
-        { type: 'collection', party: party('Abd al hakeim'), amount: 3500, day: 17, notes: 'تحصيل جزئي', je: J(2) },
-        { type: 'cash_disbursement', party: partyByName('المنسي')?.id ?? null, amount: 80000, day: 19, notes: 'دفعة مستحقات نقل', je: J(3) },
-        { type: 'collection', party: party('Abdelaziz'), amount: 2500, day: 24, notes: 'تحصيل نولون شحنات', je: J(2) },
-        { type: 'cash_disbursement', party: partyByName('جعلص')?.id ?? null, amount: 50000, day: 26, notes: 'دفعة على الحساب', je: J(3) },
+        { type: 'collection', party: party('Abd al hakeim'), amount: 3500, day: 17, notes: 'تحصيل جزئي', je: null },
+        { type: 'cash_disbursement', party: partyByName('المنسي')?.id ?? null, amount: 80000, day: 19, notes: 'دفعة مستحقات نقل', je: null },
+        { type: 'collection', party: party('Abdelaziz'), amount: 2500, day: 24, notes: 'تحصيل نولون شحنات', je: null },
+        { type: 'cash_disbursement', party: partyByName('جعلص')?.id ?? null, amount: 50000, day: 26, notes: 'دفعة على الحساب', je: null },
       ]
-      let finIdx = 0
+      let typeSeqAcc: Record<string, number> = {}
       for (const f of finDefs) {
-        finIdx += 1
+        typeSeqAcc[f.type] = (typeSeqAcc[f.type] ?? 0) + 1
         const td = tdef(f.type)
-        const no = `${td.prefix}-${String(finIdx).padStart(4, '0')}`
-        const je = await tx.journalEntry.findUnique({ where: { entryNo: f.je } })
+        const no = `${td.prefix}-${String(typeSeqAcc[f.type]).padStart(4, '0')}`
+        const je = f.je ? await tx.journalEntry.findUnique({ where: { entryNo: f.je } }) : null
         await tx.opVoucher.create({
           data: {
-            id: `seed-ovc-fin-${finIdx}`, voucherNo: no, type: f.type, status: 'completed',
+            id: `seed-ovc-fin-${typeSeqAcc[f.type]}-${f.type}`, voucherNo: no, type: f.type, status: 'completed',
             sourceBranchId: mainBranch, partyId: f.party ?? null, employeeId: adminId,
             amount: f.amount, totalValue: f.amount, notes: f.notes, accountName: 'الصندوق',
             journalEntryId: je?.id ?? null,
@@ -393,9 +416,10 @@ async function runSeed(): Promise<void> {
 
       // ---------- العدادات التسلسلية (استمرار الأرقام بعد البذور) ----------
       const counterUpdates: Record<string, number> = { journal: 4 }
-      for (const v of [...seedVouchers.map((s) => s.type), ...finDefs.map((f) => f.type)]) {
-        counterUpdates[`voucher:${v}`] = (counterUpdates[`voucher:${v}`] ?? 0) + 1
-      }
+      // أذونات البذرة التشغيلية: عداد لكل نوع = عددها
+      for (const sv of seedVouchers) counterUpdates[`voucher:${sv.type}`] = (counterUpdates[`voucher:${sv.type}`] ?? 0) + 1
+      // السندات المالية: أقصى رقم تسلسلي مستخدم لكل نوع (ترقيم لكل نوع)
+      for (const [t, v] of Object.entries(typeSeqAcc)) counterUpdates[`voucher:${t}`] = Math.max(counterUpdates[`voucher:${t}`] ?? 0, v)
       // أسماء الشحنات تُكمل تسلسل mock-data
       const maxShipmentNo = raw.shipments.reduce((mx: number, s: any) => {
         const m = /^SH-(\d+)$/.exec(String(s.shipmentNo ?? ''))

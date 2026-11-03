@@ -1,9 +1,7 @@
 // ============================================================================
-// طبقة الجلسة (client-side) — تخزين الجلسة في localStorage
-// متسقة مع معمارية النظام (محرك in-memory بدون شبكة)
+// طبقة الجلسة (client-side) — token الخادم في localStorage + تحقق شبكي
 // ============================================================================
-
-import { authLogin, authValidate, authLogout } from './api'
+import { authLogin as apiLogin, authValidate as apiValidate, authLogout as apiLogout } from './api'
 import type { SessionUser } from './permissions'
 
 const SESSION_KEY = 'shipping-session-v1'
@@ -19,35 +17,31 @@ function readStored(): SessionUser | null {
   }
 }
 
-function store(session: SessionUser) {
-  try { window.localStorage.setItem(SESSION_KEY, JSON.stringify(session)) } catch { /* ignore */ }
+function store(session: SessionUser | null) {
+  try {
+    if (session) window.localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    else window.localStorage.removeItem(SESSION_KEY)
+  } catch { /* ignore */ }
 }
 
-function clear() {
-  try { window.localStorage.removeItem(SESSION_KEY) } catch { /* ignore */ }
-}
-
-/** محاولة استعادة الجلسة المحفوظة — تُلغي تلقائيًا إذا كان المستخدم موقوفًا/محذوفًا */
-export function restoreSession(): SessionUser | null {
-  const stored = readStored()
-  if (!stored) return null
-  const valid = authValidate(stored)
+/** استعادة الجلسة المحفوظة — تتحقق من الخادم (يلغي تلقائيًا لو انتهت أو أُوقف المستخدم) */
+export async function restoreSession(): Promise<SessionUser | null> {
+  const valid = await apiValidate(readStored())
   if (!valid) {
-    clear()
+    store(null)
     return null
   }
-  // تحديث الصلاحيات المحفوظة (لو اتغيرت صلاحيات الدور)
   store(valid)
   return valid
 }
 
-export function login(username: string, password: string): SessionUser {
-  const user = authLogin(username, password)
+export async function login(username: string, password: string): Promise<SessionUser> {
+  const user = await apiLogin(username, password)
   store(user)
   return user
 }
 
-export function logout(user: SessionUser | null) {
-  authLogout(user)
-  clear()
+export async function logout(user: SessionUser | null) {
+  await apiLogout(user)
+  store(null)
 }

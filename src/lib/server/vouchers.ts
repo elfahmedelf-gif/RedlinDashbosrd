@@ -60,7 +60,7 @@ type VoucherRow = Prisma.OpVoucherGetPayload<{
     courier: { select: { id: true; name: true } }; party: { select: { id: true; name: true } }
     journalEntry: { select: { id: true; entryNo: true } }
     items: { include: { shipment: { include: { customer: { select: { id: true; name: true } } } } } }
-    actions: { orderBy: { at: 'asc' as any } }
+    actions: { orderBy: { at: 'asc' } }
   }
 }>
 
@@ -130,7 +130,7 @@ async function loadVoucher(tx: Tx, id: string): Promise<VoucherRow> {
       sourceBranch: true, destBranch: true, employee: { select: { id: true, name: true } },
       courier: { select: { id: true, name: true } }, party: { select: { id: true, name: true } },
       journalEntry: { select: { id: true, entryNo: true } },
-      items: { include: { shipment: { include: { customer: { select: { id: true; name: true } } } } } },
+      items: { include: { shipment: { include: { customer: { select: { id: true, name: true } } } } } },
       actions: { orderBy: { at: 'asc' } },
     },
   })

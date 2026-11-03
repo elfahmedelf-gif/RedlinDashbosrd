@@ -14,7 +14,7 @@ const SHIPMENT_INCLUDE = {
   contractor: { select: { id: true, name: true } },
   branch: { select: { id: true, name: true } },
   warehouse: { select: { id: true, name: true } },
-  statusHistory: { orderBy: { changedAt: 'asc' as any } },
+  statusHistory: { orderBy: { changedAt: 'asc' } },
 } satisfies Prisma.ShipmentInclude
 
 type ShipmentRow = Prisma.ShipmentGetPayload<{ include: typeof SHIPMENT_INCLUDE }>
@@ -465,10 +465,13 @@ export async function report(type: string, q: URLSearchParams) {
     if (!accountId) throw new ApiError(400, 'حدد الحساب (accountId)')
     const acc = await db.account.findUnique({ where: { id: accountId } })
     if (!acc) throw new ApiError(404, 'الحساب غير موجود')
+    const where: Prisma.JournalLineWhereInput = { accountId, entry: { status: 'posted' } }
+    const range = dateRange(from, to)
+    if (range) where.entry = { status: 'posted', date: range }
     const lines = await db.journalLine.findMany({
-      where: { accountId, entry: { status: 'posted' }, ...(from || to ? { entry: { date: dateRange(from, to) } } : {}) },
-      include: { entry: { select: { entryNo: true, date: true, description: true, reference: true, status: true } }, party: { select: { id: true, name: true } } },
-      orderBy: [{ entry: { date: 'asc' } }, { createdAt: 'asc' }],
+      where,
+      include: { entry: true, party: { select: { id: true, name: true } } },
+      orderBy: { entry: { date: 'asc' } },
     })
     let running = 0
     const items = lines.map((l) => {

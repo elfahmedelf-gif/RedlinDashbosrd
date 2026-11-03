@@ -24,22 +24,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
-    // استعادة الجلسة المحفوظة عند الإقلاع
-    const t = setTimeout(() => {
-      setUser(restoreSession())
+    // استعادة الجلسة المحفوظة عند الإقلاع (تحقق شبكي من الخادم)
+    let alive = true
+    const t = setTimeout(async () => {
+      const u = await restoreSession()
+      if (!alive) return
+      setUser(u)
       setLoading(false)
     }, 350)
-    return () => clearTimeout(t)
+    return () => {
+      alive = false
+      clearTimeout(t)
+    }
   }, [])
 
   const login = React.useCallback(async (username: string, password: string) => {
-    const u = doLogin(username, password)
+    const u = await doLogin(username, password)
     setUser(u)
     return u
   }, [])
 
   const logout = React.useCallback(() => {
-    doLogout(user)
+    void doLogout(user)
     setUser(null)
   }, [user])
 
