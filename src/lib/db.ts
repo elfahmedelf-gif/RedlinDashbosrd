@@ -1,5 +1,12 @@
-// MOCK MODE — Prisma disabled to eliminate database engine overhead
-// All data is served from static JSON (mock-data.json) via src/lib/mock-data.ts
-// No PrismaClient, no libquery_engine, no SQLite — zero database memory footprint
+// Prisma client — real SQLite persistence (S1 migration from mock mode)
+import { PrismaClient } from '@prisma/client'
 
-export const db = null
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
+
+export const db =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+  })
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db

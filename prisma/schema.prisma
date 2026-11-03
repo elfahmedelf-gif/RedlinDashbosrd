@@ -1,4 +1,10 @@
 // Prisma schema - Shipping Company Management System
+// S1 (2026): إضافة منظومة الأذونات التشغيلية الموحدة + محرك محاسبي كامل
+//   - OpVoucher / OpVoucherItem / OpVoucherAction (16 نوعًا × 7 حالات)
+//   - JournalEntry.reversalOfId (قيد عكسي) + postedBy
+//   - SeqCounter (أرقام تسلسلية آمنة) + IdempotencyKey (منع تكرار العمليات)
+//   - حذف نموذج Voucher القديم (كان ماليًا فقط ولا يُستخدم — مساراته أوفية فارغة)
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -34,10 +40,11 @@ model Party {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
   branch             Branch?  @relation(fields: [branchId], references: [id])
-  shipmentsAsCustomer    Shipment[]           @relation("CustomerShipments")
-  shipmentsAsContractor  Shipment[]           @relation("ContractorShipments")
-  journalLines       JournalLine[]
-  vouchers           Voucher[]
+  shipmentsAsCustomer   Shipment[]     @relation("CustomerShipments")
+  shipmentsAsContractor Shipment[]     @relation("ContractorShipments")
+  journalLines          JournalLine[]
+  courierVouchers       OpVoucher[]    @relation("OpVoucherCourier")
+  partyVouchers         OpVoucher[]    @relation("OpVoucherParty")
 }
 
 model Branch {
@@ -52,12 +59,14 @@ model Branch {
   balance   Float    @default(0)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
-  warehouses     Warehouse[]
-  shipments      Shipment[]
-  parties        Party[]
-  journalEntries JournalEntry[]
-  costCenters    CostCenter[]
-  users          User[]
+  warehouses       Warehouse[]
+  shipments        Shipment[]
+  parties          Party[]
+  journalEntries   JournalEntry[]
+  costCenters      CostCenter[]
+  users            User[]
+  opVouchersSource OpVoucher[] @relation("OpVoucherSource")
+  opVouchersDest   OpVoucher[] @relation("OpVoucherDest")
 }
 
 model Warehouse {
@@ -170,6 +179,7 @@ model Shipment {
   updatedAt     DateTime @updatedAt
   statusHistory ShipmentStatusHistory[]
   journalLines  JournalLine[]
+  opVoucherItems OpVoucherItem[]
 }
 
 model ShipmentStatusHistory {
@@ -204,7 +214,7 @@ model FreightPrice {
 
 model Account {
   id        String   @id @default(cuid())
-  code      String
+  code      String   @unique
   name      String
   nameEn    String?
   type      String
@@ -212,9 +222,10 @@ model Account {
   isDetail  Boolean  @default(true)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
-  parent   Account?   @relation("AccountTree", fields: [parentId], references: [id])
-  children Account[]  @relation("AccountTree")
+  parent   Account?      @relation("AccountTree", fields: [parentId], references: [id])
+  children Account[]     @relation("AccountTree")
   lines    JournalLine[]
+  cashVouchers OpVoucher[] @relation("OpVoucherCashAccount")
 }
 
 model CostCenter {
@@ -229,22 +240,29 @@ model CostCenter {
 
 model JournalEntry {
   id          String    @id @default(cuid())
-  entryNo     String?
+  entryNo     String    @unique
   date        DateTime  @default(now())
   branchId    String?
   description String?
   reference   String?
   sourceType  String?
   sourceId    String?
-  status      String   @default("draft")
+  status      String   @default("draft") // draft | posted | void
   totalDebit  Float    @default(0)
   totalCredit Float    @default(0)
   userId      String?
   userName    String?
-  createdAt   DateTime @default(now())
+  postedByUserId String?
+  postedByUserName String?
   postedAt    DateTime?
-  branch Branch?       @relation(fields: [branchId], references: [id])
-  lines  JournalLine[]
+  reversalOfId String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  branch     Branch?          @relation(fields: [branchId], references: [id])
+  lines      JournalLine[]
+  reversalOf JournalEntry?    @relation("JournalReversal", fields: [reversalOfId], references: [id])
+  reversals  JournalEntry[]   @relation("JournalReversal")
+  opVouchers OpVoucher[]
 }
 
 model JournalLine {
@@ -257,29 +275,97 @@ model JournalLine {
   partyId     String?
   shipmentId  String?
   costCenterId String?
-  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  account Account      @relation(fields: [accountId], references: [id])
-  party   Party?       @relation(fields: [partyId], references: [id])
-  shipment Shipment?   @relation(fields: [shipmentId], references: [id])
+  entry    JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account  Account      @relation(fields: [accountId], references: [id])
+  party    Party?       @relation(fields: [partyId], references: [id])
+  shipment Shipment?    @relation(fields: [shipmentId], references: [id])
+
+  @@index([accountId])
+  @@index([entryId])
 }
 
-model Voucher {
-  id            String   @id @default(cuid())
-  voucherNo     String?
-  type          String
-  date          DateTime @default(now())
-  partyId       String
-  amount        Float
-  accountId     String?
-  accountName   String?
-  description   String?
-  reference     String?
-  branchId      String?
-  journalEntryId String?
-  userId        String?
-  userName      String?
-  createdAt     DateTime @default(now())
-  party Party @relation(fields: [partyId], references: [id])
+// ============================================================
+// الأذونات التشغيلية الموحدة (16 نوعًا: تشغيلية/مالية/جرد/خاصة)
+// ============================================================
+model OpVoucher {
+  id             String    @id @default(cuid())
+  voucherNo      String    @unique
+  type           String
+  status         String    @default("draft") // draft|pending|approved|in_progress|completed|rejected|cancelled
+  sourceBranchId String?
+  destBranchId   String?
+  employeeId     String? // موظف مسؤول (User)
+  courierId      String? // مندوب (Party)
+  partyId        String? // طرف مالي (عميل/مقاول)
+  amount         Float?
+  totalValue     Float     @default(0)
+  notes          String?
+  accountName    String?
+  cashAccountId  String? // خزينة/بنك مرتبط (Account)
+  vehicleNo      String?
+  driverName     String?
+  journalEntryId String?   @unique // القيد المحاسبي المرتبط (للسندات المالية)
+  userId         String? // المنشئ (User)
+  userName       String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  sourceBranch  Branch?       @relation("OpVoucherSource", fields: [sourceBranchId], references: [id])
+  destBranch    Branch?       @relation("OpVoucherDest", fields: [destBranchId], references: [id])
+  employee      User?         @relation("OpVoucherEmployee", fields: [employeeId], references: [id])
+  creator       User?         @relation("OpVoucherCreator", fields: [userId], references: [id])
+  courier       Party?        @relation("OpVoucherCourier", fields: [courierId], references: [id])
+  party         Party?        @relation("OpVoucherParty", fields: [partyId], references: [id])
+  cashAccount   Account?      @relation("OpVoucherCashAccount", fields: [cashAccountId], references: [id])
+  journalEntry  JournalEntry? @relation(fields: [journalEntryId], references: [id])
+  items         OpVoucherItem[]
+  actions       OpVoucherAction[]
+
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OpVoucherItem {
+  id         String   @id @default(cuid())
+  voucherId  String
+  shipmentId String
+  notes      String?
+  addedAt    DateTime @default(now())
+  addedBy    String?
+  voucher  OpVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  shipment Shipment  @relation(fields: [shipmentId], references: [id])
+
+  @@unique([voucherId, shipmentId])
+  @@index([shipmentId])
+}
+
+model OpVoucherAction {
+  id        String   @id @default(cuid())
+  voucherId String
+  action    String
+  userId    String?
+  userName  String
+  at        DateTime @default(now())
+  notes     String?
+  voucher OpVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+
+  @@index([voucherId])
+}
+
+// عدادات تسلسلية آمنة (أرقام أذونات/قيود) — تمنع تكرار الأرقام بعد الحذف
+model SeqCounter {
+  id    String @id @default(cuid())
+  key   String @unique
+  value Int    @default(0)
+}
+
+// منع تكرار العمليات (Idempotency) — مفتاح صادر من العميل لكل عملية منطقية
+model IdempotencyKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  action    String
+  result    String?
+  createdAt DateTime @default(now())
 }
 
 model User {
@@ -294,6 +380,8 @@ model User {
   createdAt DateTime @default(now())
   branch Branch? @relation(fields: [branchId], references: [id])
   roles  UserRole[]
+  employeeVouchers OpVoucher[] @relation("OpVoucherEmployee")
+  createdVouchers  OpVoucher[] @relation("OpVoucherCreator")
 }
 
 model Role {
@@ -324,6 +412,9 @@ model AuditLog {
   beforeData String?
   afterData  String?
   notes      String?
+
+  @@index([entity])
+  @@index([date])
 }
 
 model ImportLog {
