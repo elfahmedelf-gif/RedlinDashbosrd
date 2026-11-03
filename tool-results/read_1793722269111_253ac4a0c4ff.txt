@@ -1,0 +1,482 @@
+   200→      return {
+   201→        id: `seed-jl-${l.code}-${i}`,
+   202→        accountId: a?.id ?? null,
+   203→        account: a ? { id: a.id, code: a.code, name: a.name } : null,
+   204→        debit: l.debit ?? 0,
+   205→        credit: l.credit ?? 0,
+   206→        description: l.description ?? '',
+   207→        partyId: l.partyId ?? null,
+   208→        party: l.partyId ? { id: l.partyId, name: db.parties.find((p: any) => p.id === l.partyId)?.name ?? null } : null,
+   209→      }
+   210→    })
+   211→  const entryDefs: any[] = [
+   212→    {
+   213→      entryNo: J(1), date: d(1), description: 'قيد افتتاحي — رأس المال النقدي', reference: 'OPEN-001', status: 'posted',
+   214→      lines: [
+   215→        { code: '1101', debit: 500000, credit: 0, description: 'نقدية بالصندوق' },
+   216→        { code: '3101', debit: 0, credit: 500000, description: 'رأس المال المدفوع' },
+   217→      ],
+   218→    },
+   219→    {
+   220→      entryNo: J(2), date: d(9), description: 'تحصيل نولون عملاء — دفعة أولى', reference: 'COLL-0909', status: 'posted',
+   221→      lines: [
+   222→        { code: '1101', debit: 14750, credit: 0, description: 'نقدية محصلة' },
+   223→        { code: '4102', debit: 0, credit: 14750, description: 'إيراد نولون محصل' },
+   224→      ],
+   225→    },
+   226→    {
+   227→      entryNo: J(3), date: d(15), description: 'صرف مستحقات مقاولي النقل', reference: 'PAY-CONTR', status: 'posted',
+   228→      lines: [
+   229→        { code: '5101', debit: 250000, credit: 0, description: 'تكلفة نقل مستحقة', partyId: contractor('السيد ربيع')?.id },
+   230→        { code: '2102', debit: 0, credit: 250000, description: 'مستحقات المقاولين', partyId: contractor('السيد ربيع')?.id },
+   231→      ],
+   232→    },
+   233→    {
+   234→      entryNo: J(4), date: d(22), description: 'مصروفات مبيت وتعتيم شحنات', reference: 'OPS-0922', status: 'draft',
+   235→      lines: [
+   236→        { code: '5104', debit: 27106, credit: 0, description: 'مبيت وتعتيم' },
+   237→        { code: '1101', debit: 0, credit: 27106, description: 'نقدية مصروفة' },
+   238→      ],
+   239→    },
+   240→  ]
+   241→  db.journal = entryDefs.map((e, i) => {
+   242→    const lines = mkLines(e.lines)
+   243→    return {
+   244→      id: `seed-je-${i + 1}`,
+   245→      entryNo: e.entryNo,
+   246→      date: e.date,
+   247→      description: e.description,
+   248→      reference: e.reference,
+   249→      branchId: mainBranch?.id ?? null,
+   250→      status: e.status,
+   251→      totalDebit: lines.reduce((s, l) => s + (l.debit || 0), 0),
+   252→      totalCredit: lines.reduce((s, l) => s + (l.credit || 0), 0),
+   253→      lines,
+   254→      createdAt: e.date,
+   255→      updatedAt: e.date,
+   256→    }
+   257→  })
+   258→
+   259→  // ---- Seed: vouchers (unified operational + financial model) ----
+   260→  // (1) حالات شحن جديدة تخدم دورة الأذونات التشغيلية
+   261→  const opStatusDefs: any[] = [
+   262→    { key: 'received', label: 'مستلمة بالفرع', tone: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300', sortOrder: 12 },
+   263→    { key: 'loaded', label: 'محمّلة على المركبة', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', sortOrder: 13 },
+   264→    { key: 'in_transit', label: 'في الطريق بين الفروع', tone: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300', sortOrder: 14 },
+   265→    { key: 'arrived', label: 'وصلت فرع الوجهة', tone: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', sortOrder: 15 },
+   266→    { key: 'assigned_courier', label: 'مُسلّمة لمندوب التوصيل', tone: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300', sortOrder: 16 },
+   267→    { key: 'received_returned', label: 'مرتجعة مستلمة بالفرع', tone: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', sortOrder: 17 },
+   268→    { key: 'written_off', label: 'شطبت من المخزون', tone: 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300', sortOrder: 18 },
+   269→  ]
+   270→  const opCreatedAt = d(1)
+   271→  for (const os of opStatusDefs) {
+   272→    if (!db.lookups.find((l: any) => l.category === 'shipment_status' && l.key === os.key)) {
+   273→      db.lookups.push({ id: uid('lk'), category: 'shipment_status', key: os.key, label: os.label, labelEn: null, tone: os.tone, icon: null, active: 1, sortOrder: os.sortOrder, isSystem: 1, createdAt: opCreatedAt, updatedAt: opCreatedAt })
+   274→    }
+   275→  }
+   276→  // (2) بناء الأذونات الموحدة
+   277→  const adminId = 'seed-user-admin'
+   278→  const mkApproval = (action: string, at: string, notes?: string): any => ({ action, userId: adminId, userName: 'admin', at, notes: notes ?? null })
+   279→  const branchId = mainBranch?.id ?? null
+   280→  const contractorId = db.parties.find((p: any) => p.isContractor)?.id ?? null
+   281→  const byStatus = (st: string, n: number, offset = 0) => db.shipments.slice(offset, offset + n).map((s: any) => s.id)
+   282→  const mkItems = (ids: string[], at: string) => ids.map((sid) => ({ id: uid('it'), shipmentId: sid, notes: null, addedAt: at, addedBy: 'admin' }))
+   283→  const sumFreight = (ids: string[]) => ids.reduce((acc, sid) => acc + (Number(db.shipments.find((s: any) => s.id === sid)?.freightTotal ?? 0)), 0)
+   284→  const newShip = byStatus('new', 3, 0), prepShip = byStatus('preparing', 3, 10), ofdShip = byStatus('out_for_delivery', 3, 20), delShip = byStatus('delivered', 4, 30), retShip = byStatus('returned', 2, 40)
+   285→  const mkV = (o: any) => ({
+   286→    id: o.id, voucherNo: o.voucherNo, type: o.type, status: o.status,
+   287→    sourceBranchId: branchId, destBranchId: o.dest ?? branchId,
+   288→    employeeId: adminId, courierId: o.courier ?? null, partyId: o.party ?? null,
+   289→    party: o.party ? { id: o.party, name: db.parties.find((p: any) => p.id === o.party)?.name ?? null } : null,
+   290→    items: o.items ?? [], totalValue: o.total ?? 0, amount: o.amount ?? null, notes: o.notes ?? null, attachments: [],
+   291→    accountName: o.account ?? null, journalEntryNo: o.je ?? null,
+   292→    createdBy: adminId, createdByName: 'admin', createdAt: o.date, updatedBy: null, updatedAt: o.date,
+   293→    approvalLog: o.log ?? [mkApproval('create', o.date)],
+   294→  })
+   295→  db.vouchers = []
+   296→  // أذونات تشغيلية مكتملة بأطوار مختلفة
+   297→  if (newShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-1', voucherNo: 'RCV-0001', type: 'receiving', status: 'completed', date: d(2), items: mkItems(newShip.slice(0, 3), d(2)), total: sumFreight(newShip.slice(0, 3)), log: [mkApproval('create', d(2)), mkApproval('submit', d(2)), mkApproval('approve', d(2)), mkApproval('execute', d(2)), mkApproval('complete', d(2))] }))
+   298→  if (prepShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-2', voucherNo: 'LDG-0001', type: 'loading', status: 'completed', dest: branchId, date: d(4), items: mkItems(prepShip.slice(0, 3), d(4)), total: sumFreight(prepShip.slice(0, 3)), log: [mkApproval('create', d(4)), mkApproval('submit', d(4)), mkApproval('approve', d(4)), mkApproval('execute', d(4)), mkApproval('complete', d(4))] }))
+   299→  if (ofdShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-3', voucherNo: 'CRA-0001', type: 'courier_assignment', status: 'completed', courier: contractorId, date: d(6), items: mkItems(ofdShip.slice(0, 3), d(6)), total: sumFreight(ofdShip.slice(0, 3)), log: [mkApproval('create', d(6)), mkApproval('submit', d(6)), mkApproval('approve', d(6)), mkApproval('execute', d(6)), mkApproval('complete', d(6))] }))
+   300→  if (delShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-4', voucherNo: 'DLV-0001', type: 'delivery', status: 'completed', courier: contractorId, date: d(8), items: mkItems(delShip.slice(0, 4), d(8)), total: sumFreight(delShip.slice(0, 4)), log: [mkApproval('create', d(8)), mkApproval('submit', d(8)), mkApproval('approve', d(8)), mkApproval('execute', d(8)), mkApproval('complete', d(8))] }))
+   301→  // إذن قيد الاعتماد
+   302→  if (prepShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-5', voucherNo: 'LDG-0002', type: 'loading', status: 'pending', dest: branchId, date: d(20), items: mkItems(prepShip.slice(0, 2), d(20)), total: sumFreight(prepShip.slice(0, 2)), notes: 'دفعة تحميل مسائية', log: [mkApproval('create', d(20)), mkApproval('submit', d(20))] }))
+   303→  // إذن مسودة
+   304→  if (retShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-6', voucherNo: 'RTR-0001', type: 'returned_receiving', status: 'draft', date: d(22), items: mkItems(retShip.slice(0, 2), d(22)), total: sumFreight(retShip.slice(0, 2)), notes: 'استلام مرتجعات من المندوب' }))
+   305→  // إذن معتمد بانتظار التنفيذ
+   306→  if (ofdShip.length) db.vouchers.push(mkV({ id: 'seed-ovc-7', voucherNo: 'RET-0001', type: 'return', status: 'approved', courier: contractorId, date: d(24), items: mkItems(ofdShip.slice(0, 2), d(24)), total: sumFreight(ofdShip.slice(0, 2)), notes: 'مرتجع فشل التسليم', log: [mkApproval('create', d(24)), mkApproval('submit', d(24)), mkApproval('approve', d(24))] }))
+   307→  // 6 سندات مالية (مهاجرة من النموذج القديم)
+   308→  const finDefs: any[] = [
+   309→    { type: 'collection', party: customer('ADEL HASSAN')?.id ?? null, amount: 5000, day: 8, notes: 'تحصيل دفعة نولون', je: 'JE-0002' },
+   310→    { type: 'cash_disbursement', party: contractor('السيد ربيع')?.id ?? null, amount: 120000, day: 15, notes: 'دفعة مستحقات نقل', je: 'JE-0003' },
+   311→    { type: 'collection', party: customer('Abd al hakeim')?.id ?? null, amount: 3500, day: 17, notes: 'تحصيل جزئي', je: 'JE-0002' },
+   312→    { type: 'cash_disbursement', party: contractor('المنسي')?.id ?? null, amount: 80000, day: 19, notes: 'دفعة مستحقات نقل', je: 'JE-0003' },
+   313→    { type: 'collection', party: customer('Abdelaziz')?.id ?? null, amount: 2500, day: 24, notes: 'تحصيل نولون شحنات', je: 'JE-0002' },
+   314→    { type: 'cash_disbursement', party: contractor('جعلص')?.id ?? null, amount: 50000, day: 26, notes: 'دفعة على الحساب', je: 'JE-0003' },
+   315→  ]
+   316→  finDefs.forEach((f, i) => {
+   317→    const tdef = VOUCHER_TYPES.find((t) => t.code === f.type)!
+   318→    db.vouchers.push(mkV({ id: `seed-ovc-fin-${i + 1}`, voucherNo: `${tdef.prefix}-${String(i + 1).padStart(4, '0')}`, type: f.type, status: 'completed', party: f.party, amount: f.amount, total: f.amount, account: 'الصندوق', je: f.je, date: d(f.day), notes: f.notes, log: [mkApproval('create', d(f.day)), mkApproval('submit', d(f.day)), mkApproval('approve', d(f.day)), mkApproval('execute', d(f.day)), mkApproval('complete', d(f.day))] }))
+   319→  })
+   320→
+   321→  // ---- Seed: roles normalization + defaults ----
+   322→  const parsePerms = (r: any): string[] => {
+   323→    if (Array.isArray(r?.permissions)) return r.permissions
+   324→    try { const arr = JSON.parse(String(r?.permissions ?? '[]')); return Array.isArray(arr) ? arr : [] } catch { return [] }
+   325→  }
+   326→  const now0 = '2026-09-01T09:00:00.000Z'
+   327→  const ensureRole = (name: string, label: string, permissions: string[]) => {
+   328→    let role = db.roles.find((r: any) => r.name === name)
+   329→    if (!role) {
+   330→      role = { id: `seed-role-${name}`, name, label, permissions: JSON.stringify(permissions), createdAt: now0 }
+   331→      db.roles.push(role)
+   332→    } else {
+   333→      role.label = role.label || label
+   334→      // إجبار تحديث صلاحيات الأدوار النظامية المعرفة هنا (تتجاوز بذور mock-data القديمة)
+   335→      role.permissions = JSON.stringify(permissions)
+   336→    }
+   337→    return role
+   338→  }
+   339→  ensureRole('admin', 'مدير النظام', ['*'])
+   340→  ensureRole('finance_manager', 'مدير مالي', ['accounting.*', 'reports.*', 'shipments.read', 'parties.*', 'audit.view', 'dashboard.view', 'vouchers.view', 'vouchers.view.all', 'vouchers.create', 'vouchers.approve', 'vouchers.reject', 'vouchers.execute', 'vouchers.cancel', 'vouchers.print', 'vouchers.export'])
+   341→  ensureRole('branch_manager', 'مدير فرع', ['shipments.*', 'parties.*', 'inventory.*', 'structure.view', 'dashboard.view', 'vouchers.view', 'vouchers.create', 'vouchers.edit', 'vouchers.submit', 'vouchers.approve', 'vouchers.execute', 'vouchers.cancel', 'vouchers.print', 'vouchers.export'])
+   342→  ensureRole('operations', 'موظف عمليات', ['shipments.view', 'shipments.create', 'shipments.edit', 'shipments.status', 'shipments.assign', 'shipments.print', 'shipments.export', 'parties.view', 'inventory.view', 'dashboard.view', 'vouchers.view', 'vouchers.create', 'vouchers.edit', 'vouchers.submit', 'vouchers.print', 'vouchers.export'])
+   343→  ensureRole('voucher_clerk', 'كاتب أذونات', ['dashboard.view', 'shipments.view', 'parties.view', 'structure.view', 'vouchers.view', 'vouchers.create', 'vouchers.edit', 'vouchers.submit', 'vouchers.print'])
+   344→  ensureRole('viewer', 'عارض (مشاهدة فقط)', ['dashboard.view', 'shipments.view', 'parties.view', 'inventory.view', 'accounting.view', 'reports.view', 'vouchers.view'])
+   345→  // توحيد الصلاحيات كمصفوفات
+   346→  db.roles.forEach((r: any) => { r.permissions = parsePerms(r) })
+   347→
+   348→  // ---- Seed: users with credentials ----
+   349→  const ensureUser = (username: string, name: string, password: string, roleName: string) => {
+   350→    const role = db.roles.find((r: any) => r.name === roleName)
+   351→    let u = db.users.find((x: any) => x.username === username)
+   352→    if (!u) {
+   353→      u = { id: `seed-user-${username}`, username, name, email: null, phone: null, branchId: mainBranch?.id ?? null, active: 1, passwordHash: hashPassword(password), lastLoginAt: null, createdAt: now0 }
+   354→      db.users.push(u)
+   355→    } else {
+   356→      u.passwordHash = hashPassword(password)
+   357→      u.active = u.active ?? 1
+   358→    }
+   359→    u.roleId = role?.id ?? u.roleId ?? null
+   360→    return u
+   361→  }
+   362→  ensureUser('admin', 'مدير النظام', 'admin123', 'admin')
+   363→  ensureUser('finance', 'حسن — المدير المالي', 'fin123', 'finance_manager')
+   364→  ensureUser('ops', 'محمود — العمليات', 'ops123', 'branch_manager')
+   365→  ensureUser('viewer', 'سارة — مشاهدة فقط', 'view123', 'viewer')
+   366→
+   367→  // ---- Seed: extra audit entries (in addition to the import record) ----
+   368→  const extraAudit: any[] = [
+   369→    { action: 'create', entity: 'journal_entry', entityId: db.journal[0]?.id, notes: 'قيد افتتاحي رأس المال', day: 1, userName: 'admin' },
+   370→    { action: 'create', entity: 'voucher', entityId: db.vouchers[0]?.id, notes: 'إذن استلام شحنات RCV-0001', day: 8, userName: 'admin' },
+   371→    { action: 'create', entity: 'inventory_movement', entityId: db.movements[0]?.id, notes: 'توريد افتتاحي للمخزن', day: 1, userName: 'admin' },
+   372→    { action: 'post', entity: 'journal_entry', entityId: db.journal[1]?.id, notes: 'ترحيل قيد تحصيل النولون', day: 9, userName: 'admin' },
+   373→    { action: 'update', entity: 'freight_price', entityId: db.freight[0]?.id, notes: 'تحديث أسعار خط القاهرة 1', day: 12, userName: 'admin' },
+   374→    { action: 'create', entity: 'user', entityId: db.users[0]?.id, notes: 'إنشاء مستخدم مدير النظام', day: 1, userName: 'system' },
+   375→  ]
+   376→  for (const a of extraAudit) {
+   377→    db.audit.push({
+   378→      id: uid('audit'), date: a.day ? `2026-09-${String(a.day).padStart(2, '0')}T11:30:00.000Z` : new Date().toISOString(),
+   379→      userId: null, userName: a.userName, action: a.action, entity: a.entity, entityId: a.entityId,
+   380→      beforeData: null, afterData: null, notes: a.notes,
+   381→    })
+   382→  }
+   383→  db.audit.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+   384→
+   385→  return db
+   386→}
+   387→
+   388→const db = buildDB() as any
+   389→
+   390→// تسلسل أرقام الأذونات (لكل نوع بادئة خاصة) — يمنع تكرار الأرقام بعد الحذف
+   391→db.seq = { voucher: db.vouchers.length }
+   392→const __vcCounters: Record<string, number> = {}
+   393→function nextVoucherNo(type: string): string {
+   394→  const tdef = VOUCHER_TYPES.find((t) => t.code === type)
+   395→  const prefix = tdef?.prefix ?? 'VCH'
+   396→  const existing = db.vouchers.filter((v: any) => v.type === type).length
+   397→  __vcCounters[prefix] = Math.max(__vcCounters[prefix] ?? 0, existing) + 1
+   398→  return `${prefix}-${String(__vcCounters[prefix]).padStart(4, '0')}`
+   399→}
+   400→
+   401→// ---------------------------------------------------------------------------
+   402→// Lookup maps + enrichment
+   403→// ---------------------------------------------------------------------------
+   404→const partyById = new Map<string, any>(db.parties.map((p: any) => [p.id, p]))
+   405→const branchById = new Map<string, any>(db.branches.map((b: any) => [b.id, b]))
+   406→const whById = new Map<string, any>(db.warehouses.map((w: any) => [w.id, w]))
+   407→const itemById = new Map<string, any>(db.items.map((i: any) => [i.id, i]))
+   408→
+   409→function partyRef(id: string | null) {
+   410→  if (!id) return null
+   411→  const p = partyById.get(id)
+   412→  return p ? { id: p.id, name: p.name } : null
+   413→}
+   414→
+   415→function enrichShipment(s: any) {
+   416→  const st = { ...s }
+   417→  st.customer = partyRef(s.customerId)
+   418→  st.contractor = partyRef(s.contractorId)
+   419→  st.branch = s.branchId ? (branchById.get(s.branchId) ? { id: s.branchId, name: branchById.get(s.branchId).name } : null) : null
+   420→  st.warehouse = s.warehouseId ? (whById.get(s.warehouseId) ? { id: s.warehouseId, name: whById.get(s.warehouseId).name } : null) : null
+   421→  if (!Array.isArray(st.statusHistory)) {
+   422→    st.statusHistory = [{
+   423→      status: s.status,
+   424→      notes: 'استيراد أولي من ملف مبيعات العاشر 3',
+   425→      date: st.updatedAt ?? st.createdAt ?? null,
+   426→      userName: 'system',
+   427→    }]
+   428→  }
+   429→  // Profit margin = customer freight (sell) - contractor freight (cost)
+   430→  const sell = Number(st.freightTotal ?? 0)
+   431→  const cost = Number(st.totalSuppliers ?? 0)
+   432→  st.margin = Math.round((sell - cost) * 100) / 100
+   433→  // Linked vouchers (operational model: items-based linkage)
+   434→  st.vouchers = db.vouchers
+   435→    .filter((v: any) => Array.isArray(v.items) && v.items.some((it: any) => it.shipmentId === s.id))
+   436→    .map((v: any) => ({ id: v.id, voucherNo: v.voucherNo, type: v.type, status: v.status, date: v.createdAt, amount: v.amount, notes: v.notes ?? null }))
+   437→    .sort((a: any, b: any) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
+   438→  return st
+   439→}
+   440→
+   441→// ============================================================================
+   442→// محرك الأذونات التشغيلية: الانتقالات، الإثراء، تأثيرات الشحنة، القيود
+   443→// ============================================================================
+   444→const TRANSITIONS: Record<string, { action: string; to: string; perm: string }[]> = {
+   445→  draft: [
+   446→    { action: 'submit', to: 'pending', perm: 'vouchers.submit' },
+   447→    { action: 'cancel', to: 'cancelled', perm: 'vouchers.cancel' },
+   448→  ],
+   449→  pending: [
+   450→    { action: 'approve', to: 'approved', perm: 'vouchers.approve' },
+   451→    { action: 'reject', to: 'rejected', perm: 'vouchers.reject' },
+   452→    { action: 'cancel', to: 'cancelled', perm: 'vouchers.cancel' },
+   453→  ],
+   454→  rejected: [
+   455→    { action: 'resubmit', to: 'draft', perm: 'vouchers.edit' },
+   456→  ],
+   457→  approved: [
+   458→    { action: 'execute', to: 'in_progress', perm: 'vouchers.execute' },
+   459→    { action: 'cancel', to: 'cancelled', perm: 'vouchers.cancel' },
+   460→  ],
+   461→  in_progress: [
+   462→    { action: 'complete', to: 'completed', perm: 'vouchers.execute' },
+   463→    { action: 'cancel', to: 'cancelled', perm: 'vouchers.cancel' },
+   464→  ],
+   465→  completed: [],
+   466→  cancelled: [],
+   467→}
+   468→
+   469→function actionLabel(action: string): string {
+   470→  const map: Record<string, string> = { submit: 'رفع', approve: 'اعتماد', reject: 'رفض', execute: 'تنفيذ', complete: 'إكمال', cancel: 'إلغاء', resubmit: 'إعادة', edit: 'تعديل', create: 'إنشاء' }
+   471→  return map[action] ?? action
+   472→}
+   473→
+   474→function enrichOpVoucher(v: any, full = false): any {
+   475→  const tdef = VOUCHER_TYPES.find((t) => t.code === v.type)
+   476→  const stateDef = VOUCHER_STATES.find((s) => s.key === v.status)
+   477→  const srcBranch = v.sourceBranchId ? (branchById.get(v.sourceBranchId) ? { id: v.sourceBranchId, name: branchById.get(v.sourceBranchId).name } : null) : null
+   478→  const dstBranch = v.destBranchId ? (branchById.get(v.destBranchId) ? { id: v.destBranchId, name: branchById.get(v.destBranchId).name } : null) : null
+   479→  const emp = v.employeeId ? (db.users.find((u: any) => u.id === v.employeeId) ? { id: v.employeeId, name: db.users.find((u: any) => u.id === v.employeeId).name } : null) : null
+   480→  const courier = v.courierId ? partyRef(v.courierId) : null
+   481→  const party = v.partyId ? partyRef(v.partyId) : null
+   482→  const items = (v.items ?? []).map((it: any) => {
+   483→    const s = db.shipments.find((sh: any) => sh.id === it.shipmentId)
+   484→    return { ...it, shipment: s ? { id: s.id, shipmentNo: s.shipmentNo, status: s.status, destination: s.destination, recipientName: s.recipientName, freightTotal: s.freightTotal, customer: partyRef(s.customerId) } : null }
+   485→  })
+   486→  const itemCount = items.length
+   487→  const totalValue = tdef?.isFinancial ? (v.amount ?? 0) : (v.totalValue ?? items.reduce((acc: number, it: any) => acc + (Number(it.shipment?.freightTotal ?? 0)), 0))
+   488→  return {
+   489→    ...v,
+   490→    typeLabel: tdef?.label ?? v.type,
+   491→    typeLabelEn: tdef?.labelEn ?? v.type,
+   492→    typeCategory: tdef?.category ?? 'operational',
+   493→    typeColor: tdef?.color ?? '',
+   494→    typeIcon: tdef?.icon ?? 'FileText',
+   495→    typePrefix: tdef?.prefix ?? 'VCH',
+   496→    isFinancial: tdef?.isFinancial ?? false,
+   497→    requiresShipments: tdef?.requiresShipments ?? false,
+   498→    statusLabel: stateDef?.label ?? v.status,
+   499→    statusColor: stateDef?.color ?? '',
+   500→    sourceBranch: srcBranch,
+   501→    destBranch: dstBranch,
+   502→    employee: emp,
+   503→    courier,
+   504→    party,
+   505→    items: items.map((it: any) => ({ id: it.id, shipmentId: it.shipmentId, shipment: it.shipment, notes: it.notes, addedAt: it.addedAt, addedBy: it.addedBy })),
+   506→    itemCount,
+   507→    totalValue: Math.round(totalValue * 100) / 100,
+   508→  }
+   509→}
+   510→
+   511→function postVoucherJournal(v: any, kind: 'receipt' | 'payment'): void {
+   512→  const cashAcc = db.accounts.find((a: any) => a.code === '1101')
+   513→  const partyAcc = kind === 'receipt'
+   514→    ? db.accounts.find((a: any) => a.code === '1103')
+   515→    : db.accounts.find((a: any) => a.code === '2102')
+   516→  if (!cashAcc || !partyAcc || !v.amount) return
+   517→  const entryNo = `JE-${String(db.journal.length + 1).padStart(4, '0')}`
+   518→  v.journalEntryNo = entryNo
+   519→  const party = partyRef(v.partyId)
+   520→  const linkedNos = (v.items ?? []).map((it: any) => db.shipments.find((s: any) => s.id === it.shipmentId)?.shipmentNo).filter(Boolean)
+   521→  db.journal.unshift({
+   522→    id: uid('je'), entryNo, date: v.createdAt,
+   523→    description: `${kind === 'receipt' ? 'سند قبض' : 'سند صرف'} ${v.voucherNo} — ${party?.name ?? ''}${linkedNos.length ? ` (شحنات: ${linkedNos.join('، ')})` : ''}`,
+   524→    reference: v.voucherNo, branchId: null, status: 'posted', totalDebit: v.amount, totalCredit: v.amount,
+   525→    lines: kind === 'receipt'
+   526→      ? [
+   527→        { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: v.amount, credit: 0, description: 'نقدية مستلمة', partyId: v.partyId, party },
+   528→        { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: 0, credit: v.amount, description: 'تحصيل', partyId: v.partyId, party },
+   529→      ]
+   530→      : [
+   531→        { id: uid('jl'), accountId: partyAcc.id, account: { id: partyAcc.id, code: partyAcc.code, name: partyAcc.name }, debit: v.amount, credit: 0, description: 'مستحقات', partyId: v.partyId, party },
+   532→        { id: uid('jl'), accountId: cashAcc.id, account: { id: cashAcc.id, code: cashAcc.code, name: cashAcc.name }, debit: 0, credit: v.amount, description: 'نقدية مدفوعة', partyId: v.partyId, party },
+   533→      ],
+   534→    createdAt: nowISO, updatedAt: nowISO,
+   535→  })
+   536→}
+   537→
+   538→function itemBalance(itemId: string): number {
+   539→  let bal = 0
+   540→  for (const m of db.movements) {
+   541→    if (m.itemId !== itemId) continue
+   542→    if (m.type === 'receipt') bal += m.quantity
+   543→    else if (m.type === 'issue') bal += m.quantity // stored negative
+   544→    else if (m.type === 'adjustment') bal += m.quantity // signed
+   545→    // transfer keeps total balance
+   546→  }
+   547→  return Math.round(bal * 100) / 100
+   548→}
+   549→
+   550→function enrichItem(it: any) {
+   551→  const balance = itemBalance(it.id)
+   552→  return {
+   553→    ...it,
+   554→    balance,
+   555→    isLowStock: balance <= (it.reorderLevel ?? 0),
+   556→    warehouse: it.warehouseId ? (whById.get(it.warehouseId) ? { id: it.warehouseId, name: whById.get(it.warehouseId).name } : null) : null,
+   557→    stockValue: Math.round(balance * (it.cost ?? 0) * 100) / 100,
+   558→  }
+   559→}
+   560→
+   561→function enrichMovement(m: any) {
+   562→  const it = itemById.get(m.itemId)
+   563→  return {
+   564→    ...m,
+   565→    item: it ? { id: it.id, name: it.name, code: it.code, unit: it.unit } : null,
+   566→    warehouse: m.warehouseId ? (whById.get(m.warehouseId) ? { id: m.warehouseId, name: whById.get(m.warehouseId).name } : null) : null,
+   567→    toWarehouse: m.toWarehouseId ? (whById.get(m.toWarehouseId) ? { id: m.toWarehouseId, name: whById.get(m.toWarehouseId).name } : null) : null,
+   568→  }
+   569→}
+   570→
+   571→/** Account balances derived from posted journal lines. */
+   572→function accountBalances(): Map<string, { debit: number; credit: number }> {
+   573→  const map = new Map<string, { debit: number; credit: number }>()
+   574→  for (const e of db.journal) {
+   575→    if (e.status !== 'posted') continue
+   576→    for (const l of e.lines) {
+   577→      if (!l.accountId) continue
+   578→      const cur = map.get(l.accountId) ?? { debit: 0, credit: 0 }
+   579→      cur.debit += l.debit || 0
+   580→      cur.credit += l.credit || 0
+   581→      map.set(l.accountId, cur)
+   582→    }
+   583→  }
+   584→  return map
+   585→}
+   586→
+   587→function enrichAccount(a: any, balances: Map<string, { debit: number; credit: number }>) {
+   588→  const b = balances.get(a.id) ?? { debit: 0, credit: 0 }
+   589→  const parent = a.parentId ? db.accounts.find((x: any) => x.id === a.parentId) : null
+   590→  return { ...a, parent: parent ? { id: parent.id, name: parent.name } : null, debit: b.debit, credit: b.credit, balance: b.debit - b.credit }
+   591→}
+   592→
+   593→/** Deterministic party aggregates from shipments + vouchers. */
+   594→function partyAggregates(): Map<string, { shipments: number; freightTotal: number; totalSuppliers: number; customerPay: number }> {
+   595→  const map = new Map<string, any>()
+   596→  const get = (id: string) => {
+   597→    if (!map.has(id)) map.set(id, { shipments: 0, freightTotal: 0, totalSuppliers: 0, customerPay: 0 })
+   598→    return map.get(id)
+   599→  }
+   600→  for (const s of db.shipments) {
+   601→    if (s.customerId) {
+   602→      const a = get(s.customerId)
+   603→      a.shipments += 1
+   604→      a.freightTotal += s.freightTotal ?? 0
+   605→      a.totalSuppliers += s.totalSuppliers ?? 0
+   606→      a.customerPay += s.customerPay ?? 0
+   607→    }
+   608→    if (s.contractorId && s.contractorId !== s.customerId) {
+   609→      const a = get(s.contractorId)
+   610→      a.shipments += 1
+   611→      a.freightTotal += s.freightTotal ?? 0
+   612→      a.totalSuppliers += s.totalSuppliers ?? 0
+   613→    }
+   614→  }
+   615→  return map
+   616→}
+   617→
+   618→function addAudit(action: string, entity: string, entityId: string | null, notes: string, userName = 'admin') {
+   619→  db.audit.unshift({
+   620→    id: uid('audit'), date: new Date().toISOString(), userId: null, userName,
+   621→    action, entity, entityId, beforeData: null, afterData: null, notes,
+   622→  })
+   623→}
+   624→
+   625→function paginate<T>(arr: T[], page: number, pageSize: number) {
+   626→  const total = arr.length
+   627→  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+   628→  const p = Math.min(Math.max(1, page), totalPages)
+   629→  const start = (p - 1) * pageSize
+   630→  return { items: arr.slice(start, start + pageSize), total, page: p, pageSize, totalPages }
+   631→}
+   632→
+   633→function inRange(dateISO: string | null | undefined, from: string | null, to: string | null): boolean {
+   634→  if (!from && !to) return true
+   635→  if (!dateISO) return false
+   636→  const t = new Date(dateISO).getTime()
+   637→  if (from && t < new Date(from + 'T00:00:00').getTime()) return false
+   638→  if (to && t > new Date(to + 'T23:59:59').getTime()) return false
+   639→  return true
+   640→}
+   641→
+   642→// ---------------------------------------------------------------------------
+   643→// GET router (mirrors every API route's response shape)
+   644→// ---------------------------------------------------------------------------
+   645→function handleGet(url: string): any {
+   646→  const u = new URL(url, 'http://local')
+   647→  const p = u.pathname.replace(/\/+$/, '')
+   648→  const q = u.searchParams
+   649→  const qs = (k: string) => q.get(k)?.trim() ?? ''
+   650→  let m: RegExpMatchArray | null = null
+   651→
+   652→  // ----- stats -----
+   653→  if (p === '/api/stats') {
+   654→    const stats = deepClone(raw.stats)
+   655→    // daily/dateRange dates are epoch-seconds strings → ISO
+   656→    stats.daily = (stats.daily ?? []).map((d: any) => ({ ...d, date: new Date(Number(d.date) * 1000).toISOString() }))
+   657→    if (stats.dateRange) {
+   658→      stats.dateRange = {
+   659→        from: stats.dateRange.from ? new Date(Number(stats.dateRange.from) * 1000).toISOString() : null,
+   660→        to: stats.dateRange.to ? new Date(Number(stats.dateRange.to) * 1000).toISOString() : null,
+   661→      }
+   662→    }
+   663→    // contractor ids → names
+   664→    stats.contractors = (stats.contractors ?? []).map((c: any) => ({ ...c, name: partyById.get(c.name)?.name ?? c.name }))
+   665→    return stats
+   666→  }
+   667→
+   668→  // ----- shipments list -----
+   669→  if (p === '/api/shipments') {
+   670→    let items = db.shipments.map(enrichShipment).sort((a: any, b: any) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
+   671→    const search = qs('q').toLowerCase()
+   672→    if (search) {
+   673→      items = items.filter((s: any) =>
+   674→        [s.shipmentNo, s.billNo, s.recipientName, s.destination, s.destinationEn, s.routeCode, s.deliveryPhones]
+   675→          .some((f: any) => String(f ?? '').toLowerCase().includes(search)))
+   676→    }
+   677→    const status = qs('status')
+   678→    if (status && status !== 'all') items = items.filter((s: any) => s.status === status)
+   679→    const dest = qs('destination')
+
+[showing lines 200-679 of 1619; use offset=680 with limit to continue reading]

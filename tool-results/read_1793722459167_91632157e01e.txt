@@ -1,0 +1,634 @@
+     1→'use client'
+     2→
+     3→// ============================================================================
+     4→// وحدات النظام: المستخدمون + الصلاحيات والأدوار + الإعدادات + سجل التدقيق
+     5→// ============================================================================
+     6→
+     7→import * as React from 'react'
+     8→import useSWR from 'swr'
+     9→import {
+    10→  Plus, Pencil, Trash2, UserCircle, Shield, Settings as SettingsIcon, History,
+    11→  Check, Save, KeyRound, ShieldCheck, ShieldOff, LogIn, LogOut,
+    12→} from 'lucide-react'
+    13→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+    14→import { Button } from '@/components/ui/button'
+    15→import { Badge } from '@/components/ui/badge'
+    16→import { Input } from '@/components/ui/input'
+    17→import { Textarea } from '@/components/ui/textarea'
+    18→import { Skeleton } from '@/components/ui/skeleton'
+    19→import { Switch } from '@/components/ui/switch'
+    20→import { Checkbox } from '@/components/ui/checkbox'
+    21→import {
+    22→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    23→} from '@/components/ui/select'
+    24→import {
+    25→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    26→} from '@/components/ui/dialog'
+    27→import {
+    28→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    29→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    30→} from '@/components/ui/alert-dialog'
+    31→import { DataTable } from '../data-table'
+    32→import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
+    33→import { fmtNum, fmtDateTime } from '@/lib/format'
+    34→import { PERMISSION_CATALOG, PERMISSION_GROUPS, expandPermissions } from '@/lib/permissions'
+    35→import { useAuth } from '../auth-provider'
+    36→import { useToast } from '@/hooks/use-toast'
+    37→import { cn } from '@/lib/utils'
+    38→
+    39→const ROLE_TONES: Record<string, string> = {
+    40→  admin: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    41→  finance_manager: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    42→  branch_manager: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
+    43→  operations: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
+    44→  viewer: 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+    45→}
+    46→
+    47→// ============================================================================
+    48→// === Users ===
+    49→// ============================================================================
+    50→export function UsersModule() {
+    51→  const { toast } = useToast()
+    52→  const { user: me } = useAuth()
+    53→  const [open, setOpen] = React.useState(false)
+    54→  const [editing, setEditing] = React.useState<any>(null)
+    55→  const [deleting, setDeleting] = React.useState<any>(null)
+    56→  const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/users', fetcher, { refreshInterval: 30000 })
+    57→  const { data: rolesData } = useSWR<{ items: any[] }>('/api/roles', fetcher)
+    58→  const { data: branches } = useSWR<{ items: any[] }>('/api/branches', fetcher)
+    59→
+    60→  const users = data?.items ?? []
+    61→  const activeCount = users.filter((u) => u.active).length
+    62→
+    63→  const emptyForm = { username: '', name: '', email: '', phone: '', branchId: '', roleId: '', active: true, password: '' }
+    64→  const [v, setV] = React.useState<any>(emptyForm)
+    65→  const [err, setErr] = React.useState('')
+    66→  const [saving, setSaving] = React.useState(false)
+    67→
+    68→  React.useEffect(() => {
+    69→    if (open) {
+    70→      setErr('')
+    71→      if (editing) {
+    72→        setV({
+    73→          username: editing.username, name: editing.name, email: editing.email || '',
+    74→          phone: editing.phone || '', branchId: editing.branchId || '', roleId: editing.roleId || '',
+    75→          active: !!editing.active, password: '',
+    76→        })
+    77→      } else {
+    78→        setV(emptyForm)
+    79→      }
+    80→    }
+    81→  }, [open, editing])
+    82→
+    83→  const submit = async () => {
+    84→    setSaving(true); setErr('')
+    85→    try {
+    86→      const payload: any = {
+    87→        username: v.username?.trim(), name: v.name?.trim(), email: v.email || null, phone: v.phone || null,
+    88→        branchId: v.branchId || null, roleId: v.roleId || null, active: v.active,
+    89→        userName: me?.username || 'admin',
+    90→      }
+    91→      if (editing) {
+    92→        if (v.password) payload.password = v.password
+    93→        await apiPatch(`/api/users/${editing.id}`, payload)
+    94→        toast({ title: 'تم تحديث المستخدم', description: v.password ? 'تم تغيير كلمة المرور أيضًا' : undefined })
+    95→      } else {
+    96→        payload.password = v.password
+    97→        await apiPost('/api/users', payload)
+    98→        toast({ title: 'تمت إضافة المستخدم' })
+    99→      }
+   100→      setOpen(false); mutate()
+   101→    } catch (e: any) { setErr(e.message) } finally { setSaving(false) }
+   102→  }
+   103→
+   104→  const toggleActive = async (u: any) => {
+   105→    try {
+   106→      await apiPatch(`/api/users/${u.id}`, { active: !u.active, userName: me?.username || 'admin' })
+   107→      mutate()
+   108→      toast({ title: !u.active ? `تم تنشيط حساب ${u.name}` : `تم إيقاف حساب ${u.name}` })
+   109→    } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+   110→  }
+   111→
+   112→  const delUser = async (u: any) => {
+   113→    if (u.id === me?.userId) { toast({ title: 'لا يمكن حذف حسابك الحالي', variant: 'destructive' }); return }
+   114→    try { await apiDelete(`/api/users/${u.id}`); mutate(); toast({ title: 'تم حذف المستخدم' }) }
+   115→    catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+   116→  }
+   117→
+   118→  return (
+   119→    <div className="space-y-4">
+   120→      <div className="flex items-center justify-between gap-2 flex-wrap">
+   121→        <div className="flex items-center gap-2 flex-wrap">
+   122→          <UserCircle className="size-5 text-muted-foreground" />
+   123→          <Badge variant="secondary" className="tnum">{fmtNum(users.length)} مستخدم</Badge>
+   124→          <Badge variant="outline" className="tnum bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900">{fmtNum(activeCount)} نشط</Badge>
+   125→          <Badge variant="outline" className="tnum">{fmtNum(rolesData?.items.length ?? 0)} دور</Badge>
+   126→        </div>
+   127→        <Button onClick={() => { setEditing(null); setOpen(true) }} size="sm">
+   128→          <Plus className="size-4" /> مستخدم جديد
+   129→        </Button>
+   130→      </div>
+   131→
+   132→      {isLoading ? (
+   133→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   134→          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36 rounded-xl" />)}
+   135→        </div>
+   136→      ) : (
+   137→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   138→          {users.map((u) => (
+   139→            <Card key={u.id} className={cn(!u.active && 'opacity-70')}>
+   140→              <CardContent className="p-4 space-y-3">
+   141→                <div className="flex items-start justify-between gap-2">
+   142→                  <div className="flex items-center gap-2.5 flex-1 min-w-0">
+   143→                    <div className={cn(
+   144→                      'flex items-center justify-center size-10 rounded-xl font-bold text-sm shrink-0',
+   145→                      u.active ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground',
+   146→                    )}>{u.name?.charAt(0) || '?'}</div>
+   147→                    <div className="flex-1 min-w-0">
+   148→                      <div className="font-semibold text-sm truncate flex items-center gap-1.5">
+   149→                        {u.name}
+   150→                        {u.id === me?.userId && <Badge variant="outline" className="text-[9px] px-1 py-0">أنت</Badge>}
+   151→                      </div>
+   152→                      <div className="text-[11px] text-muted-foreground tnum" dir="ltr">@{u.username}</div>
+   153→                    </div>
+   154→                  </div>
+   155→                  <Switch
+   156→                    checked={!!u.active}
+   157→                    onCheckedChange={() => toggleActive(u)}
+   158→                    aria-label={u.active ? 'إيقاف الحساب' : 'تنشيط الحساب'}
+   159→                    disabled={u.username === 'admin'}
+   160→                  />
+   161→                </div>
+   162→                <div className="flex flex-wrap items-center gap-1">
+   163→                  {u.role ? (
+   164→                    <Badge variant="outline" className={cn('text-[10px]', ROLE_TONES[u.role.name] || '')}>
+   165→                      <Shield className="size-2.5 ml-1" />{u.role.label || u.role.name}
+   166→                    </Badge>
+   167→                  ) : (
+   168→                    <Badge variant="outline" className="text-[10px] text-muted-foreground">بدون دور</Badge>
+   169→                  )}
+   170→                  {u.branch && <Badge variant="secondary" className="text-[10px]">{u.branch?.name || ''}</Badge>}
+   171→                  {u.lastLoginAt && (
+   172→                    <span className="text-[10px] text-muted-foreground tnum mr-auto">آخر دخول: {fmtDateTime(u.lastLoginAt)}</span>
+   173→                  )}
+   174→                </div>
+   175→                <div className="flex gap-1 pt-1 border-t border-border/60">
+   176→                  <Button variant="ghost" size="sm" className="flex-1" onClick={() => { setEditing(u); setOpen(true) }}>
+   177→                    <Pencil className="size-3.5" /> تعديل
+   178→                  </Button>
+   179→                  <Button
+   180→                    variant="ghost" size="sm" className="text-destructive flex-1"
+   181→                    disabled={u.username === 'admin' || u.id === me?.userId}
+   182→                    onClick={() => setDeleting(u)}
+   183→                  >
+   184→                    <Trash2 className="size-3.5" /> حذف
+   185→                  </Button>
+   186→                </div>
+   187→              </CardContent>
+   188→            </Card>
+   189→          ))}
+   190→        </div>
+   191→      )}
+   192→
+   193→      {/* dialog إضافة/تعديل */}
+   194→      <Dialog open={open} onOpenChange={setOpen}>
+   195→        <DialogContent>
+   196→          <DialogHeader>
+   197→            <DialogTitle>{editing ? 'تعديل مستخدم' : 'مستخدم جديد'}</DialogTitle>
+   198→            <DialogDescription>
+   199→              {editing ? 'عدّل بيانات الحساب — اترك كلمة المرور فارغة للإبقاء عليها.' : 'أنشئ حسابًا جديدًا وحدد دوره وصلاحياته.'}
+   200→            </DialogDescription>
+   201→          </DialogHeader>
+   202→          <div className="grid grid-cols-2 gap-3 py-2">
+   203→            <div><label className="text-xs font-medium">اسم المستخدم *</label><Input value={v.username} onChange={(e) => setV({ ...v, username: e.target.value })} dir="ltr" disabled={!!editing} /></div>
+   204→            <div><label className="text-xs font-medium">الاسم الكامل *</label><Input value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></div>
+   205→            <div>
+   206→              <label className="text-xs font-medium flex items-center gap-1">
+   207→                {editing ? 'كلمة مرور جديدة (اختياري)' : 'كلمة المرور *'}
+   208→                <KeyRound className="size-3 text-muted-foreground" />
+   209→              </label>
+   210→              <Input type="password" value={v.password} onChange={(e) => setV({ ...v, password: e.target.value })} dir="ltr" placeholder="••••" />
+   211→            </div>
+   212→            <div><label className="text-xs font-medium">الدور *</label>
+   213→              <Select value={v.roleId} onValueChange={(val) => setV({ ...v, roleId: val === '__' ? '' : val })}>
+   214→                <SelectTrigger><SelectValue placeholder="اختر الدور..." /></SelectTrigger>
+   215→                <SelectContent>
+   216→                  <SelectItem value="__">— بدون دور —</SelectItem>
+   217→                  {(rolesData?.items ?? []).map((r) => <SelectItem key={r.id} value={r.id}>{r.label || r.name}</SelectItem>)}
+   218→                </SelectContent>
+   219→              </Select>
+   220→            </div>
+   221→            <div><label className="text-xs font-medium">البريد</label><Input type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} dir="ltr" /></div>
+   222→            <div><label className="text-xs font-medium">الهاتف</label><Input type="tel" value={v.phone} onChange={(e) => setV({ ...v, phone: e.target.value })} dir="ltr" /></div>
+   223→            <div><label className="text-xs font-medium">الفرع</label>
+   224→              <Select value={v.branchId} onValueChange={(val) => setV({ ...v, branchId: val === '__' ? '' : val })}>
+   225→                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+   226→                <SelectContent><SelectItem value="__">—</SelectItem>{(branches?.items ?? []).map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+   227→              </Select>
+   228→            </div>
+   229→            <div><label className="text-xs font-medium">الحالة</label>
+   230→              <Select value={v.active ? '1' : '0'} onValueChange={(val) => setV({ ...v, active: val === '1' })}>
+   231→                <SelectTrigger><SelectValue /></SelectTrigger>
+   232→                <SelectContent><SelectItem value="1">نشط</SelectItem><SelectItem value="0">موقوف</SelectItem></SelectContent>
+   233→              </Select>
+   234→            </div>
+   235→          </div>
+   236→          {err && <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{err}</div>}
+   237→          <DialogFooter>
+   238→            <Button variant="outline" onClick={() => setOpen(false)}>إلغاء</Button>
+   239→            <Button onClick={submit} disabled={saving}>{saving ? 'جاري...' : editing ? 'تحديث' : 'إضافة'}</Button>
+   240→          </DialogFooter>
+   241→        </DialogContent>
+   242→      </Dialog>
+   243→
+   244→      {/* تأكيد الحذف */}
+   245→      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+   246→        <AlertDialogContent>
+   247→          <AlertDialogHeader>
+   248→            <AlertDialogTitle>حذف المستخدم؟</AlertDialogTitle>
+   249→            <AlertDialogDescription>
+   250→              سيتم حذف حساب «{deleting?.name}» (@{deleting?.username}) نهائيًا من النظام.
+   251→            </AlertDialogDescription>
+   252→          </AlertDialogHeader>
+   253→          <AlertDialogFooter>
+   254→            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+   255→            <AlertDialogAction onClick={delUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">حذف</AlertDialogAction>
+   256→          </AlertDialogFooter>
+   257→        </AlertDialogContent>
+   258→      </AlertDialog>
+   259→    </div>
+   260→  )
+   261→}
+   262→
+   263→// ============================================================================
+   264→// === Roles & Permissions ===
+   265→// ============================================================================
+   266→function PermissionMatrix({ selected, onChange, disabled }: { selected: string[]; onChange: (perms: string[]) => void; disabled?: boolean }) {
+   267→  const set = new Set(selected)
+   268→  const toggle = (key: string) => {
+   269→    if (disabled) return
+   270→    const next = new Set(set)
+   271→    if (next.has(key)) next.delete(key)
+   272→    else next.add(key)
+   273→    onChange(Array.from(next))
+   274→  }
+   275→  const toggleGroup = (group: string) => {
+   276→    if (disabled) return
+   277→    const keys = PERMISSION_CATALOG.filter((p) => p.group === group).map((p) => p.key)
+   278→    const allOn = keys.every((k) => set.has(k))
+   279→    const next = new Set(set)
+   280→    keys.forEach((k) => (allOn ? next.delete(k) : next.add(k)))
+   281→    onChange(Array.from(next))
+   282→  }
+   283→
+   284→  return (
+   285→    <div className="space-y-3 max-h-[50vh] overflow-y-auto pl-1 scrollbar-thin">
+   286→      {PERMISSION_GROUPS.map((group) => {
+   287→        const defs = PERMISSION_CATALOG.filter((p) => p.group === group)
+   288→        const onCount = defs.filter((d) => set.has(d.key)).length
+   289→        const allOn = onCount === defs.length
+   290→        return (
+   291→          <div key={group} className="rounded-xl border border-border overflow-hidden">
+   292→            <div className="flex items-center justify-between gap-2 bg-muted/50 px-3 py-2">
+   293→              <div
+   294→                onClick={() => toggleGroup(group)}
+   295→                role="button"
+   296→                tabIndex={disabled ? -1 : 0}
+   297→                onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleGroup(group) } }}
+   298→                className={cn('flex items-center gap-2 text-xs font-bold hover:text-primary transition-colors cursor-pointer', disabled && 'opacity-60 cursor-not-allowed')}
+   299→              >
+   300→                <Checkbox checked={allOn} disabled={disabled} onCheckedChange={() => toggleGroup(group)} aria-label={`تحديد كل صلاحيات ${group}`} />
+   301→                <span>{group}</span>
+   302→              </div>
+   303→              <Badge variant="secondary" className="text-[10px] tnum">{onCount}/{defs.length}</Badge>
+   304→            </div>
+   305→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 p-2.5">
+   306→              {defs.map((d) => (
+   307→                <label key={d.key} className={cn('flex items-center gap-2 py-1 px-1.5 rounded-lg text-xs cursor-pointer hover:bg-muted/60', disabled && 'opacity-60 cursor-not-allowed')}>
+   308→                  <Checkbox checked={set.has(d.key)} disabled={disabled} onCheckedChange={() => toggle(d.key)} />
+   309→                  <span className="flex-1 leading-tight">{d.label}</span>
+   310→                </label>
+   311→              ))}
+   312→            </div>
+   313→          </div>
+   314→        )
+   315→      })}
+   316→    </div>
+   317→  )
+   318→}
+   319→
+   320→export function RolesModule() {
+   321→  const { toast } = useToast()
+   322→  const { user: me } = useAuth()
+   323→  const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/roles', fetcher)
+   324→  const [open, setOpen] = React.useState(false)
+   325→  const [editing, setEditing] = React.useState<any>(null)
+   326→  const [deleting, setDeleting] = React.useState<any>(null)
+   327→  const [v, setV] = React.useState<any>({ label: '', name: '', permissions: [] })
+   328→  const [err, setErr] = React.useState('')
+   329→  const [saving, setSaving] = React.useState(false)
+   330→
+   331→  const roles = data?.items ?? []
+   332→
+   333→  React.useEffect(() => {
+   334→    if (open) {
+   335→      setErr('')
+   336→      if (editing) {
+   337→        const rawPerms: string[] = Array.isArray(editing.permissions) ? editing.permissions : []
+   338→        // توسيع الأنماط (مثل accounting.*) إلى مفاتيح صريحة + الاحتفاظ بأي صلاحيات غير معروفة حتى لا تفقد
+   339→        const expanded = expandPermissions(rawPerms)
+   340→        const extra = rawPerms.filter((p) => p !== '*' && !p.endsWith('.*') && !PERMISSION_CATALOG.some((d) => d.key === p))
+   341→        setV({ label: editing.label || editing.name, name: editing.name, permissions: [...Array.from(expanded), ...extra] })
+   342→      } else {
+   343→        setV({ label: '', name: '', permissions: ['dashboard.view'] })
+   344→      }
+   345→    }
+   346→  }, [open, editing])
+   347→
+   348→  const openEdit = (r: any) => {
+   349→    if (r.name === 'admin') {
+   350→      toast({ title: 'دور مدير النظام', description: 'يملك كل الصلاحيات ولا يمكن تعديله' })
+   351→      return
+   352→    }
+   353→    setEditing(r); setOpen(true)
+   354→  }
+   355→
+   356→  const submit = async () => {
+   357→    setSaving(true); setErr('')
+   358→    try {
+   359→      const payload = { label: v.label?.trim() || v.name, name: v.name?.trim(), permissions: v.permissions, userName: me?.username || 'admin' }
+   360→      if (editing) {
+   361→        await apiPatch(`/api/roles/${editing.id}`, payload)
+   362→        toast({ title: 'تم تحديث الدور', description: `${v.permissions.length} صلاحية محفوظة` })
+   363→      } else {
+   364→        await apiPost('/api/roles', payload)
+   365→        toast({ title: 'تمت إضافة الدور', description: `${v.permissions.length} صلاحية` })
+   366→      }
+   367→      setOpen(false); mutate()
+   368→    } catch (e: any) { setErr(e.message) } finally { setSaving(false) }
+   369→  }
+   370→
+   371→  const delRole = async () => {
+   372→    if (!deleting) return
+   373→    try { await apiDelete(`/api/roles/${deleting.id}`); mutate(); toast({ title: 'تم حذف الدور' }) }
+   374→    catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+   375→    setDeleting(null)
+   376→  }
+   377→
+   378→  return (
+   379→    <div className="space-y-4">
+   380→      <div className="flex items-center justify-between gap-2 flex-wrap">
+   381→        <div className="flex items-center gap-2 flex-wrap">
+   382→          <Shield className="size-5 text-muted-foreground" />
+   383→          <Badge variant="secondary" className="tnum">{fmtNum(roles.length)} دور</Badge>
+   384→          <Badge variant="outline" className="tnum">{fmtNum(PERMISSION_CATALOG.length)} صلاحية في النظام</Badge>
+   385→        </div>
+   386→        <Button onClick={() => { setEditing(null); setOpen(true) }} size="sm">
+   387→          <Plus className="size-4" /> دور جديد
+   388→        </Button>
+   389→      </div>
+   390→
+   391→      {isLoading ? (
+   392→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   393→          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
+   394→        </div>
+   395→      ) : (
+   396→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   397→          {roles.map((r) => {
+   398→            const isAdmin = r.name === 'admin'
+   399→            const effective = isAdmin ? new Set(PERMISSION_CATALOG.map((p) => p.key)) : expandPermissions(r.permissions)
+   400→            return (
+   401→              <Card key={r.id} className={cn(isAdmin && 'border-emerald-300 dark:border-emerald-800')}>
+   402→                <CardContent className="p-4 space-y-3">
+   403→                  <div className="flex items-start justify-between gap-2">
+   404→                    <div className="flex items-center gap-2.5 min-w-0">
+   405→                      <div className={cn('flex items-center justify-center size-10 rounded-xl shrink-0', isAdmin ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-primary/10 text-primary')}>
+   406→                        {isAdmin ? <ShieldCheck className="size-5" /> : <Shield className="size-5" />}
+   407→                      </div>
+   408→                      <div className="min-w-0">
+   409→                        <div className="font-semibold text-sm truncate">{r.label || r.name}</div>
+   410→                        <div className="text-[11px] text-muted-foreground tnum" dir="ltr">@{r.name}</div>
+   411→                      </div>
+   412→                    </div>
+   413→                    <div className="flex gap-1 shrink-0">
+   414→                      <Button variant="ghost" size="sm" onClick={() => openEdit(r)} className={cn(isAdmin && 'opacity-40')} aria-label="تعديل الدور">
+   415→                        <Pencil className="size-3.5" />
+   416→                      </Button>
+   417→                      <Button variant="ghost" size="sm" className="text-destructive" disabled={isAdmin || (r._count?.users ?? 0) > 0} onClick={() => setDeleting(r)} aria-label="حذف الدور">
+   418→                        <Trash2 className="size-3.5" />
+   419→                      </Button>
+   420→                    </div>
+   421→                  </div>
+   422→                  <div className="flex flex-wrap gap-1.5">
+   423→                    <Badge variant="secondary" className="text-[10px] tnum">
+   424→                      {isAdmin ? 'كل الصلاحيات' : `${effective.size} صلاحية`}
+   425→                    </Badge>
+   426→                    <Badge variant="outline" className="text-[10px] tnum">{fmtNum(r._count?.users ?? 0)} مستخدم</Badge>
+   427→                    {!isAdmin && effective.size === 0 && (
+   428→                      <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300"><ShieldOff className="size-2.5 ml-1" />بدون صلاحيات</Badge>
+   429→                    )}
+   430→                  </div>
+   431→                  {!isAdmin && effective.size > 0 && (
+   432→                    <div className="flex flex-wrap gap-1 pt-1 border-t border-border/60">
+   433→                      {Array.from(effective).slice(0, 4).map((key) => {
+   434→                        const def = PERMISSION_CATALOG.find((p) => p.key === key)
+   435→                        return <Badge key={key} variant="secondary" className="text-[9px] font-normal">{def?.label ?? key}</Badge>
+   436→                      })}
+   437→                      {effective.size > 4 && <Badge variant="secondary" className="text-[9px]">+{effective.size - 4}</Badge>}
+   438→                    </div>
+   439→                  )}
+   440→                </CardContent>
+   441→              </Card>
+   442→            )
+   443→          })}
+   444→        </div>
+   445→      )}
+   446→
+   447→      {/* dialog إضافة/تعديل دور */}
+   448→      <Dialog open={open} onOpenChange={setOpen}>
+   449→        <DialogContent className="max-w-2xl">
+   450→          <DialogHeader>
+   451→            <DialogTitle>{editing ? `تعديل دور: ${editing.label || editing.name}` : 'دور جديد'}</DialogTitle>
+   452→            <DialogDescription>حدد صلاحيات هذا الدور — تُطبق فورًا على جميع المستخدمين المرتبطين به.</DialogDescription>
+   453→          </DialogHeader>
+   454→          <div className="grid grid-cols-2 gap-3 py-1">
+   455→            <div><label className="text-xs font-medium">اسم العرض *</label><Input value={v.label} onChange={(e) => setV({ ...v, label: e.target.value })} placeholder="مثال: محاسب" /></div>
+   456→            <div><label className="text-xs font-medium">المعرف (إنجليزي) *</label><Input value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} dir="ltr" disabled={!!editing} placeholder="accountant" /></div>
+   457→          </div>
+   458→          <div className="text-xs text-muted-foreground flex items-center justify-between">
+   459→            <span>مصفوفة الصلاحيات</span>
+   460→            <Badge variant="secondary" className="tnum">{v.permissions.length} محددة</Badge>
+   461→          </div>
+   462→          <PermissionMatrix selected={v.permissions} onChange={(perms) => setV({ ...v, permissions: perms })} />
+   463→          {err && <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{err}</div>}
+   464→          <DialogFooter>
+   465→            <Button variant="outline" onClick={() => setOpen(false)}>إلغاء</Button>
+   466→            <Button onClick={submit} disabled={saving}>{saving ? 'جاري...' : editing ? 'حفظ التعديلات' : 'إضافة الدور'}</Button>
+   467→          </DialogFooter>
+   468→        </DialogContent>
+   469→      </Dialog>
+   470→
+   471→      {/* تأكيد الحذف */}
+   472→      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+   473→        <AlertDialogContent>
+   474→          <AlertDialogHeader>
+   475→            <AlertDialogTitle>حذف الدور؟</AlertDialogTitle>
+   476→            <AlertDialogDescription>
+   477→              سيتم حذف دور «{deleting?.label || deleting?.name}» — لا يمكن الحذف إذا كان مرتبطًا بمستخدمين.
+   478→            </AlertDialogDescription>
+   479→          </AlertDialogHeader>
+   480→          <AlertDialogFooter>
+   481→            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+   482→            <AlertDialogAction onClick={delRole} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">حذف</AlertDialogAction>
+   483→          </AlertDialogFooter>
+   484→        </AlertDialogContent>
+   485→      </AlertDialog>
+   486→    </div>
+   487→  )
+   488→}
+   489→
+   490→// ============================================================================
+   491→// === Settings ===
+   492→// ============================================================================
+   493→export function SettingsModule() {
+   494→  const { toast } = useToast()
+   495→  const { user: me } = useAuth()
+   496→  const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/settings', fetcher)
+   497→  const [drafts, setDrafts] = React.useState<Record<string, string>>({})
+   498→  const [saving, setSaving] = React.useState(false)
+   499→
+   500→  React.useEffect(() => {
+   501→    if (data && Object.keys(drafts).length === 0) {
+   502→      const d: Record<string, string> = {}
+   503→      for (const s of data.items) d[s.key] = s.value || ''
+   504→      setDrafts(d)
+   505→    }
+   506→  }, [data])
+   507→
+   508→  const grouped = React.useMemo(() => {
+   509→    if (!data) return [] as [string, any[]][]
+   510→    const m = new Map<string, any[]>()
+   511→    for (const s of data.items) {
+   512→      const cat = s.category || 'general'
+   513→      if (!m.has(cat)) m.set(cat, [])
+   514→      m.get(cat)!.push(s)
+   515→    }
+   516→    return Array.from(m.entries())
+   517→  }, [data])
+   518→
+   519→  const save = async () => {
+   520→    setSaving(true)
+   521→    try {
+   522→      const updates = data!.items.map((s) => ({ key: s.key, value: drafts[s.key] ?? '', label: s.label, category: s.category }))
+   523→      await apiPatch('/api/settings', { updates, userName: me?.username || 'admin' })
+   524→      toast({ title: 'تم حفظ الإعدادات' })
+   525→      mutate()
+   526→    } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+   527→    finally { setSaving(false) }
+   528→  }
+   529→
+   530→  const catLabels: Record<string, string> = {
+   531→    general: 'عام', import: 'تعريفات أعمدة الاستيراد', accounting: 'محاسبي', inventory: 'المخزون',
+   532→  }
+   533→
+   534→  return (
+   535→    <div className="space-y-4">
+   536→      <div className="flex items-center justify-between">
+   537→        <div className="flex items-center gap-2"><SettingsIcon className="size-5 text-muted-foreground" /><span className="text-sm text-muted-foreground">إعدادات النظام</span></div>
+   538→        <Button onClick={save} disabled={saving || isLoading} size="sm"><Save className="size-4" /> {saving ? 'جاري الحفظ...' : 'حفظ'}</Button>
+   539→      </div>
+   540→      {isLoading ? <Skeleton className="h-96" /> : (
+   541→        <div className="space-y-4">
+   542→          {grouped.map(([cat, items]) => (
+   543→            <Card key={cat}>
+   544→              <CardHeader className="pb-2"><CardTitle className="text-sm">{catLabels[cat] || cat}</CardTitle><CardDescription>{fmtNum(items.length)} إعداد</CardDescription></CardHeader>
+   545→              <CardContent className="space-y-2.5">
+   546→                {items.map((s) => (
+   547→                  <div key={s.key} className="flex items-center gap-3">
+   548→                    <div className="flex-1 min-w-0">
+   549→                      <div className="text-sm font-medium">{s.label}</div>
+   550→                      <div className="text-[10px] text-muted-foreground tnum">{s.key}</div>
+   551→                    </div>
+   552→                    {s.key === 'inventory_valuation' ? (
+   553→                      <Select value={drafts[s.key] || ''} onValueChange={(val) => setDrafts((d) => ({ ...d, [s.key]: val }))}>
+   554→                        <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+   555→                        <SelectContent>
+   556→                          <SelectItem value="weighted_average">متوسط مرجح</SelectItem>
+   557→                          <SelectItem value="fifo">الوارد أولًا يصرف أولًا (FIFO)</SelectItem>
+   558→                          <SelectItem value="lifo">الوارد أخيرًا يصرف أولًا (LIFO)</SelectItem>
+   559→                        </SelectContent>
+   560→                      </Select>
+   561→                    ) : (
+   562→                      <Input value={drafts[s.key] || ''} onChange={(e) => setDrafts((d) => ({ ...d, [s.key]: e.target.value }))} className="w-64" dir={s.key.includes('label') || s.key === 'company_name' ? undefined : 'ltr'} />
+   563→                    )}
+   564→                  </div>
+   565→                ))}
+   566→              </CardContent>
+   567→            </Card>
+   568→          ))}
+   569→        </div>
+   570→      )}
+   571→    </div>
+   572→  )
+   573→}
+   574→
+   575→// ============================================================================
+   576→// === Audit Log ===
+   577→// ============================================================================
+   578→export function AuditModule() {
+   579→  const [q, setQ] = React.useState('')
+   580→  const [entity, setEntity] = React.useState<string>('all')
+   581→  const { data, isLoading } = useSWR<{ items: any[]; total: number }>(`/api/audit?entity=${entity !== 'all' ? entity : ''}&q=${encodeURIComponent(q)}`, fetcher, { refreshInterval: 15000 })
+   582→
+   583→  const entityLabels: Record<string, string> = {
+   584→    shipment: 'شحنة', party: 'طرف', journal_entry: 'قيد', voucher: 'إذن/سند',
+   585→    branch: 'فرع', warehouse: 'مخزن', item: 'صنف', inventory_movement: 'حركة مخزون',
+   586→    freight_price: 'سعر نولون', account: 'حساب', user: 'مستخدم', role: 'دور/صلاحيات', setting: 'إعداد',
+   587→  }
+   588→  const actionTones: Record<string, string> = {
+   589→    create: 'bg-emerald-100 text-emerald-700', update: 'bg-amber-100 text-amber-700',
+   590→    delete: 'bg-rose-100 text-rose-700', post: 'bg-sky-100 text-sky-700', import: 'bg-purple-100 text-purple-700',
+   591→    login: 'bg-teal-100 text-teal-700', logout: 'bg-slate-200 text-slate-600',
+   592→  }
+   593→  const actionLabels: Record<string, string> = {
+   594→    create: 'إضافة', update: 'تعديل', delete: 'حذف', post: 'ترحيل', import: 'استيراد',
+   595→    approve: 'اعتماد', cancel: 'إلغاء', login: 'تسجيل دخول', logout: 'تسجيل خروج',
+   596→  }
+   597→
+   598→  const cols = [
+   599→    { key: 'date', header: 'التاريخ', hideInCard: true, align: 'center' as const, width: 'w-44', render: (a: any) => <span className="text-xs tnum text-muted-foreground whitespace-nowrap">{fmtDateTime(a.date)}</span> },
+   600→    { key: 'user', header: 'المستخدم', hideInCard: true, width: 'w-28', render: (a: any) => <span className="text-xs font-medium">{a.userName || 'النظام'}</span> },
+   601→    { key: 'action', header: 'العملية', primary: true, align: 'center' as const, width: 'w-28', render: (a: any) => <Badge variant="outline" className={actionTones[a.action] || ''}>{actionLabels[a.action] || a.action}</Badge> },
+   602→    { key: 'entity', header: 'الكيان', align: 'center' as const, width: 'w-32', render: (a: any) => <span className="text-xs">{entityLabels[a.entity] || a.entity}</span> },
+   603→    { key: 'notes', header: 'ملاحظات', render: (a: any) => <span className="text-xs truncate-1 block">{a.notes || '-'}</span> },
+   604→  ]
+   605→
+   606→  return (
+   607→    <div className="space-y-4">
+   608→      <div className="flex items-center justify-between gap-2 flex-wrap">
+   609→        <div className="flex items-center gap-2">
+   610→          <History className="size-5 text-muted-foreground" />
+   611→          <span className="text-sm text-muted-foreground tnum">{fmtNum(data?.total ?? 0)} عملية</span>
+   612→          <Badge variant="outline" className="text-[10px] gap-1"><LogIn className="size-2.5" /><LogOut className="size-2.5" /> دخول/خروج مسجل</Badge>
+   613→        </div>
+   614→        <div className="flex items-center gap-2 w-full sm:w-auto">
+   615→          <Input placeholder="بحث..." value={q} onChange={(e) => setQ(e.target.value)} className="h-8 flex-1 sm:flex-none sm:w-48 min-w-0" />
+   616→          <Select value={entity} onValueChange={setEntity}>
+   617→            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-40 min-w-0"><SelectValue /></SelectTrigger>
+   618→            <SelectContent>
+   619→              <SelectItem value="all">كل الكيانات</SelectItem>
+   620→              {Object.entries(entityLabels).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+   621→            </SelectContent>
+   622→          </Select>
+   623→        </div>
+   624→      </div>
+   625→      <Card><CardContent className="p-0">
+   626→        <DataTable rows={data?.items ?? []} columns={cols} loading={isLoading} getRowKey={(a: any) => a.id} minW={800} searchFn={() => true} />
+   627→      </CardContent></Card>
+   628→      <div className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950/30 rounded-lg p-3 border border-amber-200 dark:border-amber-900">
+   629→        🔒 سجل التدقيق غير قابل للتعديل أو الحذف — يُحفظ تلقائيًا مع كل عملية (إضافة/تعديل/حذف/دخول/خروج) مع اسم المستخدم المنفذ.
+   630→      </div>
+   631→    </div>
+   632→  )
+   633→}
+   634→
