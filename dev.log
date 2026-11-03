@@ -361,3 +361,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/dialog
  GET /api/freight-rates 200 in 32ms (next.js: 21ms, application-code: 10ms)
  GET /api/vouchers/stats 200 in 8ms (next.js: 1.2ms, application-code: 7ms)
  GET /api/vouchers 200 in 14ms (next.js: 0.7ms, application-code: 13ms)
+ GET /api/vouchers/stats 200 in 6ms (next.js: 0.7ms, application-code: 6ms)
+ GET /api/vouchers 200 in 13ms (next.js: 0.7ms, application-code: 12ms)
+ GET /api/vouchers/stats 200 in 6ms (next.js: 0.8ms, application-code: 6ms)
+ GET /api/vouchers 200 in 12ms (next.js: 0.6ms, application-code: 11ms)
