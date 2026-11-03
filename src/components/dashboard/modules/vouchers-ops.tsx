@@ -678,17 +678,17 @@ export function VouchersModule() {
 
       {/* ==== Filter bar ==== */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        {/* RTL right: counter + filters, with a visual divider between them */}
-        <div className="flex items-center gap-3 min-w-0 flex-1 flex-wrap">
+        {/* Counter + filters on ONE line — scrolls horizontally when narrow (never wraps) */}
+        <div className="flex items-center gap-3 min-w-0 flex-1 flex-nowrap overflow-x-auto">
           {/* Counter — own bordered pill, clearly separated */}
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/40 border border-border shrink-0">
             <Landmark className="size-4 text-primary" />
             <span className="text-sm font-semibold tnum whitespace-nowrap">{items.length} إذن معروض</span>
           </div>
-          {/* Vertical divider (visible on sm+) */}
-          <div className="hidden sm:block w-px h-7 bg-border shrink-0" />
+          {/* Vertical divider */}
+          <div className="w-px h-7 bg-border shrink-0" />
           {/* Filters group */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 shrink-0">
             <Select value={typeFilter} onValueChange={setTypeFilter}>
               <SelectTrigger className="w-36 sm:w-44 h-8 min-w-0"><SelectValue placeholder="الكل" /></SelectTrigger>
               <SelectContent>
@@ -712,35 +712,31 @@ export function VouchersModule() {
                 ))}
               </SelectContent>
             </Select>
-            {/* Date range — wrapped together; dir=ltr keeps the native calendar icon
-                on the expected side and prevents it overlapping the placeholder text */}
-            <div className="flex items-center gap-1.5">
-              <div className="relative">
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none tnum">من</span>
-                <Input
-                  type="date"
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
-                  className="w-32 h-8 pr-8 text-xs"
-                  dir="ltr"
-                  aria-label="من تاريخ"
-                />
-              </div>
-              <span className="text-muted-foreground text-xs shrink-0">→</span>
-              <div className="relative">
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none tnum">إلى</span>
-                <Input
-                  type="date"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  className="w-32 h-8 pr-8 text-xs"
-                  dir="ltr"
-                  aria-label="إلى تاريخ"
-                />
-              </div>
+            {/* Date range — labels are sibling spans OUTSIDE the inputs (never overlaid).
+                dir="ltr" keeps the native calendar picker on the conventional side and
+                prevents RTL from flipping it over the date numbers. */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">من</span>
+              <Input
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="w-36 h-8 px-2 text-xs"
+                dir="ltr"
+                aria-label="من تاريخ"
+              />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">إلى</span>
+              <Input
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="w-36 h-8 px-2 text-xs"
+                dir="ltr"
+                aria-label="إلى تاريخ"
+              />
             </div>
             {(typeFilter !== 'all' || statusFilter !== 'all' || from || to) && (
-              <Button variant="ghost" size="sm" onClick={() => { setTypeFilter('all'); setStatusFilter('all'); setFrom(''); setTo('') }} className="h-8 text-xs">
+              <Button variant="ghost" size="sm" onClick={() => { setTypeFilter('all'); setStatusFilter('all'); setFrom(''); setTo('') }} className="h-8 text-xs shrink-0">
                 <X className="size-3.5" /> مسح
               </Button>
             )}
