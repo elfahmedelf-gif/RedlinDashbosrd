@@ -167,3 +167,141 @@
  GET /api/branches 200 in 46ms (next.js: 3ms, application-code: 44ms)
  GET /api/accounts 200 in 62ms (next.js: 0.9ms, application-code: 61ms)
  GET /api/parties 200 in 86ms (next.js: 6ms, application-code: 80ms)
+ GET /api/users 200 in 11ms (next.js: 0.9ms, application-code: 10ms)
+ GET /api/lookups?category=shipment_status 200 in 9ms (next.js: 1.5ms, application-code: 7ms)
+ GET /api/vouchers 200 in 18ms (next.js: 3ms, application-code: 15ms)
+ GET /api/vouchers/stats 200 in 41ms (next.js: 25ms, application-code: 16ms)
+ GET /api/parties 200 in 25ms (next.js: 1.8ms, application-code: 23ms)
+ GET /api/journal?status= 200 in 19ms (next.js: 3ms, application-code: 16ms)
+ GET /api/branches 200 in 12ms (next.js: 0.7ms, application-code: 11ms)
+ GET /api/accounts 200 in 10ms (next.js: 0.8ms, application-code: 9ms)
+ GET /api/movements 405 in 4ms (next.js: 1.0ms, application-code: 3ms)
+ GET /api/warehouses 200 in 7ms (next.js: 0.9ms, application-code: 6ms)
+ GET /api/items?lowStock=0 200 in 6ms (next.js: 0.9ms, application-code: 5ms)
+ GET /api/branches 200 in 12ms (next.js: 1.7ms, application-code: 11ms)
+ GET /api/parties?type=contractor 200 in 13ms (next.js: 0.8ms, application-code: 12ms)
+ GET / 200 in 104ms (next.js: 1.9ms, application-code: 102ms)
+ GET /api/parties?type=customer 200 in 152ms (next.js: 43ms, application-code: 108ms)
+⚠ Blocked cross-origin request to Next.js dev resource /__nextjs_font/geist-latin.woff2 from "preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+ GET /api/branches 200 in 6ms (next.js: 0.7ms, application-code: 5ms)
+ GET /api/parties?type=supplier 200 in 11ms (next.js: 1.1ms, application-code: 10ms)
+ POST /api/auth/login 200 in 14ms (next.js: 2ms, application-code: 12ms)
+ GET /api/stats? 200 in 88ms (next.js: 3ms, application-code: 85ms)
+ GET /api/freight 200 in 90ms (next.js: 1.4ms, application-code: 88ms)
+ GET /api/stats 200 in 118ms (next.js: 0.7ms, application-code: 117ms)
+ GET /api/branches 200 in 59ms (next.js: 0.5ms, application-code: 58ms)
+ GET /api/parties 200 in 98ms (next.js: 4ms, application-code: 95ms)
+ GET /api/warehouses 200 in 31ms (next.js: 0.5ms, application-code: 30ms)
+ GET /api/movements 405 in 3ms (next.js: 0.5ms, application-code: 3ms)
+ GET /api/items 200 in 18ms (next.js: 0.5ms, application-code: 18ms)
+ GET /api/accounts 200 in 48ms (next.js: 0.5ms, application-code: 47ms)
+ GET /api/journal 200 in 59ms (next.js: 0.5ms, application-code: 58ms)
+ GET /api/vouchers 200 in 66ms (next.js: 0.5ms, application-code: 65ms)
+ GET /api/users 200 in 57ms (next.js: 0.5ms, application-code: 56ms)
+ GET /api/audit 200 in 109ms (next.js: 0.7ms, application-code: 109ms)
+ GET /api/lookups 200 in 90ms (next.js: 0.7ms, application-code: 89ms)
+ GET /api/lookups?category=load_type 200 in 8ms (next.js: 0.9ms, application-code: 7ms)
+ GET /api/branches 200 in 6ms (next.js: 0.7ms, application-code: 5ms)
+ GET /api/parties?type=contractor 200 in 12ms (next.js: 0.6ms, application-code: 12ms)
+ GET /api/warehouses 200 in 4ms (next.js: 0.6ms, application-code: 4ms)
+ GET /api/shipments?page=1&pageSize=10 200 in 36ms (next.js: 0.6ms, application-code: 36ms)
+ GET /api/parties?type=customer 200 in 16ms (next.js: 0.7ms, application-code: 15ms)
+ GET /api/lookups?category=shipment_status 200 in 7ms (next.js: 1.0ms, application-code: 6ms)
+ GET /api/stats 200 in 11ms (next.js: 0.8ms, application-code: 10ms)
+ GET /api/lookups?category=collection_status 200 in 7ms (next.js: 0.8ms, application-code: 6ms)
+ GET /api/shipments/cmw11g4r9009uq8yhwuxa1cmd 200 in 20ms (next.js: 11ms, application-code: 9ms)
+ GET /api/movements 405 in 4ms (next.js: 0.9ms, application-code: 3ms)
+ GET /api/movements 405 in 4ms (next.js: 0.9ms, application-code: 3ms)
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+ GET /api/stats? 200 in 10ms (next.js: 0.9ms, application-code: 9ms)
+ GET /api/vouchers/stats 200 in 7ms (next.js: 1.0ms, application-code: 6ms)
+ GET /api/users 200 in 15ms (next.js: 1.0ms, application-code: 14ms)
+ GET /api/vouchers 200 in 49ms (next.js: 0.6ms, application-code: 48ms)
+ GET /api/branches 200 in 32ms (next.js: 0.7ms, application-code: 32ms)
+ GET /api/parties 200 in 38ms (next.js: 0.7ms, application-code: 37ms)
+ GET /api/journal?status= 200 in 12ms (next.js: 1.3ms, application-code: 11ms)
+ GET /api/accounts 200 in 11ms (next.js: 0.7ms, application-code: 10ms)
+ GET /api/movements 405 in 4ms (next.js: 0.5ms, application-code: 4ms)
+ GET /api/branches 200 in 26ms (next.js: 0.6ms, application-code: 25ms)
+ GET /api/parties 200 in 35ms (next.js: 0.7ms, application-code: 34ms)
+ GET /api/vouchers/cmw11g96l00hrq8yhja1vevub 200 in 19ms (next.js: 10ms, application-code: 9ms)
+⚠ Blocked cross-origin request to Next.js dev resource /__nextjs_original-stack-frames from "preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+[browser] `DialogContent` requires a `DialogTitle` for the component to be accessible for screen reader users.
+
+If you want to hide the `DialogTitle`, you can wrap it with our VisuallyHidden component.
+
+For more information, see https://radix-ui.com/primitives/docs/components/dialog 
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+ GET /api/movements 405 in 5ms (next.js: 0.9ms, application-code: 4ms)
+ GET /api/vouchers/stats 200 in 13ms (next.js: 3ms, application-code: 10ms)
+ GET /api/lookups?category=shipment_status 200 in 12ms (next.js: 1.0ms, application-code: 11ms)
+ GET /api/vouchers 200 in 67ms (next.js: 0.7ms, application-code: 66ms)
+ GET /api/users 200 in 53ms (next.js: 0.7ms, application-code: 52ms)
+ GET /api/parties 200 in 75ms (next.js: 1.8ms, application-code: 74ms)
+ GET /api/branches 200 in 26ms (next.js: 0.8ms, application-code: 25ms)
+[browser] `DialogContent` requires a `DialogTitle` for the component to be accessible for screen reader users.
+
+If you want to hide the `DialogTitle`, you can wrap it with our VisuallyHidden component.
+
+For more information, see https://radix-ui.com/primitives/docs/components/dialog 
+[browser] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+ GET /api/vouchers/cmw11g8q900g8q8yh2wwz61qw 200 in 29ms (next.js: 10ms, application-code: 19ms)
+ GET /api/vouchers/stats 200 in 7ms (next.js: 1.0ms, application-code: 6ms)
+ GET /api/vouchers 200 in 14ms (next.js: 0.7ms, application-code: 13ms)
+ GET / 200 in 37ms (next.js: 0.8ms, application-code: 36ms)
+ GET /api/vouchers 200 in 21ms (next.js: 0.8ms, application-code: 20ms)
+ GET /api/vouchers/stats 200 in 18ms (next.js: 0.7ms, application-code: 18ms)
+ GET /api/movements 405 in 4ms (next.js: 0.9ms, application-code: 3ms)
+ GET /api/vouchers/stats 200 in 8ms (next.js: 2.0ms, application-code: 6ms)
+ GET /api/vouchers 200 in 22ms (next.js: 0.9ms, application-code: 21ms)
+ GET /api/stats? 200 in 37ms (next.js: 0.8ms, application-code: 36ms)
+ GET /api/movements 405 in 5ms (next.js: 1.2ms, application-code: 4ms)
+ GET /api/vouchers/stats 200 in 12ms (next.js: 0.6ms, application-code: 11ms)
+ GET /api/vouchers 200 in 73ms (next.js: 22ms, application-code: 51ms)
+ GET /api/branches 200 in 20ms (next.js: 0.5ms, application-code: 19ms)
+ GET /api/users 200 in 28ms (next.js: 0.5ms, application-code: 27ms)
+ GET /api/lookups?category=shipment_status 200 in 26ms (next.js: 0.6ms, application-code: 25ms)
+ GET /api/parties 200 in 40ms (next.js: 0.5ms, application-code: 40ms)
+ GET / 200 in 42ms (next.js: 0.9ms, application-code: 41ms)
+ POST /api/auth/validate 200 in 21ms (next.js: 1.0ms, application-code: 20ms)
+ GET /api/stats? 200 in 32ms (next.js: 3ms, application-code: 29ms)
+ GET /api/freight 200 in 43ms (next.js: 0.6ms, application-code: 42ms)
+ GET /api/stats 200 in 53ms (next.js: 0.6ms, application-code: 52ms)
+ GET /api/branches 200 in 47ms (next.js: 14ms, application-code: 33ms)
+ GET /api/parties 200 in 66ms (next.js: 0.6ms, application-code: 65ms)
+ GET /api/warehouses 200 in 33ms (next.js: 0.5ms, application-code: 33ms)
+ GET /api/movements 405 in 4ms (next.js: 0.5ms, application-code: 3ms)
+ GET /api/items 200 in 18ms (next.js: 0.5ms, application-code: 17ms)
+ GET /api/accounts 200 in 84ms (next.js: 1.0ms, application-code: 83ms)
+ GET /api/journal 200 in 84ms (next.js: 0.7ms, application-code: 84ms)
+ GET /api/vouchers 200 in 110ms (next.js: 0.7ms, application-code: 109ms)
+ GET /api/users 200 in 101ms (next.js: 6ms, application-code: 96ms)
+ GET /api/audit 200 in 30ms (next.js: 5ms, application-code: 25ms)
+ GET /api/lookups 200 in 10ms (next.js: 0.6ms, application-code: 10ms)
+ GET /api/vouchers/stats 200 in 14ms (next.js: 0.9ms, application-code: 13ms)
+ GET /api/lookups?category=shipment_status 200 in 14ms (next.js: 0.7ms, application-code: 13ms)
+ GET /api/vouchers 200 in 15ms (next.js: 0.5ms, application-code: 14ms)
+ GET /api/users 200 in 39ms (next.js: 1.1ms, application-code: 38ms)
+ GET /api/parties 200 in 83ms (next.js: 0.6ms, application-code: 82ms)
+ GET /api/branches 200 in 39ms (next.js: 0.6ms, application-code: 39ms)
+ GET /api/movements 405 in 9ms (next.js: 1.0ms, application-code: 8ms)
