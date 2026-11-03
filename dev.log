@@ -2,236 +2,168 @@
 - Local:         http://localhost:3000
 - Network:       http://21.0.3.213:3000
 - Environments: .env
-✓ Ready in 276ms
-✓ Running next.config.ts took 34ms
+✓ Ready in 285ms
+✓ Running next.config.ts took 36ms
 
-○ Compiling /api/auth/login ...
+○ Compiling /api/lookups ...
 [seed] قاعدة البيانات فارغة — بدء تهيئة البيانات من mock-data.json ...
 [seed] تمت تهيئة قاعدة البيانات بنجاح ✓
- POST /api/auth/login 200 in 607ms (next.js: 163ms, application-code: 444ms)
- POST /api/auth/login 200 in 14ms (next.js: 1.9ms, application-code: 12ms)
- POST /api/auth/login 200 in 10ms (next.js: 1.1ms, application-code: 8ms)
- POST /api/auth/login 200 in 13ms (next.js: 1.3ms, application-code: 11ms)
- POST /api/auth/login 200 in 14ms (next.js: 1.3ms, application-code: 13ms)
- POST /api/branches 200 in 73ms (next.js: 24ms, application-code: 49ms)
- POST /api/parties 200 in 45ms (next.js: 25ms, application-code: 19ms)
- POST /api/parties 200 in 12ms (next.js: 1.1ms, application-code: 11ms)
- POST /api/shipments 200 in 40ms (next.js: 26ms, application-code: 14ms)
- POST /api/shipments 200 in 10ms (next.js: 1.0ms, application-code: 9ms)
- POST /api/shipments 200 in 9ms (next.js: 0.8ms, application-code: 9ms)
- POST /api/shipments 200 in 8ms (next.js: 0.9ms, application-code: 7ms)
- POST /api/shipments 200 in 8ms (next.js: 0.7ms, application-code: 7ms)
- GET /api/journal 200 in 32ms (next.js: 24ms, application-code: 8ms)
- POST /api/vouchers 200 in 57ms (next.js: 24ms, application-code: 34ms)
- POST /api/vouchers/cmw118x4i009oq8obdxty0jef/transition 200 in 545ms (next.js: 523ms, application-code: 22ms)
- POST /api/vouchers/cmw118x4i009oq8obdxty0jef/transition 403 in 23ms (next.js: 11ms, application-code: 12ms)
- POST /api/vouchers/cmw118x4i009oq8obdxty0jef/transition 200 in 14ms (next.js: 0.9ms, application-code: 13ms)
- POST /api/vouchers/cmw118x4i009oq8obdxty0jef/transition 200 in 18ms (next.js: 0.8ms, application-code: 17ms)
- POST /api/vouchers/cmw118x4i009oq8obdxty0jef/transition 200 in 29ms (next.js: 1.0ms, application-code: 28ms)
- GET /api/shipments/cmw118wzs008zq8obi1u9zpkq 200 in 570ms (next.js: 552ms, application-code: 18ms)
- POST /api/vouchers 200 in 13ms (next.js: 0.8ms, application-code: 12ms)
- POST /api/vouchers/cmw118y5u00aaq8ob6crbfm0j/transition 200 in 24ms (next.js: 11ms, application-code: 13ms)
- POST /api/vouchers/cmw118y5u00aaq8ob6crbfm0j/transition 200 in 14ms (next.js: 0.8ms, application-code: 13ms)
- POST /api/vouchers/cmw118y5u00aaq8ob6crbfm0j/transition 400 in 11ms (next.js: 0.9ms, application-code: 11ms)
- POST /api/vouchers/cmw118y5u00aaq8ob6crbfm0j/transition 200 in 16ms (next.js: 0.8ms, application-code: 15ms)
- POST /api/vouchers 200 in 17ms (next.js: 0.7ms, application-code: 16ms)
- POST /api/vouchers/cmw118y9d00aqq8obd5g8afpz/transition 200 in 14ms (next.js: 0.8ms, application-code: 14ms)
- POST /api/vouchers/cmw118y9d00aqq8obd5g8afpz/transition 200 in 13ms (next.js: 0.8ms, application-code: 12ms)
- POST /api/vouchers/cmw118y9d00aqq8obd5g8afpz/transition 200 in 16ms (next.js: 0.9ms, application-code: 15ms)
- POST /api/vouchers/cmw118y9d00aqq8obd5g8afpz/transition 200 in 21ms (next.js: 0.7ms, application-code: 20ms)
- GET /api/shipments/cmw118wzs008zq8obi1u9zpkq 200 in 19ms (next.js: 11ms, application-code: 8ms)
- POST /api/vouchers 200 in 16ms (next.js: 0.8ms, application-code: 15ms)
- POST /api/vouchers/cmw118ydm00bcq8oboeaz9h7r/transition 200 in 13ms (next.js: 0.9ms, application-code: 12ms)
- POST /api/vouchers/cmw118ydm00bcq8oboeaz9h7r/transition 200 in 15ms (next.js: 0.8ms, application-code: 14ms)
- POST /api/vouchers/cmw118ydm00bcq8oboeaz9h7r/transition 200 in 20ms (next.js: 0.7ms, application-code: 20ms)
- POST /api/vouchers/cmw118ydm00bcq8oboeaz9h7r/transition 200 in 42ms (next.js: 0.6ms, application-code: 42ms)
- GET /api/shipments/cmw118wzs008zq8obi1u9zpkq 200 in 8ms (next.js: 0.7ms, application-code: 7ms)
- POST /api/vouchers 200 in 12ms (next.js: 0.6ms, application-code: 11ms)
- POST /api/vouchers/cmw118yi500bwq8obhs2sh8l9/transition 200 in 12ms (next.js: 0.6ms, application-code: 12ms)
- POST /api/vouchers/cmw118yi500bwq8obhs2sh8l9/transition 200 in 12ms (next.js: 0.6ms, application-code: 11ms)
- POST /api/vouchers/cmw118yi500bwq8obhs2sh8l9/transition 200 in 23ms (next.js: 0.7ms, application-code: 22ms)
- POST /api/vouchers/cmw118yi500bwq8obhs2sh8l9/transition 200 in 29ms (next.js: 0.6ms, application-code: 28ms)
- GET /api/shipments/cmw118wzs008zq8obi1u9zpkq 200 in 10ms (next.js: 0.7ms, application-code: 9ms)
+ GET /api/lookups 401 in 378ms (next.js: 101ms, application-code: 277ms)
+ GET /api/journal 401 in 235ms (next.js: 23ms, application-code: 212ms)
+ GET /api/items 401 in 207ms (next.js: 24ms, application-code: 183ms)
+ GET /api/branches 401 in 28ms (next.js: 23ms, application-code: 5ms)
+ GET /api/stats 401 in 29ms (next.js: 24ms, application-code: 5ms)
+ GET /api/vouchers 401 in 29ms (next.js: 24ms, application-code: 5ms)
+ GET /api/roles 401 in 29ms (next.js: 24ms, application-code: 5ms)
+ PATCH /api/users/seed-user-finance 401 in 630ms (next.js: 605ms, application-code: 25ms)
+ GET / 200 in 370ms (next.js: 45ms, application-code: 325ms)
+ POST /api/auth/login 200 in 34ms (next.js: 22ms, application-code: 12ms)
+ POST /api/auth/login 200 in 9ms (next.js: 0.8ms, application-code: 8ms)
+ POST /api/auth/login 200 in 8ms (next.js: 0.6ms, application-code: 7ms)
+ POST /api/auth/login 200 in 9ms (next.js: 1.2ms, application-code: 8ms)
+ POST /api/branches 200 in 11ms (next.js: 0.7ms, application-code: 10ms)
+ POST /api/parties 200 in 40ms (next.js: 23ms, application-code: 17ms)
+ POST /api/parties 200 in 7ms (next.js: 0.6ms, application-code: 6ms)
+ PATCH /api/users/seed-user-finance 401 in 19ms (next.js: 15ms, application-code: 4ms)
+ PATCH /api/users/seed-user-ops 401 in 23ms (next.js: 18ms, application-code: 5ms)
+ GET /api/accounts 401 in 30ms (next.js: 25ms, application-code: 4ms)
+ GET /api/journal 401 in 5ms (next.js: 1.2ms, application-code: 3ms)
+ GET /api/users 401 in 38ms (next.js: 33ms, application-code: 5ms)
+ GET /api/branches 401 in 5ms (next.js: 1.0ms, application-code: 4ms)
+ GET /api/vouchers 401 in 4ms (next.js: 0.9ms, application-code: 3ms)
+ PATCH /api/users/seed-user-viewer 401 in 15ms (next.js: 10ms, application-code: 5ms)
+ GET /api/parties 401 in 5ms (next.js: 1.2ms, application-code: 4ms)
+ GET /api/freight 401 in 26ms (next.js: 22ms, application-code: 4ms)
+ GET /api/movements 405 in 26ms (next.js: 22ms, application-code: 4ms)
+ GET /api/audit 401 in 25ms (next.js: 22ms, application-code: 4ms)
+ POST /api/auth/login 200 in 10ms (next.js: 1.2ms, application-code: 9ms)
+ POST /api/auth/login 200 in 10ms (next.js: 0.8ms, application-code: 9ms)
+ POST /api/auth/login 200 in 9ms (next.js: 0.7ms, application-code: 8ms)
+ POST /api/auth/login 200 in 11ms (next.js: 0.8ms, application-code: 10ms)
+ POST /api/branches 200 in 9ms (next.js: 0.8ms, application-code: 8ms)
+ POST /api/parties 200 in 10ms (next.js: 0.7ms, application-code: 9ms)
+ POST /api/parties 200 in 7ms (next.js: 0.7ms, application-code: 6ms)
+ POST /api/shipments 200 in 37ms (next.js: 26ms, application-code: 11ms)
+ POST /api/shipments 200 in 11ms (next.js: 0.6ms, application-code: 11ms)
+ POST /api/shipments 200 in 10ms (next.js: 0.6ms, application-code: 10ms)
+ POST /api/shipments 200 in 10ms (next.js: 0.6ms, application-code: 9ms)
+ POST /api/shipments 200 in 8ms (next.js: 0.6ms, application-code: 7ms)
+ GET /api/journal 200 in 8ms (next.js: 0.7ms, application-code: 7ms)
+ POST /api/vouchers 200 in 47ms (next.js: 0.7ms, application-code: 46ms)
+ POST /api/vouchers/cmw11g4s8009zq8yhrlquulp6/transition 200 in 515ms (next.js: 496ms, application-code: 19ms)
+ POST /api/vouchers/cmw11g4s8009zq8yhrlquulp6/transition 403 in 21ms (next.js: 11ms, application-code: 10ms)
+ POST /api/vouchers/cmw11g4s8009zq8yhrlquulp6/transition 200 in 20ms (next.js: 0.7ms, application-code: 19ms)
+ POST /api/vouchers/cmw11g4s8009zq8yhrlquulp6/transition 200 in 19ms (next.js: 0.6ms, application-code: 19ms)
+ POST /api/vouchers/cmw11g4s8009zq8yhrlquulp6/transition 200 in 26ms (next.js: 0.7ms, application-code: 25ms)
+ GET /api/items 401 in 10ms (next.js: 1.0ms, application-code: 9ms)
+ GET /api/shipments/cmw11g4ps009aq8yh54h5qwcm 200 in 578ms (next.js: 564ms, application-code: 14ms)
+ POST /api/vouchers 200 in 12ms (next.js: 1.1ms, application-code: 11ms)
+ POST /api/vouchers/cmw11g68z00alq8yh0n4ufv7b/transition 200 in 24ms (next.js: 10ms, application-code: 14ms)
+ POST /api/vouchers/cmw11g68z00alq8yh0n4ufv7b/transition 200 in 20ms (next.js: 0.7ms, application-code: 19ms)
+ POST /api/vouchers/cmw11g68z00alq8yh0n4ufv7b/transition 400 in 9ms (next.js: 0.7ms, application-code: 8ms)
+ POST /api/vouchers/cmw11g68z00alq8yh0n4ufv7b/transition 200 in 12ms (next.js: 0.7ms, application-code: 11ms)
+ POST /api/vouchers 200 in 17ms (next.js: 0.7ms, application-code: 17ms)
+ POST /api/vouchers/cmw11g6bw00b1q8yhfohem15y/transition 200 in 37ms (next.js: 0.7ms, application-code: 36ms)
+ POST /api/vouchers/cmw11g6bw00b1q8yhfohem15y/transition 200 in 13ms (next.js: 0.7ms, application-code: 12ms)
+ POST /api/vouchers/cmw11g6bw00b1q8yhfohem15y/transition 200 in 78ms (next.js: 1.9ms, application-code: 76ms)
+ POST /api/vouchers/cmw11g6bw00b1q8yhfohem15y/transition 200 in 20ms (next.js: 0.8ms, application-code: 19ms)
+ GET /api/shipments/cmw11g4ps009aq8yh54h5qwcm 200 in 26ms (next.js: 14ms, application-code: 12ms)
+ POST /api/vouchers 200 in 41ms (next.js: 0.7ms, application-code: 40ms)
+ POST /api/vouchers/cmw11g6il00bnq8yhiwmvzl1u/transition 200 in 16ms (next.js: 0.6ms, application-code: 16ms)
+ POST /api/vouchers/cmw11g6il00bnq8yhiwmvzl1u/transition 200 in 18ms (next.js: 3ms, application-code: 15ms)
+ POST /api/vouchers/cmw11g6il00bnq8yhiwmvzl1u/transition 200 in 53ms (next.js: 1.7ms, application-code: 51ms)
+ POST /api/vouchers/cmw11g6il00bnq8yhiwmvzl1u/transition 200 in 21ms (next.js: 0.7ms, application-code: 20ms)
+ GET /api/shipments/cmw11g4ps009aq8yh54h5qwcm 200 in 9ms (next.js: 0.8ms, application-code: 9ms)
+ POST /api/vouchers 200 in 46ms (next.js: 0.6ms, application-code: 45ms)
+ POST /api/vouchers/cmw11g6n900c7q8yhqr2so5yw/transition 200 in 13ms (next.js: 0.9ms, application-code: 12ms)
+ POST /api/vouchers/cmw11g6n900c7q8yhqr2so5yw/transition 200 in 13ms (next.js: 1.2ms, application-code: 12ms)
+ POST /api/vouchers/cmw11g6n900c7q8yhqr2so5yw/transition 200 in 19ms (next.js: 1.1ms, application-code: 18ms)
+ POST /api/vouchers/cmw11g6n900c7q8yhqr2so5yw/transition 200 in 43ms (next.js: 0.7ms, application-code: 42ms)
+ GET /api/shipments/cmw11g4ps009aq8yh54h5qwcm 200 in 10ms (next.js: 0.8ms, application-code: 9ms)
+ POST /api/vouchers 200 in 13ms (next.js: 0.7ms, application-code: 12ms)
+ POST /api/vouchers/cmw11g70100crq8yhqcxyppne/transition 200 in 29ms (next.js: 12ms, application-code: 18ms)
+ POST /api/vouchers/cmw11g70100crq8yhqcxyppne/transition 200 in 14ms (next.js: 1.3ms, application-code: 13ms)
+ POST /api/vouchers/cmw11g70100crq8yhqcxyppne/transition 200 in 14ms (next.js: 0.9ms, application-code: 13ms)
+ POST /api/vouchers/cmw11g70100crq8yhqcxyppne/transition 200 in 19ms (next.js: 0.7ms, application-code: 18ms)
+ POST /api/vouchers 200 in 37ms (next.js: 0.6ms, application-code: 37ms)
+ POST /api/vouchers/cmw11g74q00dbq8yhc3b6dxbt/transition 200 in 14ms (next.js: 0.7ms, application-code: 13ms)
+ POST /api/vouchers/cmw11g74q00dbq8yhc3b6dxbt/transition 200 in 24ms (next.js: 0.7ms, application-code: 24ms)
+ POST /api/vouchers/cmw11g74q00dbq8yhc3b6dxbt/transition 200 in 18ms (next.js: 0.8ms, application-code: 17ms)
+ POST /api/vouchers/cmw11g74q00dbq8yhc3b6dxbt/transition 200 in 16ms (next.js: 0.6ms, application-code: 15ms)
+ GET /api/shipments/cmw11g4ps009aq8yh54h5qwcm 200 in 18ms (next.js: 10ms, application-code: 8ms)
  POST /api/vouchers 200 in 14ms (next.js: 0.6ms, application-code: 14ms)
- POST /api/vouchers/cmw118yn600cgq8obq7676wor/transition 200 in 13ms (next.js: 1.5ms, application-code: 12ms)
- POST /api/vouchers/cmw118yn600cgq8obq7676wor/transition 200 in 94ms (next.js: 1.0ms, application-code: 93ms)
- POST /api/vouchers/cmw118yn600cgq8obq7676wor/transition 200 in 56ms (next.js: 33ms, application-code: 23ms)
- POST /api/vouchers/cmw118yn600cgq8obq7676wor/transition 200 in 31ms (next.js: 1.4ms, application-code: 29ms)
- POST /api/vouchers 200 in 24ms (next.js: 0.7ms, application-code: 23ms)
- POST /api/vouchers/cmw118yvm00d0q8ob7xf1xal0/transition 200 in 24ms (next.js: 0.9ms, application-code: 23ms)
- POST /api/vouchers/cmw118yvm00d0q8ob7xf1xal0/transition 200 in 50ms (next.js: 0.6ms, application-code: 49ms)
- POST /api/vouchers/cmw118yvm00d0q8ob7xf1xal0/transition 200 in 21ms (next.js: 0.7ms, application-code: 20ms)
- POST /api/vouchers/cmw118yvm00d0q8ob7xf1xal0/transition 200 in 18ms (next.js: 0.7ms, application-code: 18ms)
- GET /api/shipments/cmw118wzs008zq8obi1u9zpkq 200 in 51ms (next.js: 39ms, application-code: 12ms)
- POST /api/vouchers 200 in 25ms (next.js: 0.7ms, application-code: 25ms)
- POST /api/vouchers/cmw118z2500dkq8ob56kk98cz/transition 200 in 38ms (next.js: 0.6ms, application-code: 38ms)
- POST /api/vouchers/cmw118z2500dkq8ob56kk98cz/transition 200 in 12ms (next.js: 0.8ms, application-code: 11ms)
- POST /api/vouchers/cmw118z2500dkq8ob56kk98cz/transition 200 in 14ms (next.js: 0.7ms, application-code: 13ms)
- POST /api/vouchers/cmw118z2500dkq8ob56kk98cz/transition 200 in 28ms (next.js: 1.4ms, application-code: 26ms)
- GET /api/shipments/cmw118wzs008zq8obi1u9zpkq 200 in 38ms (next.js: 24ms, application-code: 14ms)
- POST /api/vouchers 200 in 12ms (next.js: 0.7ms, application-code: 11ms)
- POST /api/vouchers/cmw118z6y00e4q8ob6m6fg64t/transition 200 in 14ms (next.js: 0.7ms, application-code: 13ms)
- POST /api/vouchers/cmw118z6y00e4q8ob6m6fg64t/transition 200 in 13ms (next.js: 0.7ms, application-code: 12ms)
- POST /api/vouchers/cmw118z6y00e4q8ob6m6fg64t/transition 200 in 36ms (next.js: 0.7ms, application-code: 35ms)
- POST /api/vouchers/cmw118z6y00e4q8ob6m6fg64t/transition 200 in 26ms (next.js: 1.1ms, application-code: 25ms)
- GET /api/vouchers/cmw118z6y00e4q8ob6m6fg64t 200 in 622ms (next.js: 598ms, application-code: 24ms)
+ POST /api/vouchers/cmw11g78x00dvq8yhzwmigpw1/transition 200 in 14ms (next.js: 0.6ms, application-code: 13ms)
+ POST /api/vouchers/cmw11g78x00dvq8yhzwmigpw1/transition 200 in 12ms (next.js: 0.6ms, application-code: 11ms)
+ POST /api/vouchers/cmw11g78x00dvq8yhzwmigpw1/transition 200 in 16ms (next.js: 0.6ms, application-code: 15ms)
+ POST /api/vouchers/cmw11g78x00dvq8yhzwmigpw1/transition 200 in 17ms (next.js: 0.6ms, application-code: 16ms)
+ GET /api/shipments/cmw11g4ps009aq8yh54h5qwcm 200 in 10ms (next.js: 0.6ms, application-code: 10ms)
+ POST /api/vouchers 200 in 16ms (next.js: 0.6ms, application-code: 15ms)
+ POST /api/vouchers/cmw11g7d800efq8yhh975utcf/transition 200 in 11ms (next.js: 1.0ms, application-code: 10ms)
+ POST /api/vouchers/cmw11g7d800efq8yhh975utcf/transition 200 in 11ms (next.js: 0.7ms, application-code: 11ms)
+ POST /api/vouchers/cmw11g7d800efq8yhh975utcf/transition 200 in 19ms (next.js: 2ms, application-code: 17ms)
+ GET /api/users 401 in 4ms (next.js: 0.9ms, application-code: 3ms)
+ POST /api/vouchers/cmw11g7d800efq8yhh975utcf/transition 200 in 24ms (next.js: 0.5ms, application-code: 24ms)
+ GET /api/lookups 401 in 4ms (next.js: 0.9ms, application-code: 3ms)
+ GET /api/vouchers/cmw11g7d800efq8yhh975utcf 200 in 727ms (next.js: 714ms, application-code: 12ms)
  GET /api/journal 200 in 7ms (next.js: 0.8ms, application-code: 6ms)
-prisma:error 
-Invalid `tx.opVoucher.create()` invocation in
-/home/z/my-project/.next/dev/server/chunks/[root-of-the-server]__0kgs74b8fs3ty._.js:3922:38
-
-  3919 }
-  3920 const amount = tdef.isFinancial ? (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$server$2f$http$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["round2"])(Number(body.amount) || 0) : null;
-  3921 const voucherNo = await nextVoucherNo(tx, type);
-→ 3922 const v = await tx.opVoucher.create(
-Unique constraint failed on the fields: (`voucherNo`)
-[api-error] Error [PrismaClientKnownRequestError]: 
-Invalid `tx.opVoucher.create()` invocation in
-/home/z/my-project/.next/dev/server/chunks/[root-of-the-server]__0kgs74b8fs3ty._.js:3922:38
-
-  3919 }
-  3920 const amount = tdef.isFinancial ? (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$server$2f$http$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["round2"])(Number(body.amount) || 0) : null;
-  3921 const voucherNo = await nextVoucherNo(tx, type);
-→ 3922 const v = await tx.opVoucher.create(
-Unique constraint failed on the fields: (`voucherNo`)
-    at async (src/lib/server/vouchers.ts:314:15)
-    at async handle (src/lib/server/http.ts:17:18)
-  312 |     const amount = tdef.isFinancial ? round2(Number(body.amount) || 0) : null
-  313 |     const voucherNo = await nextVoucherNo(tx, type)
-> 314 |     const v = await tx.opVoucher.create({
-      |               ^
-  315 |       data: {
-  316 |         voucherNo,
-  317 |         type, {
-  code: 'P2002',
-  meta: { modelName: 'OpVoucher', target: [ 'voucherNo' ] },
-  clientVersion: '6.19.2'
-}
- POST /api/vouchers 500 in 314ms (next.js: 1.5ms, application-code: 312ms)
- POST /api/vouchers/undefined/transition 404 in 39ms (next.js: 30ms, application-code: 9ms)
- GET /api/vouchers/undefined 404 in 38ms (next.js: 31ms, application-code: 7ms)
-prisma:error 
-Invalid `tx.opVoucher.create()` invocation in
-/home/z/my-project/.next/dev/server/chunks/[root-of-the-server]__0kgs74b8fs3ty._.js:4340:43
-
-  4337 const customerAmount = (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$server$2f$http$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["round2"])(Number(body.customerAmount ?? s.freightTotal ?? 0));
-  4338 if (s.customerId && customerAmount > 0) {
-  4339     const voucherNo = await nextVoucherNo(tx, 'collection');
-→ 4340     const v1 = await tx.opVoucher.create(
-Unique constraint failed on the fields: (`voucherNo`)
-[api-error] Error [PrismaClientKnownRequestError]: 
-Invalid `tx.opVoucher.create()` invocation in
-/home/z/my-project/.next/dev/server/chunks/[root-of-the-server]__0kgs74b8fs3ty._.js:4340:43
-
-  4337 const customerAmount = (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$server$2f$http$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["round2"])(Number(body.customerAmount ?? s.freightTotal ?? 0));
-  4338 if (s.customerId && customerAmount > 0) {
-  4339     const voucherNo = await nextVoucherNo(tx, 'collection');
-→ 4340     const v1 = await tx.opVoucher.create(
-Unique constraint failed on the fields: (`voucherNo`)
-    at async (src/lib/server/vouchers.ts:542:18)
-    at async handle (src/lib/server/http.ts:17:18)
-  540 |     if (s.customerId && customerAmount > 0) {
-  541 |       const voucherNo = await nextVoucherNo(tx, 'collection')
-> 542 |       const v1 = await tx.opVoucher.create({
-      |                  ^
-  543 |         data: {
-  544 |           voucherNo, type: 'collection', status: 'completed',
-  545 |           sourceBranchId: s.branchId ?? null, partyId: s.customerId, {
-  code: 'P2002',
-  meta: { modelName: 'OpVoucher', target: [ 'voucherNo' ] },
-  clientVersion: '6.19.2'
-}
- POST /api/shipments/cmw118x0k0099q8ob8he6y5md/settle-cod 500 in 885ms (next.js: 742ms, application-code: 142ms)
-prisma:error 
-Invalid `tx.opVoucher.create()` invocation in
-/home/z/my-project/.next/dev/server/chunks/[root-of-the-server]__0kgs74b8fs3ty._.js:4340:43
-
-  4337 const customerAmount = (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$server$2f$http$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["round2"])(Number(body.customerAmount ?? s.freightTotal ?? 0));
-  4338 if (s.customerId && customerAmount > 0) {
-  4339     const voucherNo = await nextVoucherNo(tx, 'collection');
-→ 4340     const v1 = await tx.opVoucher.create(
-Unique constraint failed on the fields: (`voucherNo`)
-[api-error] Error [PrismaClientKnownRequestError]: 
-Invalid `tx.opVoucher.create()` invocation in
-/home/z/my-project/.next/dev/server/chunks/[root-of-the-server]__0kgs74b8fs3ty._.js:4340:43
-
-  4337 const customerAmount = (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$server$2f$http$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["round2"])(Number(body.customerAmount ?? s.freightTotal ?? 0));
-  4338 if (s.customerId && customerAmount > 0) {
-  4339     const voucherNo = await nextVoucherNo(tx, 'collection');
-→ 4340     const v1 = await tx.opVoucher.create(
-Unique constraint failed on the fields: (`voucherNo`)
-    at async (src/lib/server/vouchers.ts:542:18)
-    at async handle (src/lib/server/http.ts:17:18)
-  540 |     if (s.customerId && customerAmount > 0) {
-  541 |       const voucherNo = await nextVoucherNo(tx, 'collection')
-> 542 |       const v1 = await tx.opVoucher.create({
-      |                  ^
-  543 |         data: {
-  544 |           voucherNo, type: 'collection', status: 'completed',
-  545 |           sourceBranchId: s.branchId ?? null, partyId: s.customerId, {
-  code: 'P2002',
-  meta: { modelName: 'OpVoucher', target: [ 'voucherNo' ] },
-  clientVersion: '6.19.2'
-}
- POST /api/shipments/cmw118x0w009eq8ob8glaeti9/settle-cod 500 in 31ms (next.js: 10ms, application-code: 21ms)
- GET /api/shipments/cmw118x0k0099q8ob8he6y5md 200 in 20ms (next.js: 10ms, application-code: 10ms)
- GET /api/journal 200 in 35ms (next.js: 0.7ms, application-code: 34ms)
-prisma:error 
-Invalid `tx.opVoucher.create()` invocation in
-/home/z/my-project/.next/dev/server/chunks/[root-of-the-server]__0kgs74b8fs3ty._.js:4340:43
-
-  4337 const customerAmount = (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$server$2f$http$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["round2"])(Number(body.customerAmount ?? s.freightTotal ?? 0));
-  4338 if (s.customerId && customerAmount > 0) {
-  4339     const voucherNo = await nextVoucherNo(tx, 'collection');
-→ 4340     const v1 = await tx.opVoucher.create(
-Unique constraint failed on the fields: (`voucherNo`)
-[api-error] Error [PrismaClientKnownRequestError]: 
-Invalid `tx.opVoucher.create()` invocation in
-/home/z/my-project/.next/dev/server/chunks/[root-of-the-server]__0kgs74b8fs3ty._.js:4340:43
-
-  4337 const customerAmount = (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$server$2f$http$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["round2"])(Number(body.customerAmount ?? s.freightTotal ?? 0));
-  4338 if (s.customerId && customerAmount > 0) {
-  4339     const voucherNo = await nextVoucherNo(tx, 'collection');
-→ 4340     const v1 = await tx.opVoucher.create(
-Unique constraint failed on the fields: (`voucherNo`)
-    at async (src/lib/server/vouchers.ts:542:18)
-    at async handle (src/lib/server/http.ts:17:18)
-  540 |     if (s.customerId && customerAmount > 0) {
-  541 |       const voucherNo = await nextVoucherNo(tx, 'collection')
-> 542 |       const v1 = await tx.opVoucher.create({
-      |                  ^
-  543 |         data: {
-  544 |           voucherNo, type: 'collection', status: 'completed',
-  545 |           sourceBranchId: s.branchId ?? null, partyId: s.customerId, {
-  code: 'P2002',
-  meta: { modelName: 'OpVoucher', target: [ 'voucherNo' ] },
-  clientVersion: '6.19.2'
-}
- POST /api/shipments/cmw118x0k0099q8ob8he6y5md/settle-cod 500 in 24ms (next.js: 0.7ms, application-code: 23ms)
- POST /api/vouchers/cmw118z6y00e4q8ob6m6fg64t/transition 409 in 33ms (next.js: 20ms, application-code: 13ms)
- GET /api/accounts 200 in 123ms (next.js: 83ms, application-code: 40ms)
- POST /api/journal 400 in 16ms (next.js: 0.7ms, application-code: 15ms)
- GET /api/journal 200 in 40ms (next.js: 1.2ms, application-code: 38ms)
- POST /api/vouchers 200 in 21ms (next.js: 1.2ms, application-code: 20ms)
- POST /api/vouchers/cmw11917f00fqq8ob1j7jbtf8/transition 200 in 18ms (next.js: 0.7ms, application-code: 18ms)
- POST /api/vouchers/cmw11917f00fqq8ob1j7jbtf8/transition 403 in 44ms (next.js: 32ms, application-code: 12ms)
- POST /api/journal/xxx/post 403 in 683ms (next.js: 667ms, application-code: 16ms)
- GET /api/shipments 401 in 6ms (next.js: 3ms, application-code: 3ms)
- POST /api/vouchers 409 in 9ms (next.js: 0.7ms, application-code: 8ms)
- POST /api/auth/login 200 in 7ms (next.js: 0.7ms, application-code: 7ms)
- GET /api/vouchers 200 in 12ms (next.js: 0.6ms, application-code: 12ms)
- GET /api/reports/trial-balance 200 in 540ms (next.js: 526ms, application-code: 14ms)
- GET /api/reports/income-statement 200 in 22ms (next.js: 11ms, application-code: 12ms)
- GET /api/reports/customer-debts 200 in 50ms (next.js: 0.8ms, application-code: 49ms)
- GET /api/reports/contractor-dues 200 in 31ms (next.js: 1.2ms, application-code: 29ms)
- GET /api/accounts 200 in 9ms (next.js: 0.6ms, application-code: 8ms)
- GET /api/reports/account-statement?accountId=cmvl1cs41000yq25ngrs5u3yj 200 in 34ms (next.js: 0.8ms, application-code: 34ms)
- DELETE /api/vouchers/cmw118yvm00d0q8ob7xf1xal0 409 in 19ms (next.js: 11ms, application-code: 8ms)
- DELETE /api/shipments/cmw118x070094q8obtdzdn2wu 409 in 19ms (next.js: 12ms, application-code: 8ms)
- POST /api/journal/cmw118z9t00eiq8obtn765hjs/reverse 200 in 725ms (next.js: 688ms, application-code: 37ms)
- POST /api/journal/cmw118z9t00eiq8obtn765hjs/reverse 409 in 25ms (next.js: 13ms, application-code: 12ms)
- DELETE /api/journal/cmw118z9t00eiq8obtn765hjs 409 in 582ms (next.js: 573ms, application-code: 9ms)
- GET / 200 in 412ms (next.js: 48ms, application-code: 364ms)
- GET / 200 in 70ms (next.js: 10ms, application-code: 60ms)
- POST /api/auth/validate 401 in 26ms (next.js: 22ms, application-code: 5ms)
- POST /api/auth/validate 401 in 5ms (next.js: 1.3ms, application-code: 4ms)
+ POST /api/vouchers 200 in 9ms (next.js: 0.6ms, application-code: 8ms)
+ POST /api/vouchers/cmw11g82c00f3q8yh93e756qr/transition 200 in 24ms (next.js: 12ms, application-code: 12ms)
+ POST /api/vouchers/cmw11g82c00f3q8yh93e756qr/transition 200 in 13ms (next.js: 0.7ms, application-code: 12ms)
+ POST /api/vouchers/cmw11g82c00f3q8yh93e756qr/transition 200 in 11ms (next.js: 0.9ms, application-code: 10ms)
+ GET /api/movements 405 in 4ms (next.js: 0.7ms, application-code: 3ms)
+ POST /api/vouchers/cmw11g82c00f3q8yh93e756qr/transition 200 in 45ms (next.js: 0.8ms, application-code: 45ms)
+ GET /api/vouchers/cmw11g82c00f3q8yh93e756qr 200 in 18ms (next.js: 11ms, application-code: 7ms)
+ POST /api/shipments/cmw11g4qj009kq8yhyovcgzq0/settle-cod 200 in 746ms (next.js: 645ms, application-code: 100ms)
+ POST /api/shipments/cmw11g4qz009pq8yhbas99h47/settle-cod 200 in 77ms (next.js: 12ms, application-code: 65ms)
+ GET /api/shipments/cmw11g4qj009kq8yhyovcgzq0 200 in 24ms (next.js: 13ms, application-code: 12ms)
+ GET /api/journal 200 in 11ms (next.js: 0.7ms, application-code: 10ms)
+ POST /api/shipments/cmw11g4qj009kq8yhyovcgzq0/settle-cod 409 in 30ms (next.js: 0.7ms, application-code: 29ms)
+ POST /api/vouchers/cmw11g7d800efq8yhh975utcf/transition 409 in 20ms (next.js: 11ms, application-code: 9ms)
+ GET /api/accounts 200 in 18ms (next.js: 2ms, application-code: 16ms)
+ POST /api/journal 400 in 58ms (next.js: 1.4ms, application-code: 56ms)
+ GET /api/journal 200 in 14ms (next.js: 2ms, application-code: 12ms)
+ POST /api/vouchers 200 in 22ms (next.js: 0.6ms, application-code: 22ms)
+ POST /api/vouchers/cmw11g96l00hrq8yhja1vevub/transition 200 in 19ms (next.js: 0.6ms, application-code: 19ms)
+ POST /api/vouchers/cmw11g96l00hrq8yhja1vevub/transition 403 in 14ms (next.js: 0.6ms, application-code: 13ms)
+ GET /api/lookups 401 in 5ms (next.js: 1.1ms, application-code: 4ms)
+ GET / 200 in 86ms (next.js: 0.9ms, application-code: 85ms)
+ POST /api/journal/xxx/post 403 in 786ms (next.js: 776ms, application-code: 10ms)
+ GET /api/shipments 401 in 4ms (next.js: 1.1ms, application-code: 3ms)
+ POST /api/vouchers 409 in 9ms (next.js: 0.8ms, application-code: 8ms)
+ POST /api/auth/login 200 in 11ms (next.js: 0.8ms, application-code: 10ms)
+ GET /api/warehouses 401 in 26ms (next.js: 23ms, application-code: 4ms)
+ GET /api/vouchers 200 in 13ms (next.js: 0.8ms, application-code: 13ms)
+ GET /api/reports/trial-balance 200 in 518ms (next.js: 507ms, application-code: 11ms)
+ GET /api/reports/income-statement 200 in 18ms (next.js: 10ms, application-code: 7ms)
+ GET /api/reports/customer-debts 200 in 31ms (next.js: 0.7ms, application-code: 30ms)
+ GET /api/reports/contractor-dues 200 in 64ms (next.js: 0.7ms, application-code: 63ms)
+ GET /api/accounts 200 in 7ms (next.js: 0.7ms, application-code: 6ms)
+ GET /api/reports/account-statement?accountId=cmvl1cs41000yq25ngrs5u3yj 200 in 8ms (next.js: 0.7ms, application-code: 7ms)
+ DELETE /api/vouchers/cmw11g74q00dbq8yhc3b6dxbt 409 in 20ms (next.js: 10ms, application-code: 10ms)
+ DELETE /api/shipments/cmw11g4q5009fq8yhi9moqt2v 409 in 53ms (next.js: 45ms, application-code: 8ms)
+ POST /api/journal/cmw11g7gi00etq8yh8qepg6wa/reverse 200 in 906ms (next.js: 880ms, application-code: 25ms)
+ POST /api/journal/cmw11g7gi00etq8yh8qepg6wa/reverse 409 in 18ms (next.js: 11ms, application-code: 6ms)
+ DELETE /api/journal/cmw11g7gi00etq8yh8qepg6wa 409 in 622ms (next.js: 595ms, application-code: 27ms)
+ POST /api/auth/validate 401 in 31ms (next.js: 26ms, application-code: 5ms)
+ POST /api/auth/login 200 in 9ms (next.js: 0.9ms, application-code: 8ms)
+ GET /api/stats? 200 in 19ms (next.js: 1.0ms, application-code: 18ms)
+ GET /api/warehouses 200 in 11ms (next.js: 0.9ms, application-code: 10ms)
+ GET /api/stats 200 in 16ms (next.js: 0.9ms, application-code: 15ms)
+ GET /api/branches 200 in 7ms (next.js: 0.7ms, application-code: 6ms)
+ GET /api/parties 200 in 18ms (next.js: 0.8ms, application-code: 17ms)
+ GET /api/freight 200 in 14ms (next.js: 1.0ms, application-code: 13ms)
+ GET /api/items 200 in 22ms (next.js: 1.1ms, application-code: 21ms)
+ GET /api/movements 405 in 6ms (next.js: 0.9ms, application-code: 5ms)
+ GET /api/accounts 200 in 13ms (next.js: 1.1ms, application-code: 12ms)
+ GET /api/journal 200 in 9ms (next.js: 0.8ms, application-code: 8ms)
+ GET /api/vouchers 200 in 18ms (next.js: 0.7ms, application-code: 18ms)
+ GET /api/users 200 in 8ms (next.js: 0.7ms, application-code: 8ms)
+ GET /api/audit 200 in 7ms (next.js: 0.6ms, application-code: 7ms)
+ GET /api/lookups 200 in 7ms (next.js: 0.9ms, application-code: 6ms)
+ GET /api/reports/shipments? 200 in 104ms (next.js: 10ms, application-code: 94ms)
+ GET /api/movements 405 in 6ms (next.js: 1.3ms, application-code: 5ms)
+ GET /api/accounts 200 in 24ms (next.js: 1.0ms, application-code: 23ms)
+ GET /api/journal?status= 200 in 20ms (next.js: 1.0ms, application-code: 19ms)
+ GET /api/branches 200 in 46ms (next.js: 3ms, application-code: 44ms)
+ GET /api/accounts 200 in 62ms (next.js: 0.9ms, application-code: 61ms)
+ GET /api/parties 200 in 86ms (next.js: 6ms, application-code: 80ms)

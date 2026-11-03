@@ -56,8 +56,8 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
   if (!data) return null
 
   const s = data.summary
-  const dailyData = data.daily.map((d) => ({ ...d, day: weekdayName(d.date), label: shortDate(d.date) }))
-  const topDest = data.destinations.slice(0, 10)
+  const dailyData = (data.daily ?? []).map((d) => ({ ...d, day: weekdayName(d.date), label: shortDate(d.date) }))
+  const topDest = (data.destinations ?? []).slice(0, 10)
   const unitBreakdown = [
     { name: '1.5 طن', value: s.ton15Total, color: PIE_COLORS[0] },
     { name: '3 طن', value: s.ton3Total, color: PIE_COLORS[1] },
@@ -234,8 +234,8 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
           </CardHeader>
           <CardContent>
             <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-              {data.contractors.slice(0, 12).map((c, i) => {
-                const max = data.contractors[0]?.count || 1
+              {(data.contractors ?? []).slice(0, 12).map((c, i) => {
+                const max = data.contractors?.[0]?.count || 1
                 const pct = (c.count / max) * 100
                 return (
                   <div key={c.name} className="flex items-center gap-3">

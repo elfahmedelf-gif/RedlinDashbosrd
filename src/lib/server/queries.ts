@@ -521,14 +521,16 @@ function dateRange(from: string | null, to: string | null) {
 // Dashboard stats — محسوبة من قاعدة البيانات
 // ---------------------------------------------------------------------------
 export async function dashboardStats() {
-  const [agg, statusGroup, dailyRows, contractorRows] = await Promise.all([
+  const [agg, statusGroup, dailyRows, contractorRows, destRows, codRows] = await Promise.all([
     db.shipment.aggregate({
       _count: { _all: true },
       _sum: { policyQty: true, freightTotal: true, customerPay: true, totalSuppliers: true, salePrice: true, aging: true, overnight: true, returns: true, transfer: true, other: true, drop: true, ton15: true, ton3: true, m6: true },
     }),
     db.shipment.groupBy({ by: ['status'], _count: { _all: true } }),
     db.shipment.findMany({ select: { date: true, freightTotal: true, totalSuppliers: true, customerPay: true }, orderBy: { date: 'asc' } }),
-    db.shipment.groupBy({ by: ['contractorId'], where: { contractorId: { not: null } }, _count: { _all: true }, _sum: { freightTotal: true }, orderBy: { _count: { id: 'desc' } }, take: 8 }),
+    db.shipment.groupBy({ by: ['contractorId'], where: { contractorId: { not: null } }, _count: { _all: true }, _sum: { freightTotal: true, totalSuppliers: true } }),
+    db.shipment.groupBy({ by: ['destination'], where: { destination: { not: null } }, _count: { _all: true }, _sum: { freightTotal: true, totalSuppliers: true } }),
+    db.shipment.groupBy({ by: ['routeCode'], where: { routeCode: { not: null } }, _count: { _all: true }, _sum: { freightTotal: true } }),
   ])
   const sum = agg._sum
   const statusCounts: Record<string, number> = {}
@@ -576,7 +578,15 @@ export async function dashboardStats() {
       statusCounts,
     },
     daily,
-    contractors: contractorRows.map((c) => ({ name: contractorName.get(c.contractorId ?? '') ?? '-', shipments: c._count._all, freight: round2(c._sum.freightTotal ?? 0) })),
+    destinations: destRows
+      .map((g) => ({ name: g.destination ?? '-', count: g._count._all, freight: round2(g._sum.freightTotal ?? 0), suppliers: round2(g._sum.totalSuppliers ?? 0) }))
+      .sort((a, b) => b.count - a.count),
+    codings: codRows
+      .map((g) => ({ name: g.routeCode ?? '-', count: g._count._all, freight: round2(g._sum.freightTotal ?? 0) }))
+      .sort((a, b) => b.count - a.count),
+    contractors: contractorRows
+      .map((c) => ({ name: contractorName.get(c.contractorId ?? '') ?? '-', count: c._count._all, freight: round2(c._sum.freightTotal ?? 0), suppliers: round2(c._sum.totalSuppliers ?? 0) }))
+      .sort((a, b) => b.count - a.count),
     dateRange: {
       from: dates.length ? new Date(Math.min(...dates.map((d) => d.getTime()))).toISOString() : null,
       to: dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))).toISOString() : null,

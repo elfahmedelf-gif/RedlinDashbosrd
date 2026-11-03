@@ -93,15 +93,15 @@ export function OverviewTab({ from, to }: { from?: string; to?: string }) {
   const revenue = s.totalSuppliers
 
   // Daily chart data
-  const dailyData = data.daily.map((d) => ({
+  const dailyData = (data.daily ?? []).map((d) => ({
     ...d,
     day: weekdayName(d.date),
     label: shortDate(d.date),
   }))
 
   // Top destinations (by freight) - top 8
-  const topDest = data.destinations.slice(0, 8)
-  const otherDestFreight = data.destinations.slice(8).reduce((a, b) => a + b.freight, 0)
+  const topDest = (data.destinations ?? []).slice(0, 8)
+  const otherDestFreight = (data.destinations ?? []).slice(8).reduce((a, b) => a + b.freight, 0)
   const destPie = [
     ...topDest.map((d) => ({ name: d.name, value: d.freight })),
     ...(otherDestFreight > 0 ? [{ name: 'أخرى', value: otherDestFreight }] : []),
@@ -395,8 +395,8 @@ export function OverviewTab({ from, to }: { from?: string; to?: string }) {
           </CardHeader>
           <CardContent>
             <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-              {data.contractors.map((c, i) => {
-                const max = data.contractors[0]?.count || 1
+              {(data.contractors ?? []).map((c, i) => {
+                const max = data.contractors?.[0]?.count || 1
                 const pct = (c.count / max) * 100
                 return (
                   <div key={c.name} className="flex items-center gap-3">
