@@ -6,6 +6,25 @@ import { db } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
+export async function GET(req: Request) {
+  return handle(async () => {
+    await ensureSeeded()
+    await requirePerm(req, 'inventory.view')
+    const rows = await db.inventoryMovement.findMany({
+      include: {
+        item: { select: { id: true, name: true, code: true, unit: true } },
+        warehouse: { select: { id: true, name: true } },
+      },
+      orderBy: { date: 'desc' },
+    })
+    const toWhIds = rows.map((m) => m.toWarehouseId).filter(Boolean) as string[]
+    const toWhs = toWhIds.length ? await db.warehouse.findMany({ where: { id: { in: toWhIds } }, select: { id: true, name: true } }) : []
+    const toWhMap = new Map(toWhs.map((w) => [w.id, { id: w.id, name: w.name }]))
+    const items = rows.map((m) => ({ ...m, warehouse: m.warehouse ? { id: m.warehouse.id, name: m.warehouse.name } : null, toWarehouse: m.toWarehouseId ? toWhMap.get(m.toWarehouseId) ?? null : null }))
+    return { items, total: items.length }
+  })
+}
+
 async function itemBalance(itemId: string): Promise<number> {
   const rows = await db.inventoryMovement.groupBy({ by: ['type'], where: { itemId }, _sum: { quantity: true } })
   let bal = 0
