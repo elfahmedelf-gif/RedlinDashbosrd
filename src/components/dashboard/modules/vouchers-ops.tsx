@@ -677,41 +677,76 @@ export function VouchersModule() {
       </div>
 
       {/* ==== Filter bar ==== */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
-          <Landmark className="size-5 text-muted-foreground shrink-0" />
-          <span className="text-sm tnum shrink-0">{items.length} إذن معروض</span>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-36 sm:w-44 h-8 min-w-0"><SelectValue placeholder="الكل" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">كل الأنواع</SelectItem>
-              {VOUCHER_CATEGORIES.map((cat) => (
-                <SelectGroup key={cat.key}>
-                  <SelectLabel className={cn('text-[10px]', cat.color)}>{cat.label}</SelectLabel>
-                  {(typesByCategory[cat.key] ?? []).map((t) => (
-                    <SelectItem key={t.code} value={t.code}>{t.label}</SelectItem>
-                  ))}
-                </SelectGroup>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-32 sm:w-36 h-8 min-w-0"><SelectValue placeholder="كل الحالات" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">كل الحالات</SelectItem>
-              {VOUCHER_STATES.map((s) => (
-                <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-32 h-8" placeholder="من" />
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-32 h-8" placeholder="إلى" />
-          {(typeFilter !== 'all' || statusFilter !== 'all' || from || to) && (
-            <Button variant="ghost" size="sm" onClick={() => { setTypeFilter('all'); setStatusFilter('all'); setFrom(''); setTo('') }} className="h-8 text-xs">
-              <X className="size-3.5" /> مسح الفلاتر
-            </Button>
-          )}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        {/* RTL right: counter + filters, with a visual divider between them */}
+        <div className="flex items-center gap-3 min-w-0 flex-1 flex-wrap">
+          {/* Counter — own bordered pill, clearly separated */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/40 border border-border shrink-0">
+            <Landmark className="size-4 text-primary" />
+            <span className="text-sm font-semibold tnum whitespace-nowrap">{items.length} إذن معروض</span>
+          </div>
+          {/* Vertical divider (visible on sm+) */}
+          <div className="hidden sm:block w-px h-7 bg-border shrink-0" />
+          {/* Filters group */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-36 sm:w-44 h-8 min-w-0"><SelectValue placeholder="الكل" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل الأنواع</SelectItem>
+                {VOUCHER_CATEGORIES.map((cat) => (
+                  <SelectGroup key={cat.key}>
+                    <SelectLabel className={cn('text-[10px]', cat.color)}>{cat.label}</SelectLabel>
+                    {(typesByCategory[cat.key] ?? []).map((t) => (
+                      <SelectItem key={t.code} value={t.code}>{t.label}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-32 sm:w-36 h-8 min-w-0"><SelectValue placeholder="كل الحالات" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل الحالات</SelectItem>
+                {VOUCHER_STATES.map((s) => (
+                  <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* Date range — wrapped together; dir=ltr keeps the native calendar icon
+                on the expected side and prevents it overlapping the placeholder text */}
+            <div className="flex items-center gap-1.5">
+              <div className="relative">
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none tnum">من</span>
+                <Input
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="w-32 h-8 pr-8 text-xs"
+                  dir="ltr"
+                  aria-label="من تاريخ"
+                />
+              </div>
+              <span className="text-muted-foreground text-xs shrink-0">→</span>
+              <div className="relative">
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none tnum">إلى</span>
+                <Input
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  className="w-32 h-8 pr-8 text-xs"
+                  dir="ltr"
+                  aria-label="إلى تاريخ"
+                />
+              </div>
+            </div>
+            {(typeFilter !== 'all' || statusFilter !== 'all' || from || to) && (
+              <Button variant="ghost" size="sm" onClick={() => { setTypeFilter('all'); setStatusFilter('all'); setFrom(''); setTo('') }} className="h-8 text-xs">
+                <X className="size-3.5" /> مسح
+              </Button>
+            )}
+          </div>
         </div>
+        {/* RTL left: actions */}
         <div className="flex gap-2 shrink-0">
           {has('vouchers.export') && (
             <Button variant="outline" size="sm" onClick={exportVouchers} disabled={!items?.length} className="shrink-0">
@@ -975,7 +1010,7 @@ export function VouchersModule() {
 
       {/* ==== Detail dialog ==== */}
       <Dialog open={!!detailId} onOpenChange={(o) => { if (!o) { setDetailId(null); setActionNotes(''); setDetailAdded([]) } }}>
-        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-y-auto">
           {detailData ? (
             <>
               <DialogHeader>
@@ -987,7 +1022,7 @@ export function VouchersModule() {
                 <DialogDescription>{detailData.typeLabelEn}</DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-3">
+              <div className="space-y-3 min-w-0">
                 {/* Info grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
                   <DetailItem label="التاريخ" value={fmtDateTime(detailData.createdAt)} />
@@ -1020,16 +1055,24 @@ export function VouchersModule() {
                     <div className="text-xs font-bold mb-1.5 flex items-center gap-1.5">
                       <PackageCheck className="size-3.5" /> الشحنات المرتبطة ({detailData.itemCount ?? 0})
                     </div>
-                    <div className="border border-border rounded-lg overflow-hidden">
-                      <table className="w-full text-xs">
+                    <div className="border border-border rounded-lg overflow-x-auto -mx-1 px-1">
+                      <table className="w-full text-xs table-fixed" style={{ minWidth: 560 }}>
+                        <colgroup>
+                          <col className="w-[88px]" />
+                          <col className="w-[92px]" />
+                          <col className="w-[96px]" />
+                          <col />
+                          <col className="w-[92px]" />
+                          {detailData.status === 'draft' && has('vouchers.edit') && <col className="w-[40px]" />}
+                        </colgroup>
                         <thead className="bg-muted/40 text-muted-foreground">
                           <tr>
-                            <th className="font-medium px-2 py-1.5 text-right">رقم الشحنة</th>
-                            <th className="font-medium px-2 py-1.5 text-right">الحالة</th>
-                            <th className="font-medium px-2 py-1.5 text-right">الوجهة</th>
-                            <th className="font-medium px-2 py-1.5 text-right">المستلم</th>
-                            <th className="font-medium px-2 py-1.5 text-left">النولون</th>
-                            {detailData.status === 'draft' && has('vouchers.edit') && <th className="font-medium px-2 py-1.5 w-10"></th>}
+                            <th className="font-medium px-2 py-2 text-right">رقم الشحنة</th>
+                            <th className="font-medium px-2 py-2 text-center">الحالة</th>
+                            <th className="font-medium px-2 py-2 text-right">الوجهة</th>
+                            <th className="font-medium px-2 py-2 text-right">المستلم</th>
+                            <th className="font-medium px-2 py-2 text-left">النولون</th>
+                            {detailData.status === 'draft' && has('vouchers.edit') && <th className="font-medium px-1 py-2"></th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -1037,18 +1080,30 @@ export function VouchersModule() {
                             const s = it.shipment
                             const st = s?.status ? shipmentStatusMap[s.status] : null
                             return (
-                              <tr key={it.id} className="border-t border-border">
-                                <td className="px-2 py-1.5 font-mono font-bold">{s?.shipmentNo ?? '—'}</td>
-                                <td className="px-2 py-1.5">
+                              <tr key={it.id} className="border-t border-border align-middle">
+                                <td className="px-2 py-2">
+                                  <span className="block font-mono font-bold whitespace-nowrap" title={s?.shipmentNo ?? ''}>{s?.shipmentNo ?? '—'}</span>
+                                </td>
+                                <td className="px-2 py-2 text-center">
                                   {st ? (
-                                    <Badge variant="outline" className={cn('text-[10px]', st.tone)}>{st.label}</Badge>
+                                    <Badge variant="outline" className={cn('text-[10px] whitespace-nowrap', st.tone)}>{st.label}</Badge>
                                   ) : <span className="text-muted-foreground">—</span>}
                                 </td>
-                                <td className="px-2 py-1.5 truncate-1">{s?.destination ?? '—'}</td>
-                                <td className="px-2 py-1.5 truncate-1">{s?.recipientName ?? '—'}</td>
-                                <td className="px-2 py-1.5 text-left tnum">{fmtNum(s?.freightTotal ?? 0)} ج.م</td>
+                                <td className="px-2 py-2">
+                                  <span className="block truncate text-right" title={s?.destination ?? ''}>{s?.destination ?? '—'}</span>
+                                </td>
+                                <td className="px-2 py-2 max-w-[180px]">
+                                  <span
+                                    className="block truncate text-right"
+                                    dir="auto"
+                                    title={s?.recipientName ?? ''}
+                                  >
+                                    {s?.recipientName ?? '—'}
+                                  </span>
+                                </td>
+                                <td className="px-2 py-2 text-left tnum whitespace-nowrap">{fmtNum(s?.freightTotal ?? 0)} ج.م</td>
                                 {detailData.status === 'draft' && has('vouchers.edit') && (
-                                  <td className="px-1 py-1 text-center">
+                                  <td className="px-1 py-2 text-center">
                                     <button onClick={() => removeItem(detailData.id, it.id)} className="text-destructive hover:text-destructive/80 p-1" aria-label="حذف الشحنة">
                                       <Trash2 className="size-3.5" />
                                     </button>
