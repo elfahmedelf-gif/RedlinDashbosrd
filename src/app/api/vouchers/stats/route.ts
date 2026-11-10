@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    await requirePerm(req, 'vouchers.view')
-    return voucherStats()
+    const user = await requirePerm(req, 'vouchers.view')
+    return voucherStats(user)
   })
 }

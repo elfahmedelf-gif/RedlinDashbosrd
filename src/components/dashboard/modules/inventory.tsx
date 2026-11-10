@@ -22,10 +22,14 @@ import { exportToCSV } from '@/lib/export'
 import { fmtNum, fmtDate, MOVEMENT_TYPE } from '@/lib/format'
 import { useLookup } from '@/lib/lookups'
 import { useToast } from '@/hooks/use-toast'
+import { useAuth } from '../auth-provider'
 import { cn } from '@/lib/utils'
 
 export function InventoryModule() {
   const { toast } = useToast()
+  const { has } = useAuth()
+  // التكلفة/سعر البيع وقيمة المخزون تُعرض فقط لمن يملك صلاحية الأسعار
+  const canPrices = has('prices.view')
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<any>(null)
   const [lowOnly, setLowOnly] = React.useState(false)
@@ -112,10 +116,13 @@ export function InventoryModule() {
                     <span className="text-muted-foreground">حد الطلب</span>
                     <span className="tnum">{fmtNum(it.reorderLevel ?? 0)} {it.unit || ''}</span>
                   </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">التكلفة</span>
-                    <span className="tnum">{fmtNum(it.cost)} ج.م</span>
-                  </div>
+                  {/* التكلفة — تُعرض فقط لمن يملك صلاحية الأسعار */}
+                  {canPrices && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">التكلفة</span>
+                      <span className="tnum">{fmtNum(it.cost)} ج.م</span>
+                    </div>
+                  )}
                   {it.isLowStock && (
                     <Badge variant="outline" className="bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
                       <AlertTriangle className="size-3 ml-1" /> مخزون منخفض
@@ -135,6 +142,9 @@ export function InventoryModule() {
 
 export function MovementsModule() {
   const { toast } = useToast()
+  const { has } = useAuth()
+  // تكلفة الحركة تُعرض فقط لمن يملك صلاحية الأسعار
+  const canPrices = has('prices.view')
   const [open, setOpen] = React.useState(false)
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/movements', fetcher, { refreshInterval: 30000 })
   const { data: items } = useSWR<{ items: any[] }>('/api/items', fetcher)
@@ -172,7 +182,10 @@ export function MovementsModule() {
     { key: 'qty', header: 'الكمية', align: 'left' as const, width: 'w-28', render: (m: any) => {
       return <span className={cn('tnum font-bold whitespace-nowrap', m.quantity < 0 ? 'text-rose-600' : 'text-emerald-600')}>{m.quantity > 0 ? '+' : ''}{fmtNum(m.quantity)} {m.item?.unit || ''}</span>
     } },
-    { key: 'cost', header: 'التكلفة', align: 'left' as const, width: 'w-28', render: (m: any) => <span className="tnum">{m.totalCost ? fmtNum(m.totalCost) + ' ج.م' : '-'}</span> },
+    // عمود التكلفة — يُعرض فقط لمن يملك صلاحية الأسعار
+    ...(canPrices ? [{
+      key: 'cost', header: 'التكلفة', align: 'left' as const, width: 'w-28', render: (m: any) => <span className="tnum">{m.totalCost ? fmtNum(m.totalCost) + ' ج.م' : '-'}</span>,
+    }] : []),
     { key: 'notes', header: 'ملاحظات', render: (m: any) => <span className="text-xs text-muted-foreground truncate-1 block">{m.notes || '-'}</span> },
   ]
 
@@ -257,6 +270,9 @@ export function MovementsModule() {
 
 export function FreightModule() {
   const { toast } = useToast()
+  const { has } = useAuth()
+  // جدول أسعار النولون — التكلفة/سعر البيع يُعرضان فقط لمن يملك صلاحية الأسعار
+  const canPrices = has('prices.view')
   const [editing, setEditing] = React.useState<any>(null)
   const [open, setOpen] = React.useState(false)
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/freight', fetcher, { refreshInterval: 30000 })
@@ -305,13 +321,18 @@ export function FreightModule() {
     { key: 'regionAr', header: 'المنطقة (عربي)', primary: true, render: (r: any) => <span className="font-medium truncate-1 block">{r.regionAr || '-'}</span> },
     { key: 'regionEn', header: 'Region (EN)', hideInCard: true, width: 'w-32', render: (r: any) => <span className="text-xs text-muted-foreground" dir="ltr">{r.regionEn || '-'}</span> },
     { key: 'route', header: 'خط السير', hideInCard: true, width: 'w-32', render: (r: any) => <span className="text-xs">{r.routeName || '-'}</span> },
-    { key: 'cost', header: 'التكلفة', align: 'left' as const, width: 'w-28', render: (r: any) => <span className="tnum">{r.cost != null ? fmtNum(r.cost) : '-'}</span> },
-    { key: 'sell', header: 'سعر البيع', align: 'left' as const, width: 'w-28', render: (r: any) => <span className="tnum font-bold">{r.sellPrice != null ? fmtNum(r.sellPrice) : '-'}</span> },
-    { key: 'margin', header: 'الهامش', align: 'center' as const, width: 'w-24', render: (r: any) => {
-      if (r.sellPrice == null || r.cost == null || !r.cost) return '-'
-      const pct = ((r.sellPrice - r.cost) / r.cost) * 100
-      return <Badge variant="outline" className={pct >= 30 ? 'text-emerald-600' : 'text-amber-600'}>{pct.toFixed(1)}%</Badge>
-    } },
+    // أعمدة التكلفة/سعر البيع/الهامش — تُعرض فقط لمن يملك صلاحية الأسعار
+    ...(canPrices ? [
+      { key: 'cost', header: 'التكلفة', align: 'left' as const, width: 'w-28', render: (r: any) => <span className="tnum">{r.cost != null ? fmtNum(r.cost) : '-'}</span> },
+      { key: 'sell', header: 'سعر البيع', align: 'left' as const, width: 'w-28', render: (r: any) => <span className="tnum font-bold">{r.sellPrice != null ? fmtNum(r.sellPrice) : '-'}</span> },
+      {
+        key: 'margin', header: 'الهامش', align: 'center' as const, width: 'w-24', render: (r: any) => {
+          if (r.sellPrice == null || r.cost == null || !r.cost) return '-'
+          const pct = ((r.sellPrice - r.cost) / r.cost) * 100
+          return <Badge variant="outline" className={pct >= 30 ? 'text-emerald-600' : 'text-amber-600'}>{pct.toFixed(1)}%</Badge>
+        },
+      },
+    ] : []),
     { key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-24', render: (r: any) => (
       <div className="flex gap-1 justify-center">
         <Button variant="ghost" size="sm" onClick={() => { setEditing(r); setOpen(true) }}><Pencil className="size-3.5" /></Button>

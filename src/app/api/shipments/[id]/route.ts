@@ -12,9 +12,9 @@ const EDITABLE = ['billNo', 'recipientName', 'deliveryPhones', 'destination', 'r
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    await requirePerm(req, 'shipments.view')
+    const user = await requirePerm(req, 'shipments.view')
     const { id } = await params
-    return getShipment(id)
+    return getShipment(id, user)
   })
 }
 

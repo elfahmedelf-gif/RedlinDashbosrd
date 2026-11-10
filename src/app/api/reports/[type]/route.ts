@@ -1,7 +1,8 @@
-import { handle } from '@/lib/server/http'
-import { requirePerm } from '@/lib/server/session'
+import { ApiError, handle } from '@/lib/server/http'
+import { getSessionUser } from '@/lib/server/session'
 import { ensureSeeded } from '@/lib/server/seed'
 import { report } from '@/lib/server/queries'
+import { matchPermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,7 +10,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ type: st
   return handle(async () => {
     await ensureSeeded()
     const { type } = await params
-    await requirePerm(req, 'reports.view')
-    return report(type, new URL(req.url).searchParams)
+    // نمرر المستخدم كاملًا للطبقة السفلية لتفعيل فلتر الأسعار
+    const user = await getSessionUser(req)
+    if (!user) {
+      throw new ApiError(401, 'غير مصرح — سجّل الدخول أولًا')
+    }
+    // تقرير المرتجعات يتطلب vouchers.view (تشغيلي)؛ بقية التقارير تتطلب reports.view
+    // التقارير التي تكشف أسعارًا (freight-margin, contractor-dues, customer-debts, shipments)
+    // تتطلب أيضًا prices.view — يُفرض داخل report()
+    const perm = type === 'pending-returns' ? 'vouchers.view' : 'reports.view'
+    if (!matchPermission(user.permissions, perm)) {
+      throw new ApiError(403, `غير مصرح — هذه العملية تتطلب صلاحية "${perm}"`)
+    }
+    return report(type, new URL(req.url).searchParams, user)
   })
 }

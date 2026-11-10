@@ -24,6 +24,7 @@ import { fmtNum, fmtDate, fmtDateTime } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import { useLookup } from '@/lib/lookups'
 import { cn } from '@/lib/utils'
+import { useAuth } from '../auth-provider'
 
 interface PartyLite { id: string; name: string }
 interface Shipment {
@@ -44,6 +45,9 @@ interface ShipmentsResponse { items: Shipment[]; total: number; page: number; to
 
 export function ShipmentsModule() {
   const { toast } = useToast()
+  const { has } = useAuth()
+  // صلاحية رؤية الأسعار — تتحكم في إظهار كل المبالغ (نولون/تكلفة/تحصيل/هامش)
+  const canPrices = has('prices.view')
   // Dynamic shipment status options from the lookup table
   const { items: statusItems } = useLookup('shipment_status')
   const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.key, label: i.label, tone: i.tone }))
@@ -156,8 +160,11 @@ export function ShipmentsModule() {
       'كود الخط': s.routeCode, 'النوع': s.loadType, 'المقاول': s.contractor?.name,
       'الفرع': s.branch?.name, 'الحالة': STATUS_LABEL[s.status]?.label || s.status,
       'تاريخ الشحن': s.date ? fmtDate(s.date) : '',
-      'نولون العميل': s.freightTotal ?? s.freightCost, 'نولون المقاول': s.totalSuppliers ?? 0,
-      'هامش الربح': (s.freightTotal ?? 0) - (s.totalSuppliers ?? 0),
+      // المبالغ تُصدّر فقط لمن يملك صلاحية الأسعار
+      ...(canPrices ? {
+        'نولون العميل': s.freightTotal ?? s.freightCost, 'نولون المقاول': s.totalSuppliers ?? 0,
+        'هامش الربح': (s.freightTotal ?? 0) - (s.totalSuppliers ?? 0),
+      } : {}),
       'الكمية (سياسات)': s.policyQty,
     }))
     exportToCSV(rows, `shipments-${new Date().toISOString().slice(0, 10)}.csv`)
@@ -296,14 +303,19 @@ export function ShipmentsModule() {
                     <div className="text-[10px] text-muted-foreground/70">التاريخ</div>
                     <div className="text-xs font-medium tnum truncate-1">{fmtDate(s.date)}</div>
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-[10px] text-muted-foreground/70">نولون العميل</div>
-                    <div className="text-xs font-bold tnum num-ltr">{fmtNum(s.freightTotal ?? s.freightCost)} ج.م</div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[10px] text-muted-foreground/70">نولون المقاول</div>
-                    <div className="text-xs font-bold tnum num-ltr">{fmtNum(s.totalSuppliers ?? 0)} ج.م</div>
-                  </div>
+                  {/* النولون يُعرض فقط لمن يملك صلاحية الأسعار */}
+                  {canPrices && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">نولون العميل</div>
+                      <div className="text-xs font-bold tnum num-ltr">{fmtNum(s.freightTotal ?? s.freightCost)} ج.م</div>
+                    </div>
+                  )}
+                  {canPrices && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">نولون المقاول</div>
+                      <div className="text-xs font-bold tnum num-ltr">{fmtNum(s.totalSuppliers ?? 0)} ج.م</div>
+                    </div>
+                  )}
                 </div>
               </div>
             )
@@ -329,15 +341,16 @@ export function ShipmentsModule() {
                 <th className="font-medium px-4 py-3 w-28">المقاول</th>
                 <th className="font-medium px-4 py-3 text-center w-28">التاريخ</th>
                 <th className="font-medium px-4 py-3 text-center w-32">الحالة</th>
-                <th className="font-medium px-4 py-3 text-left w-24">نولون العميل</th>
-                <th className="font-medium px-4 py-3 text-left w-24">نولون المقاول</th>
-                <th className="font-medium px-4 py-3 text-left w-24">هامش الربح</th>
+                {/* أعمدة المبالغ — تُعرض فقط لمن يملك صلاحية الأسعار */}
+                {canPrices && <th className="font-medium px-4 py-3 text-left w-24">نولون العميل</th>}
+                {canPrices && <th className="font-medium px-4 py-3 text-left w-24">نولون المقاول</th>}
+                {canPrices && <th className="font-medium px-4 py-3 text-left w-24">هامش الربح</th>}
                 <th className="font-medium px-4 py-3 text-center w-20">إجراءات</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && !data ? (
-                Array.from({ length: 10 }).map((_, i) => <tr key={i}><td colSpan={12}><Skeleton className="h-12 m-1" /></td></tr>)
+                Array.from({ length: 10 }).map((_, i) => <tr key={i}><td colSpan={canPrices ? 12 : 9}><Skeleton className="h-12 m-1" /></td></tr>)
               ) : data && data.items.length > 0 ? (
                 data.items.map((s, i) => {
                   const size = s.loadType === '1.5TON' ? '1.5ط' : s.loadType === '3TON' ? '3ط' : s.loadType === '6M' ? '6م' : '-'
@@ -380,11 +393,21 @@ export function ShipmentsModule() {
                       <td className="px-4 py-3 align-middle text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
                         <Badge variant="outline" className={sMeta.tone}>{sMeta.label}</Badge>
                       </td>
-                      <td className="px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}><span className="num-ltr">{fmtNum(s.freightTotal ?? s.freightCost)}</span></td>
-                      <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}><span className="num-ltr">{fmtNum(s.totalSuppliers ?? 0)}</span></td>
-                      <td className={cn('px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap', margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>
-                        <span className="num-ltr">{fmtNum(margin)}</span>
-                      </td>
+                      {canPrices && (
+                        <td className="px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
+                          <span className="num-ltr">{fmtNum(s.freightTotal ?? s.freightCost)}</span>
+                        </td>
+                      )}
+                      {canPrices && (
+                        <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
+                          <span className="num-ltr">{fmtNum(s.totalSuppliers ?? 0)}</span>
+                        </td>
+                      )}
+                      {canPrices && (
+                        <td className={cn('px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap', margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>
+                          <span className="num-ltr">{fmtNum(margin)}</span>
+                        </td>
+                      )}
                       <td className="px-4 py-3 align-middle text-center whitespace-nowrap">
                         <Button
                           variant="ghost"
@@ -620,6 +643,9 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
 
 function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const { toast } = useToast()
+  const { has } = useAuth()
+  // صلاحية رؤية الأسعار — تتحكم في إظهار المبالغ المالية في بطاقة الشحنة
+  const canPrices = has('prices.view')
   const { data: shipment, mutate } = useSWR<any>(`/api/shipments/${id}`, fetcher)
   const { items: statusItems } = useLookup('shipment_status')
   const { items: collectionItems } = useLookup('collection_status')
@@ -688,7 +714,8 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-4" /> رجوع للقائمة</Button>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => setWaybillOpen(true)}><Printer className="size-4" /> طباعة بوليصة</Button>
-          <Button variant="outline" size="sm" onClick={() => setCodOpen(true)}><Banknote className="size-4" /> تسوية COD</Button>
+          {/* تسوية COD تتطلب صلاحية الأسعار (تتعامل مع مبالغ) */}
+          {canPrices && <Button variant="outline" size="sm" onClick={() => setCodOpen(true)}><Banknote className="size-4" /> تسوية COD</Button>}
           <Button variant="outline" size="sm" onClick={() => setStatusOpen(true)}>تغيير الحالة</Button>
           <Button variant="outline" size="sm" className="text-destructive" onClick={remove}><Trash2 className="size-4" /> حذف</Button>
         </div>
@@ -710,25 +737,27 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </CardContent>
       </Card>
 
-      {/* Profit margin highlight strip */}
-      <Card className="border-primary/30 bg-primary/5">
-        <CardContent className="p-4 grid grid-cols-3 gap-3 text-center">
-          <div>
-            <div className="text-xs text-muted-foreground">نولون العميل (بيع)</div>
-            <div className="text-lg font-bold tnum num-ltr">{fmtNum(shipment.freightTotal ?? 0)} ج.م</div>
-          </div>
-          <div className="border-x border-border/60">
-            <div className="text-xs text-muted-foreground">نولون المقاول (تكلفة)</div>
-            <div className="text-lg font-bold tnum num-ltr">{fmtNum(shipment.totalSuppliers ?? 0)} ج.م</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground">هامش الربح (صافي)</div>
-            <div className={cn('text-lg font-bold tnum num-ltr', margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>
-              {fmtNum(margin)} ج.م
+      {/* شريط هامش الربح — يُعرض فقط لمن يملك صلاحية الأسعار */}
+      {canPrices && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-4 grid grid-cols-3 gap-3 text-center">
+            <div>
+              <div className="text-xs text-muted-foreground">نولون العميل (بيع)</div>
+              <div className="text-lg font-bold tnum num-ltr">{fmtNum(shipment.freightTotal ?? 0)} ج.م</div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="border-x border-border/60">
+              <div className="text-xs text-muted-foreground">نولون المقاول (تكلفة)</div>
+              <div className="text-lg font-bold tnum num-ltr">{fmtNum(shipment.totalSuppliers ?? 0)} ج.م</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">هامش الربح (صافي)</div>
+              <div className={cn('text-lg font-bold tnum num-ltr', margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>
+                {fmtNum(margin)} ج.م
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
@@ -756,21 +785,31 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardContent className="p-4 space-y-2 text-sm">
-            <h3 className="font-semibold mb-2">المبالغ المالية</h3>
-            <Row label="تكلفة النولون" value={`${fmtNum(shipment.freightCost)} ج.م`} money />
-            <Row label="إجمالي النولون" value={`${fmtNum(shipment.freightTotal)} ج.م`} money bold />
-            <Row label="سعر البيع" value={`${fmtNum(shipment.salePrice ?? 0)} ج.م`} money />
-            <Row label="تحصيل العميل" value={`${fmtNum(shipment.customerPay)} ج.م`} money />
-            <Row label="إجمالي الموردين" value={`${fmtNum(shipment.totalSuppliers)} ج.م`} money bold />
-            <Row label="التعتيق" value={`${fmtNum(shipment.aging)} ج.م`} money />
-            <Row label="المبيت" value={`${fmtNum(shipment.overnight)} ج.م`} money />
-            <Row label="المرتجع" value={`${fmtNum(shipment.returns)} ج.م`} money />
-            <Row label="التحويلة" value={`${fmtNum(shipment.transfer)} ج.م`} money />
-            <Row label="أخرى / Drop" value={`${fmtNum((shipment.other ?? 0) + (shipment.drop ?? 0))} ج.م`} money />
-          </CardContent>
-        </Card>
+        {/* بطاقة المبالغ المالية — تُعرض فقط لمن يملك صلاحية الأسعار */}
+        {canPrices ? (
+          <Card>
+            <CardContent className="p-4 space-y-2 text-sm">
+              <h3 className="font-semibold mb-2">المبالغ المالية</h3>
+              <Row label="تكلفة النولون" value={`${fmtNum(shipment.freightCost)} ج.م`} money />
+              <Row label="إجمالي النولون" value={`${fmtNum(shipment.freightTotal)} ج.م`} money bold />
+              <Row label="سعر البيع" value={`${fmtNum(shipment.salePrice ?? 0)} ج.م`} money />
+              <Row label="تحصيل العميل" value={`${fmtNum(shipment.customerPay)} ج.م`} money />
+              <Row label="إجمالي الموردين" value={`${fmtNum(shipment.totalSuppliers)} ج.م`} money bold />
+              <Row label="التعتيق" value={`${fmtNum(shipment.aging)} ج.م`} money />
+              <Row label="المبيت" value={`${fmtNum(shipment.overnight)} ج.م`} money />
+              <Row label="المرتجع" value={`${fmtNum(shipment.returns)} ج.م`} money />
+              <Row label="التحويلة" value={`${fmtNum(shipment.transfer)} ج.م`} money />
+              <Row label="أخرى / Drop" value={`${fmtNum((shipment.other ?? 0) + (shipment.drop ?? 0))} ج.م`} money />
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="p-4 space-y-2 text-sm">
+              <h3 className="font-semibold mb-2">المبالغ المالية</h3>
+              <p className="text-xs text-muted-foreground">المبالغ المالية محجوبة — لا تملك صلاحية رؤية الأسعار.</p>
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardContent className="p-4 space-y-2 text-sm">
             <h3 className="font-semibold mb-2">التواريخ والملاحظات</h3>
@@ -803,7 +842,8 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
                     <span className="text-xs text-muted-foreground truncate-1">{v.description || '-'}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="tnum font-bold text-sm">{fmtNum(v.amount)} ج.م</span>
+                    {/* مبلغ السند — يُعرض فقط لمن يملك صلاحية الأسعار */}
+                    {canPrices && <span className="tnum font-bold text-sm">{fmtNum(v.amount)} ج.م</span>}
                     <span className="text-[10px] text-muted-foreground tnum">{fmtDate(v.date)}</span>
                   </div>
                 </div>

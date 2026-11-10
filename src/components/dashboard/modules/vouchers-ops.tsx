@@ -106,6 +106,7 @@ function ShipmentPicker({
   onRemove,
   selected,
   emptyHint,
+  canPrices = true,
 }: {
   preStatuses: string[] | null
   excludeIds: string[]
@@ -113,6 +114,7 @@ function ShipmentPicker({
   onRemove: (id: string) => void
   selected: any[]
   emptyHint?: string
+  canPrices?: boolean
 }) {
   const { toast } = useToast()
   const [q, setQ] = React.useState('')
@@ -216,16 +218,22 @@ function ShipmentPicker({
               {s.status && <Badge variant="outline" className="text-[10px] shrink-0">{s.status}</Badge>}
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              <span className="text-xs tnum text-muted-foreground">{fmtNum(s.freightTotal ?? 0)} ج.م</span>
+              {/* النولون يُعرض فقط لمن يملك صلاحية الأسعار */}
+              {canPrices && <span className="text-xs tnum text-muted-foreground">{fmtNum(s.freightTotal ?? 0)} ج.م</span>}
               <button type="button" onClick={() => onRemove(s.id)} className="text-destructive hover:text-destructive/80 p-1">
                 <X className="size-3.5" />
               </button>
             </div>
           </div>
         ))}
-        {selected.length > 0 && (
+        {selected.length > 0 && canPrices && (
           <div className="text-[11px] text-muted-foreground text-left px-1 tnum">
             الإجمالي: {fmtNum(selected.reduce((s, sh) => s + (Number(sh.freightTotal) || 0), 0))} ج.م
+          </div>
+        )}
+        {selected.length > 0 && !canPrices && (
+          <div className="text-[11px] text-muted-foreground text-left px-1 tnum">
+            {selected.length} شحنة مضافة
           </div>
         )}
       </div>
@@ -239,6 +247,8 @@ function ShipmentPicker({
 export function VouchersModule() {
   const { toast } = useToast()
   const { has, user: me } = useAuth()
+  // صلاحية رؤية الأسعار/المبالغ — فقط للمالك ومحمود
+  const canPrices = has('prices.view')
 
   // ---- Filters ----
   const [typeFilter, setTypeFilter] = React.useState<string>('all')
@@ -491,6 +501,29 @@ export function VouchersModule() {
     }
   }
 
+  // تسليم مرتجع: ينشئ إذن استلام مرتجعات مكتمل تلقائيًا لكل شحنة مع المندوب
+  // وينقل حالتها من "returned" إلى "received_returned" (تم التسليم)
+  const markReceived = async (vid: string) => {
+    if (!confirm('تأكيد التسليم؟ سيُنشأ إذن استلام مرتجعات لكل شحنة لم تُستلم بعد.')) return
+    setActionLoading(true)
+    try {
+      const res: any = await apiPost(`/api/vouchers/${vid}/mark-received`, {
+        notes: actionNotes || null,
+        userName: me?.username || 'admin',
+      })
+      const summary = res?.succeeded != null && res?.total != null
+        ? `تم تسليم ${res.succeeded}/${res.total} شحنة${res.failed ? ` — ${res.failed} فشل` : ''}`
+        : 'تم التسليم'
+      toast({ title: 'تم التسليم', description: summary })
+      setActionNotes('')
+      refreshAll()
+    } catch (e: any) {
+      toast({ title: 'خطأ', description: e.message, variant: 'destructive' })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   const exportVouchers = () => {
     if (!items?.length) { toast({ title: 'لا توجد بيانات للتصدير' }); return }
     const rows = items.map((vch: any) => ({
@@ -504,7 +537,8 @@ export function VouchersModule() {
       'المندوب': vch.courier?.name ?? '',
       'الطرف': vch.party?.name ?? '',
       'عدد الشحنات': vch.itemCount ?? 0,
-      'القيمة': vch.totalValue ?? 0,
+      // قيمة الإذان تُصدّر فقط لمن يملك صلاحية الأسعار
+      ...(canPrices ? { 'القيمة': vch.totalValue ?? 0 } : {}),
       'البيان': vch.notes ?? '',
     }))
     exportToCSV(rows, `vouchers-ops-${new Date().toISOString().slice(0, 10)}.csv`)
@@ -528,11 +562,24 @@ export function VouchersModule() {
       ),
     },
     {
-      key: 'status', header: 'الحالة', align: 'center' as const, width: 'w-28',
+      key: 'status', header: 'الحالة', align: 'center' as const, width: 'w-32',
       render: (vch: any) => (
-        <Badge variant="outline" className={cn('text-[11px]', vch.statusColor ?? '')}>
-          {vch.statusLabel ?? vch.status}
-        </Badge>
+        <div className="flex flex-col items-center gap-1">
+          <Badge variant="outline" className={cn('text-[11px]', vch.statusColor ?? '')}>
+            {vch.statusLabel ?? vch.status}
+          </Badge>
+          {/* شارة العهدة للمرتجعات المكتملة — "لم يُستلم" / "تم التسليم" */}
+          {vch.type === 'return' && vch.status === 'completed' && (
+            <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full', 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300')}>
+              لم يُستلم
+            </span>
+          )}
+          {vch.type === 'returned_receiving' && vch.status === 'completed' && (
+            <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full', 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300')}>
+              تم التسليم
+            </span>
+          )}
+        </div>
       ),
     },
     {
@@ -566,10 +613,11 @@ export function VouchersModule() {
         <Badge variant="outline" className="text-[11px] tnum">{vch.itemCount ?? 0} شحنة</Badge>
       ),
     },
-    {
+    // عمود القيمة المالية — يُعرض فقط لمن يملك صلاحية الأسعار
+    ...(canPrices ? [{
       key: 'total', header: 'القيمة', align: 'left' as const, width: 'w-28',
       render: (vch: any) => <span className="tnum text-xs font-bold">{fmtNum(vch.totalValue ?? 0)} ج.م</span>,
-    },
+    }] : []),
     {
       key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-24',
       render: (vch: any) => (
@@ -638,6 +686,14 @@ export function VouchersModule() {
         if (has('vouchers.delete')) buttons.push({ label: 'حذف', perm: 'vouchers.delete', variant: 'destructive', onClick: () => del(detailData.id, detailData.voucherNo) })
         break
       case 'completed':
+        // إذن المرتجع المكتمل — يُمكن تسليمه (إنشاء إذن استلام مرتجعات تلقائيًا)
+        // فقط إذا كانت هناك شحنات لا تزال بحالة "returned" (لم تُستلم بعد)
+        if (detailData?.type === 'return' && has('vouchers.execute')) {
+          const hasPending = (detailData.items ?? []).some((it: any) => it.shipment?.status === 'returned')
+          if (hasPending) {
+            buttons.push({ label: 'تم التسليم', perm: 'vouchers.execute', variant: 'default', onClick: () => markReceived(detailData.id) })
+          }
+        }
         break
     }
     return buttons
@@ -659,8 +715,18 @@ export function VouchersModule() {
             <StatCard icon={<CheckCircle2 className="size-4.5" />} color="emerald" value={fmtNum(stats.completed)} label="مكتملة" />
             <StatCard icon={<FileText className="size-4.5" />} color="slate" value={fmtNum(stats.draft)} label="مسودات" />
             <StatCard icon={<Loader2 className="size-4.5" />} color="indigo" value={fmtNum(stats.inProgress)} label="قيد التنفيذ" />
-            <StatCard icon={<Banknote className="size-4.5" />} color="emerald" value={`${fmtNum(stats.collectionTotal)} ج.م`} label="محصّلات" />
-            <StatCard icon={<BanknoteArrowDown className="size-4.5" />} color="rose" value={`${fmtNum(stats.disbursementTotal)} ج.م`} label="مصروفات" />
+            {/* بطاقتا المحصّلات/المصروفات مكشوفتان فقط لمن يملك صلاحية الأسعار */}
+            {canPrices ? (
+              <>
+                <StatCard icon={<Banknote className="size-4.5" />} color="emerald" value={`${fmtNum(stats.collectionTotal)} ج.م`} label="محصّلات" />
+                <StatCard icon={<BanknoteArrowDown className="size-4.5" />} color="rose" value={`${fmtNum(stats.disbursementTotal)} ج.م`} label="مصروفات" />
+              </>
+            ) : (
+              <>
+                <StatCard icon={<FileText className="size-4.5" />} color="orange" value={fmtNum(stats.rejected)} label="مرفوضة" />
+                <StatCard icon={<FileText className="size-4.5" />} color="rose" value={fmtNum(stats.cancelled)} label="ملغاة" />
+              </>
+            )}
             <StatCard icon={<Link2 className="size-4.5" />} color="sky" value={fmtNum(stats.shipmentsLinked)} label="شحنات مرتبطة" />
           </>
         )}
@@ -792,14 +858,25 @@ export function VouchersModule() {
               <Select value={v.type} onValueChange={(val) => setV({ ...v, type: val, courierId: '', partyId: '', destBranchId: v.sourceBranchId || '', amount: '' })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {VOUCHER_CATEGORIES.map((cat) => (
-                    <SelectGroup key={cat.key}>
-                      <SelectLabel className={cn('text-[10px]', cat.color)}>{cat.label}</SelectLabel>
-                      {(typesByCategory[cat.key] ?? []).map((t) => (
-                        <SelectItem key={t.code} value={t.code}>{t.label}</SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))}
+                  {VOUCHER_CATEGORIES.map((cat) => {
+                    // إخفاء الأذونات المالية عن غير المصرح لهم برؤية الأسعار
+                    // (إنشاء سند قبض/صرف يستلزم رؤية المبالغ)
+                    if (cat.key === 'financial' && !canPrices) return null
+                    const opts = (typesByCategory[cat.key] ?? []).filter((t: any) => {
+                      // أنواع مالية = فقط لمن يرى الأسعار
+                      if (t.isFinancial && !canPrices) return false
+                      return true
+                    })
+                    if (!opts.length) return null
+                    return (
+                      <SelectGroup key={cat.key}>
+                        <SelectLabel className={cn('text-[10px]', cat.color)}>{cat.label}</SelectLabel>
+                        {opts.map((t) => (
+                          <SelectItem key={t.code} value={t.code}>{t.label}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )
+                  })}
                 </SelectContent>
               </Select>
               {tdef && (
@@ -864,7 +941,7 @@ export function VouchersModule() {
                   </Select>
                 </div>
               )}
-              {tdef?.isFinancial && (
+              {tdef?.isFinancial && canPrices && (
                 <>
                   <div>
                     <label className="text-xs font-medium">المبلغ (ج.م) *</label>
@@ -891,6 +968,7 @@ export function VouchersModule() {
                   onRemove={(id) => setAddedShipments((arr) => arr.filter((s) => s.id !== id))}
                   selected={addedShipments}
                   emptyHint="ابحث وأضف الشحنات لهذا الإذن..."
+                  canPrices={canPrices}
                 />
               </div>
             )}
@@ -976,7 +1054,7 @@ export function VouchersModule() {
                   </Select>
                 </div>
               )}
-              {editTdef?.isFinancial && (
+              {editTdef?.isFinancial && canPrices && (
                 <>
                   <div>
                     <label className="text-xs font-medium">المبلغ (ج.م) *</label>
@@ -1015,6 +1093,27 @@ export function VouchersModule() {
                   <span className="font-mono">{detailData.voucherNo}</span>
                   <Badge variant="outline" className={cn('text-[11px]', detailData.typeColor ?? '')}>{detailData.typeLabel ?? detailData.type}</Badge>
                   <Badge variant="outline" className={cn('text-[11px]', detailData.statusColor ?? '')}>{detailData.statusLabel ?? detailData.status}</Badge>
+                  {/* شارة حالة العهدة للمرتجعات: "لم يُستلم بعد" أو "تم التسليم" */}
+                  {detailData.type === 'return' && detailData.status === 'completed' && (() => {
+                    const items = detailData.items ?? []
+                    const pendingCount = items.filter((it: any) => it.shipment?.status === 'returned').length
+                    const receivedCount = items.length - pendingCount
+                    if (pendingCount > 0) {
+                      return (
+                        <Badge variant="outline" className="text-[11px] bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                          لم يُستلم بعد · {pendingCount} شحنة{detailData.courier?.name ? ` — مع ${detailData.courier.name}` : ''}
+                        </Badge>
+                      )
+                    }
+                    if (receivedCount > 0) {
+                      return (
+                        <Badge variant="outline" className="text-[11px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                          تم التسليم · {receivedCount} شحنة
+                        </Badge>
+                      )
+                    }
+                    return null
+                  })()}
                 </DialogTitle>
                 <DialogDescription>{detailData.typeLabelEn}</DialogDescription>
               </DialogHeader>
@@ -1030,8 +1129,9 @@ export function VouchersModule() {
                   <DetailItem label="الطرف" value={detailData.party?.name ?? '—'} />
                   <DetailItem label="الفرع المصدر" value={detailData.sourceBranch?.name ?? '—'} />
                   <DetailItem label="فرع الاستلام" value={detailData.destBranch?.name ?? '—'} />
-                  <DetailItem label="الحساب" value={detailData.accountName ?? '—'} />
-                  <DetailItem label="القيمة" value={`${fmtNum(detailData.totalValue ?? 0)} ج.م`} />
+                  {/* الحساب والقيمة المالية — فقط لمن يملك صلاحية الأسعار */}
+                  {canPrices && <DetailItem label="الحساب" value={detailData.accountName ?? '—'} />}
+                  {canPrices && <DetailItem label="القيمة" value={`${fmtNum(detailData.totalValue ?? 0)} ج.م`} />}
                   <DetailItem label="القيد" value={detailData.journalEntryNo ?? '—'} mono />
                   <DetailItem label="عدد الشحنات" value={`${detailData.itemCount ?? 0}`} />
                 </div>
@@ -1053,13 +1153,13 @@ export function VouchersModule() {
                       <PackageCheck className="size-3.5" /> الشحنات المرتبطة ({detailData.itemCount ?? 0})
                     </div>
                     <div className="border border-border rounded-lg overflow-x-auto -mx-1 px-1">
-                      <table className="w-full text-xs table-fixed" style={{ minWidth: 560 }}>
+                      <table className="w-full text-xs table-fixed" style={{ minWidth: canPrices ? 560 : 460 }}>
                         <colgroup>
                           <col className="w-[88px]" />
                           <col className="w-[92px]" />
                           <col className="w-[96px]" />
                           <col />
-                          <col className="w-[92px]" />
+                          {canPrices && <col className="w-[92px]" />}
                           {detailData.status === 'draft' && has('vouchers.edit') && <col className="w-[40px]" />}
                         </colgroup>
                         <thead className="bg-muted/40 text-muted-foreground">
@@ -1068,7 +1168,7 @@ export function VouchersModule() {
                             <th className="font-medium px-2 py-2 text-center">الحالة</th>
                             <th className="font-medium px-2 py-2 text-right">الوجهة</th>
                             <th className="font-medium px-2 py-2 text-right">المستلم</th>
-                            <th className="font-medium px-2 py-2 text-left">النولون</th>
+                            {canPrices && <th className="font-medium px-2 py-2 text-left">النولون</th>}
                             {detailData.status === 'draft' && has('vouchers.edit') && <th className="font-medium px-1 py-2"></th>}
                           </tr>
                         </thead>
@@ -1098,7 +1198,7 @@ export function VouchersModule() {
                                     {s?.recipientName ?? '—'}
                                   </span>
                                 </td>
-                                <td className="px-2 py-2 text-left tnum whitespace-nowrap">{fmtNum(s?.freightTotal ?? 0)} ج.م</td>
+                                {canPrices && <td className="px-2 py-2 text-left tnum whitespace-nowrap">{fmtNum(s?.freightTotal ?? 0)} ج.م</td>}
                                 {detailData.status === 'draft' && has('vouchers.edit') && (
                                   <td className="px-1 py-2 text-center">
                                     <button onClick={() => removeItem(detailData.id, it.id)} className="text-destructive hover:text-destructive/80 p-1" aria-label="حذف الشحنة">
@@ -1111,7 +1211,7 @@ export function VouchersModule() {
                           })}
                           {(detailData.items ?? []).length === 0 && (
                             <tr>
-                              <td colSpan={detailData.status === 'draft' && has('vouchers.edit') ? 6 : 5} className="px-2 py-4 text-center text-muted-foreground">
+                              <td colSpan={(detailData.status === 'draft' && has('vouchers.edit') ? 1 : 0) + 4 + (canPrices ? 1 : 0)} className="px-2 py-4 text-center text-muted-foreground">
                                 لا توجد شحنات مرتبطة
                               </td>
                             </tr>
@@ -1131,6 +1231,7 @@ export function VouchersModule() {
                           onRemove={() => {}}
                           selected={[]}
                           emptyHint="ابحث وأضف الشحنات لهذا الإذن..."
+                          canPrices={canPrices}
                         />
                       </div>
                     )}

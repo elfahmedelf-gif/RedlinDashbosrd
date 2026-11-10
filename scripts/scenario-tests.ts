@@ -266,6 +266,107 @@ async function main() {
   const hasTestAudit = aItems.some((a) => String(a.notes ?? '').includes('TEST-E2E'))
   log('S16: سجل التدقيق يوثق عمليات الاختبار', hasTestAudit, `إجمالي السجلات: ${aItems.length}`)
 
+  // ---------- S17: تتبع العهدة — مرتجع ثم تسليم ثم فحص التقرير ----------
+  console.log('\n—— S17: تتبع عهدة المرتجع (mark-received + pending-returns) ——')
+  // إنشاء شحنة جديدة + إيصالها + تحميلها + تفريغها + تسليمها لمندوب + تسليمها للعميل + مرتجع ثم تسليمها
+  const shR = await mkShipment('R', 500, 0) // سلسلة المرتجع
+  // سلسلة: receiving → loading → unloading → courier_assignment → delivery → return
+  const rR1 = await must('S17: إنشاء إذن استلام R', 'POST', '/api/vouchers',
+    { type: 'receiving', sourceBranchId: brA.id, employeeId: admin.userId, shipmentIds: [shR.id] }, ops.token)
+  await fullLifecycle(ops.token, fin.token, rR1.id, 'S17-receive')
+  const rR2 = await must('S17: إنشاء إذن تحميل R', 'POST', '/api/vouchers',
+    { type: 'loading', sourceBranchId: brA.id, destBranchId: brB.id, employeeId: admin.userId, vehicleNo: 'اختبار-R', driverName: 'سائق R', shipmentIds: [shR.id] }, ops.token)
+  await fullLifecycle(ops.token, fin.token, rR2.id, 'S17-load')
+  const rR2b = await must('S17: إنشاء إذن تفريغ R', 'POST', '/api/vouchers',
+    { type: 'unloading', sourceBranchId: brB.id, employeeId: admin.userId, shipmentIds: [shR.id] }, ops.token)
+  await fullLifecycle(ops.token, fin.token, rR2b.id, 'S17-unload')
+  const rR3 = await must('S17: إنشاء إذن تسليم لمندوب R', 'POST', '/api/vouchers',
+    { type: 'courier_assignment', sourceBranchId: brB.id, employeeId: admin.userId, courierId: courier.id, shipmentIds: [shR.id] }, ops.token)
+  await fullLifecycle(ops.token, fin.token, rR3.id, 'S17-assign')
+  const rR4 = await must('S17: إنشاء إذن تسليم نهائي R', 'POST', '/api/vouchers',
+    { type: 'delivery', sourceBranchId: brB.id, employeeId: admin.userId, courierId: courier.id, shipmentIds: [shR.id] }, ops.token)
+  await fullLifecycle(ops.token, fin.token, rR4.id, 'S17-deliver')
+  const rR5 = await must('S17: إنشاء إذن مرتجع R', 'POST', '/api/vouchers',
+    { type: 'return', sourceBranchId: brB.id, employeeId: admin.userId, courierId: courier.id, shipmentIds: [shR.id] }, ops.token)
+  await fullLifecycle(ops.token, fin.token, rR5.id, 'S17-return')
+  const aR = await getShipment(admin.token, shR.id)
+  log('S17: الشحنة أصبحت "returned" (مع المندوب، لم تُستلم بعد)', aR?.status === 'returned', `status=${aR?.status}`)
+
+  // تقرير المرتجعات لم تُستلم يجب أن يضم الشحنة R
+  const pendingResp = await req('GET', '/api/reports/pending-returns', undefined, admin.token)
+  const pendingItems = asItems(pendingResp.data)
+  const pendingFound = pendingItems.some((it) => it.shipmentId === shR.id)
+  log('S17: تقرير "المرتجعات لم تُستلم" يضم الشحنة R', pendingFound, `إجمالي: ${pendingItems.length}`)
+  // ملخص المسؤولية حسب المندوب يجب أن يضم المندوب
+  const byCourier = pendingResp.data?.byCourier ?? []
+  const courierInSummary = byCourier.some((c) => c.courierId === courier.id)
+  log('S17: ملخص المسؤولية يضم المندوب الاختباري', courierInSummary, `إجمالي المندوبين: ${byCourier.length}`)
+
+  // تسليم المرتجع (mark-received)
+  const markRes = await must('S17: تسليم المرتجع R (mark-received)', 'POST', `/api/vouchers/${rR5.id}/mark-received`, { notes: 'TEST-E2E تسليم' }, admin.token)
+  log('S17: تم تسليم شحنة واحدة بنجاح', markRes?.succeeded === 1 && markRes?.total === 1, `نجح ${markRes?.succeeded}/${markRes?.total}`)
+  const aR2 = await getShipment(admin.token, shR.id)
+  log('S17: الشحنة أصبحت "received_returned" (تم التسليم)', aR2?.status === 'received_returned', `status=${aR2?.status}`)
+  // التقرير يجب أن لا يضم الشحنة R بعد التسليم
+  const pendingAfter = await req('GET', '/api/reports/pending-returns', undefined, admin.token)
+  const pendingAfterItems = asItems(pendingAfter.data)
+  const stillPending = pendingAfterItems.some((it) => it.shipmentId === shR.id)
+  log('S17: الشحنة R اختفت من تقرير "لم تُستلم" بعد التسليم', !stillPending, `متبقٍ: ${pendingAfterItems.length}`)
+  // يجب أن يوجد إذن "استلام مرتجعات" مكتمل مرتبط بالشحنة R
+  const rRvouchers = await req('GET', `/api/shipments/${shR.id}/vouchers`, undefined, admin.token)
+  const rvItems = asItems(rRvouchers.data)
+  const hasReceivingVoucher = rvItems.some((v: any) => v.type === 'returned_receiving' && v.status === 'completed')
+  log('S17: أُنشئ إذن "استلام مرتجعات" مكتمل تلقائيًا', hasReceivingVoucher, `إجمالي سندات الشحنة: ${rvItems.length}`)
+
+  // ---------- S18: منع تسليم مرتجع مرتين ----------
+  console.log('\n—— S18: منع تسليم المرتجع مرتين ——')
+  const markRes2 = await req('POST', `/api/vouchers/${rR5.id}/mark-received`, { notes: 'محاولة ثانية TEST-E2E' }, admin.token)
+  const markFail = markRes2.status === 200 && (markRes2.data?.succeeded === 0) && (markRes2.data?.failed === 1)
+  log('S18: تسليم نفس المرتجع مرة ثانية = 0 نجاح، 1 فشل (لا تكرار)', markFail, `نجح ${markRes2.data?.succeeded}/${markRes2.data?.total}`)
+
+  // ---------- S19: صلاحية الأسعار — viewer لا يرى المبالغ ----------
+  console.log('\n—— S19: صلاحية الأسعار (prices.view) — إخفاء المبالغ عن غير المصرح لهم ——')
+  // viewer لا يملك prices.view — يجب أن تكون حقول الأسعار مفرغة
+  const vs = await req('GET', `/api/shipments/${shA.id}`, undefined, viewer.token)
+  const vsOk = vs.data?.freightTotal == null && vs.data?.customerPay == null && vs.data?.salePrice == null && vs.data?.freightCost == null
+  log('S19: viewer لا يرى أسعار الشحنة (freightTotal/customerPay/salePrice/freightCost مفرغة)', vsOk, `freightTotal=${vs.data?.freightTotal}`)
+  // ops (محمود) يملك prices.view — يجب أن يرى الأسعار
+  const os = await req('GET', `/api/shipments/${shA.id}`, undefined, ops.token)
+  const osOk = os.data?.freightTotal != null
+  log('S19: محمود (ops) يرى أسعار الشحنة', osOk, `freightTotal=${os.data?.freightTotal}`)
+  // admin يرى الأسعار (عبر '*')
+  const as_ = await req('GET', `/api/shipments/${shA.id}`, undefined, admin.token)
+  const asOk = as_.data?.freightTotal != null
+  log('S19: admin يرى أسعار الشحنة', asOk, `freightTotal=${as_.data?.freightTotal}`)
+  // viewer لا يمكنه الوصول لتقارير الأسعار (403)
+  await mustFail('S19: viewer لا يصل لتقرير هامش النولون (403)', 403, 'GET', '/api/reports/freight-margin', undefined, viewer.token)
+  await mustFail('S19: viewer لا يصل لتقرير مستحقات المقاولين (403)', 403, 'GET', '/api/reports/contractor-dues', undefined, viewer.token)
+  await mustFail('S19: viewer لا يصل لتقرير ديون العملاء (403)', 403, 'GET', '/api/reports/customer-debts', undefined, viewer.token)
+  // viewer يصل لتقرير المرتجعات لم تُستلم (لا يكشف أسعارًا)
+  const vtpr = await req('GET', '/api/reports/pending-returns', undefined, viewer.token)
+  log('S19: viewer يصل لتقرير "المرتجعات لم تُستلم" (لا أسعار)', vtpr.status === 200, `HTTP ${vtpr.status}`)
+  // محمود يصل لتقارير الأسعار (200)
+  const otpr = await req('GET', '/api/reports/freight-margin', undefined, ops.token)
+  log('S19: محمود يصل لتقرير هامش النولون (له صلاحية)', otpr.status === 200, `HTTP ${otpr.status}`)
+  // vouchers stats: viewer يجب أن تكون collectionTotal/disbursementTotal = 0
+  const vs2 = await req('GET', '/api/vouchers/stats', undefined, viewer.token)
+  const vsStatsOk = vs2.data?.collectionTotal === 0 && vs2.data?.disbursementTotal === 0
+  log('S19: viewer لا يرى محصّلات/مصروفات الأذونات المالية', vsStatsOk, `collection=${vs2.data?.collectionTotal} disbursement=${vs2.data?.disbursementTotal}`)
+  // محمود يرى المحصّلات
+  const os2 = await req('GET', '/api/vouchers/stats', undefined, ops.token)
+  const osStatsOk = os2.data?.collectionTotal !== 0 || os2.data?.disbursementTotal !== 0
+  log('S19: محمود يرى محصّلات/مصروفات الأذونات المالية', osStatsOk, `collection=${os2.data?.collectionTotal}`)
+
+  // ---------- S20: قيد محاسبي للأذونات المالية لا يكشف عنه لغير المصرح لهم ----------
+  console.log('\n—— S20: قيد سند القبض لا يكشف مبالغه لغير المصرح لهم ——')
+  // سند القبض r7 (collection 500) — viewer يجب أن يرى amount=null و totalValue=0
+  const vV7 = await req('GET', `/api/vouchers/${r7.id}`, undefined, viewer.token)
+  const v7Ok = vV7.data?.amount == null && (vV7.data?.totalValue === 0 || vV7.data?.totalValue == null)
+  log('S20: viewer لا يرى مبلغ سند القبض', v7Ok, `amount=${vV7.data?.amount} totalValue=${vV7.data?.totalValue}`)
+  const oV7 = await req('GET', `/api/vouchers/${r7.id}`, undefined, ops.token)
+  const o7Ok = oV7.data?.amount === 500
+  log('S20: محمود يرى مبلغ سند القبض', o7Ok, `amount=${oV7.data?.amount}`)
+
   // ---------- الملخص ----------
   const total = passCount + failCount
   console.log('\n════════════════════════════════════')

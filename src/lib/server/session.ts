@@ -11,23 +11,30 @@ const SESSION_TTL_MS = 12 * 60 * 60 * 1000
 
 const sessions = new Map<string, { userId: string; loginAt: string; at: number }>()
 
-/** بناء جلسة كاملة من مستخدم قاعدة البيانات */
+/** بناء جلسة كاملة من مستخدم قاعدة البيانات — يدمج صلاحيات كل الأدوار المسندة للمستخدم */
 async function buildSessionUser(userId: string, loginAt: string): Promise<SessionUser | null> {
   const u = await db.user.findUnique({
     where: { id: userId },
     include: { roles: { include: { role: true } } },
   })
   if (!u || !u.active) return null
-  const role = u.roles[0]?.role ?? null
-  const perms = parsePerms(role?.permissions)
-  if (!perms.length && role?.name === 'admin') perms.push('*')
+  const roles = u.roles.map((ur) => ur.role).filter(Boolean)
+  // دمج صلاحيات كل الأدوار (دعم تعدد الأدوار للمستخدم الواحد)
+  const permSet = new Set<string>()
+  for (const r of roles) {
+    for (const p of parsePerms(r?.permissions)) permSet.add(p)
+  }
+  const perms = Array.from(permSet)
+  // الإدارة: لو مفيش صلاحيات صريحة والدور admin — افتح الكل
+  if (!perms.length && roles.some((r) => r?.name === 'admin')) perms.push('*')
+  const primaryRole = roles[0] ?? null
   return {
     userId: u.id,
     username: u.username,
     name: u.name,
-    roleId: role?.id ?? null,
-    roleName: role?.name ?? null,
-    roleLabel: role?.label ?? null,
+    roleId: primaryRole?.id ?? null,
+    roleName: primaryRole?.name ?? null,
+    roleLabel: primaryRole?.label ?? null,
     permissions: perms,
     loginAt,
   }

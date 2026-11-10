@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { fmtNum, shortDate, weekdayName, SHIPMENT_STATUS } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { fetcher } from '@/lib/api'
+import { useAuth } from '../auth-provider'
 
 const PIE_COLORS = ['#e8902a', '#1e9e8a', '#7a5bd6', '#5eb04a', '#d9532f', '#2c8fb8', '#c98d3b']
 
@@ -38,6 +39,9 @@ interface StatsResponse {
 }
 
 export function DashboardModule({ from, to }: { from?: string; to?: string }) {
+  const { has } = useAuth()
+  // صلاحية رؤية الأسعار — تتحكم في إظهار المؤشرات المالية (إيرادات/تكلفة/هامش)
+  const canPrices = has('prices.view')
   const qs = new URLSearchParams()
   if (from) qs.set('from', from)
   if (to) qs.set('to', to)
@@ -70,12 +74,23 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3 stagger">
         <Kpi title="إجمالي الشحنات" value={fmtNum(s.totalShipments)} icon={Package} tone="primary"
           subtitle={`من ${shortDate(data.dateRange.from)} إلى ${shortDate(data.dateRange.to)}`} />
-        <Kpi title="إيرادات النولون" value={fmtNum(s.totalFreight)} unit="ج.م" icon={Receipt} tone="teal"
-          subtitle={`تحصيل العميل: ${fmtNum(s.totalCustomerPay)} ج.م`} />
-        <Kpi title="تكلفة النولون" value={fmtNum(s.totalSuppliers)} unit="ج.م" icon={Banknote} tone="purple"
-          subtitle={`تكلفة المقاولين والموردين`} />
-        <Kpi title="صافي هامش النولون" value={fmtNum(s.netFreightMargin)} unit="ج.م" icon={s.netFreightMargin >= 0 ? TrendingUp : TrendingDown} tone="green"
-          subtitle={s.netFreightMargin >= 0 ? 'ربح' : 'خسارة'} />
+        {/* المؤشرات المالية الثلاثة تُعرض فقط لمن يملك صلاحية الأسعار */}
+        {canPrices ? (
+          <>
+            <Kpi title="إيرادات النولون" value={fmtNum(s.totalFreight)} unit="ج.م" icon={Receipt} tone="teal"
+              subtitle={`تحصيل العميل: ${fmtNum(s.totalCustomerPay)} ج.م`} />
+            <Kpi title="تكلفة النولون" value={fmtNum(s.totalSuppliers)} unit="ج.م" icon={Banknote} tone="purple"
+              subtitle={`تكلفة المقاولين والموردين`} />
+            <Kpi title="صافي هامش النولون" value={fmtNum(s.netFreightMargin)} unit="ج.م" icon={s.netFreightMargin >= 0 ? TrendingUp : TrendingDown} tone="green"
+              subtitle={s.netFreightMargin >= 0 ? 'ربح' : 'خسارة'} />
+          </>
+        ) : (
+          <>
+            <Kpi title="مستلمة بالفرع" value={fmtNum(s.statusCounts?.received ?? 0)} icon={Package} tone="teal" subtitle="جاهزة للتحميل" />
+            <Kpi title="خرجت للتوصيل" value={fmtNum(s.statusCounts?.assigned_courier ?? 0)} icon={Truck} tone="indigo" subtitle="مع المندوبين" />
+            <Kpi title="مرتجعة مستلمة" value={fmtNum(s.statusCounts?.received_returned ?? 0)} icon={Undo2} tone="rose" subtitle="عادت للفرع" />
+          </>
+        )}
       </div>
 
       {/* Status counts — horizontal compact cards (grid-cols-6 on lg, 3 on sm, 2 on mobile) */}
@@ -88,14 +103,16 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
         <StatusCard label="شحنات اليوم" value={data.daily[data.daily.length - 1]?.count ?? 0} icon={CalendarDays} tone="primary" />
       </div>
 
-      {/* Mini financial stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
-        <Mini label="التعتيق" value={fmtNum(s.totalAging)} icon={Clock} />
-        <Mini label="المبيت" value={fmtNum(s.totalOvernight)} icon={Moon} />
-        <Mini label="المرتجعات" value={fmtNum(s.totalReturns)} icon={Undo2} />
-        <Mini label="التحويلة" value={fmtNum(s.totalTransfer)} icon={ArrowRightLeft} />
-        <Mini label="مصاريف أخرى" value={fmtNum(s.totalOther + s.totalDrop)} icon={Wallet} />
-      </div>
+      {/* مؤشرات مالية مصغرة — تُعرض فقط لمن يملك صلاحية الأسعار */}
+      {canPrices && (
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
+          <Mini label="التعتيق" value={fmtNum(s.totalAging)} icon={Clock} />
+          <Mini label="المبيت" value={fmtNum(s.totalOvernight)} icon={Moon} />
+          <Mini label="المرتجعات" value={fmtNum(s.totalReturns)} icon={Undo2} />
+          <Mini label="التحويلة" value={fmtNum(s.totalTransfer)} icon={ArrowRightLeft} />
+          <Mini label="مصاريف أخرى" value={fmtNum(s.totalOther + s.totalDrop)} icon={Wallet} />
+        </div>
+      )}
 
       {/* Daily chart + unit breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -103,8 +120,8 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-base">الاتجاه اليومي للشحنات والنولون</CardTitle>
-                <CardDescription>عدد الشحنات وقيمة النولون لكل يوم</CardDescription>
+                <CardTitle className="text-base">الاتجاه اليومي للشحنات{canPrices ? ' والنولون' : ''}</CardTitle>
+                <CardDescription>عدد الشحنات{canPrices ? ' وقيمة النولون' : ''} لكل يوم</CardDescription>
               </div>
               <CalendarDays className="size-5 text-muted-foreground" />
             </div>
@@ -118,22 +135,24 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
                       <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.55} />
                       <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.05} />
                     </linearGradient>
-                    <linearGradient id="gFreight" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--chart-2)" stopOpacity={0.45} />
-                      <stop offset="95%" stopColor="var(--chart-2)" stopOpacity={0.05} />
-                    </linearGradient>
+                    {canPrices && (
+                      <linearGradient id="gFreight" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--chart-2)" stopOpacity={0.45} />
+                        <stop offset="95%" stopColor="var(--chart-2)" stopOpacity={0.05} />
+                      </linearGradient>
+                    )}
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
                   <YAxis yAxisId="left" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+                  {canPrices && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />}
                   <Tooltip
                     contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12, direction: 'rtl' }}
                     labelFormatter={(l: any) => { const item = dailyData.find((d) => d.label === l); return item ? `${l} (${item.day})` : l }}
                     formatter={(v: any, n: any) => [n === 'النولون' ? `${fmtNum(v)} ج.م` : `${fmtNum(v)}`, n]}
                   />
                   <Area yAxisId="left" type="monotone" dataKey="count" name="الشحنات" stroke="var(--chart-1)" strokeWidth={2} fill="url(#gCount)" />
-                  <Area yAxisId="right" type="monotone" dataKey="freight" name="النولون" stroke="var(--chart-2)" strokeWidth={2} fill="url(#gFreight)" />
+                  {canPrices && <Area yAxisId="right" type="monotone" dataKey="freight" name="النولون" stroke="var(--chart-2)" strokeWidth={2} fill="url(#gFreight)" />}
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -171,30 +190,60 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
 
       {/* Top destinations bar + status breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base">أعلى الوجهات (النولون)</CardTitle>
-                <CardDescription>إجمالي النولون حسب المدينة</CardDescription>
+        {/* رسم الوجهات حسب النولون — فقط لمن يملك صلاحية الأسعار */}
+        {canPrices && (
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">أعلى الوجهات (النولون)</CardTitle>
+                  <CardDescription>إجمالي النولون حسب المدينة</CardDescription>
+                </div>
+                <MapPin className="size-5 text-muted-foreground" />
               </div>
-              <MapPin className="size-5 text-muted-foreground" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="h-56 sm:h-64 md:h-72" dir="ltr">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={topDest} layout="vertical" margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                  <YAxis dataKey="name" type="category" width={85} tick={{ fontSize: 11, fill: 'var(--foreground)' }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12, direction: 'rtl' }} formatter={(v: any, n: any) => [`${fmtNum(v)} ج.م`, n === 'freight' ? 'النولون' : 'العدد']} />
-                  <Bar dataKey="freight" name="النولون" fill="var(--chart-1)" radius={[0, 6, 6, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent>
+              <div className="h-56 sm:h-64 md:h-72" dir="ltr">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={topDest} layout="vertical" margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <YAxis dataKey="name" type="category" width={85} tick={{ fontSize: 11, fill: 'var(--foreground)' }} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12, direction: 'rtl' }} formatter={(v: any, n: any) => [`${fmtNum(v)} ج.م`, n === 'freight' ? 'النولون' : 'العدد']} />
+                    <Bar dataKey="freight" name="النولون" fill="var(--chart-1)" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        {/* رسم الوجهات حسب العدد — بديل لغير المصرح لهم برؤية الأسعار */}
+        {!canPrices && (
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">أعلى الوجهات (عدد الشحنات)</CardTitle>
+                  <CardDescription>عدد الشحنات حسب المدينة</CardDescription>
+                </div>
+                <MapPin className="size-5 text-muted-foreground" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="h-56 sm:h-64 md:h-72" dir="ltr">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={topDest} layout="vertical" margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+                    <YAxis dataKey="name" type="category" width={85} tick={{ fontSize: 11, fill: 'var(--foreground)' }} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12, direction: 'rtl' }} formatter={(v: any) => [`${fmtNum(v)} شحنة`, 'العدد']} />
+                    <Bar dataKey="count" name="العدد" fill="var(--chart-1)" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="pb-2">
@@ -249,7 +298,8 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
                         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: PIE_COLORS[i % PIE_COLORS.length] }} />
                       </div>
                     </div>
-                    <span className="text-xs font-semibold tnum w-20 text-left whitespace-nowrap">{fmtNum(c.freight)} ج.م</span>
+                    {/* إجمالي النولون للمقاول — فقط لمن يملك صلاحية الأسعار */}
+                    {canPrices && <span className="text-xs font-semibold tnum w-20 text-left whitespace-nowrap">{fmtNum(c.freight)} ج.م</span>}
                   </div>
                 )
               })}
@@ -279,15 +329,23 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
                   <span><b className="tnum">{fmtNum(s.returned)}</b> شحنة مرتجعة تحتاج مراجعة</span>
                 </Alert>
               )}
-              <Alert tone="sky" icon={Receipt}>
-                <span>إجمالي النولون: <b className="tnum">{fmtNum(s.totalFreight)} ج.م</b> — تحصيل: <b className="tnum">{fmtNum(s.totalCustomerPay)} ج.م</b></span>
-              </Alert>
-              {s.netFreightMargin < 0 && (
+              {/* تنبيه إجمالي النولون — فقط لمن يملك صلاحية الأسعار */}
+              {canPrices && (
+                <Alert tone="sky" icon={Receipt}>
+                  <span>إجمالي النولون: <b className="tnum">{fmtNum(s.totalFreight)} ج.م</b> — تحصيل: <b className="tnum">{fmtNum(s.totalCustomerPay)} ج.م</b></span>
+                </Alert>
+              )}
+              {canPrices && s.netFreightMargin < 0 && (
                 <Alert tone="rose" icon={TrendingDown}>
                   <span>هامش النولون سالب — راجع التسعير</span>
                 </Alert>
               )}
-              {s.delayed === 0 && s.returned === 0 && s.netFreightMargin >= 0 && (
+              {!canPrices && (
+                <Alert tone="sky" icon={Package}>
+                  <span>توجد <b className="tnum">{fmtNum(s.totalShipments)}</b> شحنة في النظام — تابع التفاصيل في وحدة الشحنات</span>
+                </Alert>
+              )}
+              {s.delayed === 0 && s.returned === 0 && (!canPrices || s.netFreightMargin >= 0) && (
                 <Alert tone="emerald" icon={TrendingUp}>
                   <span>كل المؤشرات سليمة — لا توجد تنبيهات حرجة</span>
                 </Alert>

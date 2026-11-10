@@ -13,6 +13,7 @@ import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import { exportToCSV } from '@/lib/export'
 import { fmtNum } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
+import { useAuth } from '../auth-provider'
 import type { ModuleKey } from '../sidebar'
 
 interface Party {
@@ -30,6 +31,9 @@ interface Party {
 
 export function PartiesModule({ type, title }: { type: 'customer' | 'contractor' | 'supplier'; title: string }) {
   const { toast } = useToast()
+  const { has } = useAuth()
+  // إجمالي التعامل يُعرض فقط لمن يملك صلاحية الأسعار
+  const canPrices = has('prices.view')
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Party | null>(null)
   // Client-side pagination for the card grid
@@ -99,10 +103,15 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
     const rows = data.items.map((p: Party) => ({
       'الكود': p.code ?? '', 'الاسم': p.name, 'الاسم EN': p.nameEn ?? '',
       'الهاتف': p.phone ?? '', 'المدينة': p.city ?? '', 'المنطقة': p.region ?? '',
-      'الفرع': p.branch?.name ?? '', 'حد الائتمان': p.creditLimit ?? '',
-      'الرصيد الافتتاحي': p.openingBalance ?? 0,
-      'عدد الشحنات': p._count.shipments, 'إجمالي التعامل': p._sum.totalSuppliers ?? 0,
-      'تحصيل العميل': p._sum.customerPay ?? 0,
+      'الفرع': p.branch?.name ?? '',
+      // حقول مالية تُصدّر فقط لمن يملك صلاحية الأسعار
+      ...(canPrices ? {
+        'حد الائتمان': p.creditLimit ?? '',
+        'الرصيد الافتتاحي': p.openingBalance ?? 0,
+        'إجمالي التعامل': p._sum.totalSuppliers ?? 0,
+        'تحصيل العميل': p._sum.customerPay ?? 0,
+      } : {}),
+      'عدد الشحنات': p._count.shipments,
     }))
     exportToCSV(rows, `${type}-${new Date().toISOString().slice(0, 10)}.csv`)
     toast({ title: `تم تصدير ${rows.length} ${title}` })
@@ -154,10 +163,18 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
                     <div className="text-muted-foreground">الشحنات</div>
                     <div className="font-bold tnum">{fmtNum(p._count.shipments)}</div>
                   </div>
-                  <div className="bg-primary/10 rounded-lg p-2">
-                    <div className="text-muted-foreground">إجمالي التعامل</div>
-                    <div className="font-bold tnum text-primary">{fmtNum(p._sum.totalSuppliers)} ج.م</div>
-                  </div>
+                  {/* إجمالي التعامل — يُعرض فقط لمن يملك صلاحية الأسعار */}
+                  {canPrices ? (
+                    <div className="bg-primary/10 rounded-lg p-2">
+                      <div className="text-muted-foreground">إجمالي التعامل</div>
+                      <div className="font-bold tnum text-primary">{fmtNum(p._sum.totalSuppliers)} ج.م</div>
+                    </div>
+                  ) : (
+                    <div className="bg-secondary/60 rounded-lg p-2">
+                      <div className="text-muted-foreground">الرمز</div>
+                      <div className="font-bold tnum">{p.code ?? '—'}</div>
+                    </div>
+                  )}
                 </div>
                 {(p.isCustomer && p.isContractor) || (p.isCustomer && p.isSupplier) || (p.isContractor && p.isSupplier) ? (
                   <div className="mt-2 flex flex-wrap gap-1">

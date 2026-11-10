@@ -611,3 +611,92 @@ export async function settleShipmentCOD(user: SessionUser, shipmentId: string, b
 }
 
 export { VOUCHER_TYPES, VOUCHER_STATES, VOUCHER_CATEGORIES }
+
+// ---------------------------------------------------------------------------
+// تسليم مرتجع — يأخذ إذن المرتجع المكتمل ويُنشئ تلقائيًا إذن استلام مرتجعات
+// مكتمل لكل شحنة لا تزال بحالة "returned" (مع المندوب)، ثم يحدّث حالتها إلى
+// "received_returned" (تم التسليم). يُسجّل فعل "mark_received" على إذن المرتجع
+// الأصلي + قيد تدقيق. يدعم التسليم الجزئي (الشحنات التي لم تُستلم فقط).
+// ---------------------------------------------------------------------------
+export async function markReturnReceived(user: SessionUser, returnVoucherId: string, body: any) {
+  assertPerm(user, 'vouchers.execute')
+  return db.$transaction(async (tx) => {
+    const rv = await loadVoucher(tx, returnVoucherId)
+    if (rv.type !== 'return') throw new ApiError(400, 'هذا الإجراء مخصص لإذن المرتجع فقط')
+    if (rv.status !== 'completed') throw new ApiError(409, 'لا يمكن التسليم إلا بعد إكمال إذن المرتجع')
+    if (!rv.items?.length) throw new ApiError(400, 'لا توجد شحنات مرتجعة في هذا الإذن')
+
+    const results: { shipmentId: string; shipmentNo: string | null; receivingVoucherNo: string | null; ok: boolean; reason?: string }[] = []
+
+    for (const it of rv.items) {
+      const s = await tx.shipment.findUnique({ where: { id: it.shipmentId } })
+      if (!s) {
+        results.push({ shipmentId: it.shipmentId, shipmentNo: null, receivingVoucherNo: null, ok: false, reason: 'الشحنة غير موجودة' })
+        continue
+      }
+      if (s.status !== 'returned') {
+        results.push({ shipmentId: s.id, shipmentNo: s.shipmentNo, receivingVoucherNo: null, ok: false, reason: `حالة الشحنة "${s.status}" — لا يمكن التسليم` })
+        continue
+      }
+      // منع التكرار: لا يمكن تسليم مرتجع سبق استلامه
+      const existing = await tx.opVoucherItem.findFirst({
+        where: { shipmentId: s.id, voucher: { type: 'returned_receiving', status: 'completed' } },
+        include: { voucher: { select: { voucherNo: true } } },
+      })
+      if (existing) {
+        results.push({ shipmentId: s.id, shipmentNo: s.shipmentNo, receivingVoucherNo: existing.voucher.voucherNo, ok: false, reason: 'تم استلام هذا المرتجع مسبقًا' })
+        continue
+      }
+      // إنشاء إذن استلام مرتجعات مكتمل تلقائيًا
+      const voucherNo = await nextVoucherNo(tx, 'returned_receiving')
+      const v = await tx.opVoucher.create({
+        data: {
+          voucherNo, type: 'returned_receiving', status: 'completed',
+          sourceBranchId: rv.sourceBranchId ?? s.branchId ?? null,
+          employeeId: rv.employeeId ?? null,
+          courierId: rv.courierId ?? null,
+          totalValue: 0,
+          notes: `تسليم مرتجع تلقائي من ${rv.voucherNo} — ${body.notes ?? 'تم التسليم'}`,
+          userId: user.userId, userName: user.username,
+          items: { create: { shipmentId: s.id, notes: `تسليم من إذن ${rv.voucherNo}`, addedBy: user.username } },
+          actions: { create: [
+            { action: 'create', userId: user.userId, userName: user.username, notes: 'إنشاء تلقائي (تسليم مرتجع)' },
+            { action: 'submit', userId: user.userId, userName: user.username },
+            { action: 'approve', userId: user.userId, userName: user.username, notes: 'اعتماد تلقائي للتسليم' },
+            { action: 'execute', userId: user.userId, userName: user.username },
+            { action: 'complete', userId: user.userId, userName: user.username, notes: 'إكمال تلقائي للتسليم' },
+          ] },
+        },
+      })
+      // تحديث حالة الشحنة إلى "received_returned"
+      await tx.shipment.update({
+        where: { id: s.id },
+        data: {
+          status: 'received_returned',
+          updatedAt: new Date(),
+          statusHistory: {
+            create: { fromStatus: 'returned', toStatus: 'received_returned', userName: user.username, notes: `تم التسليم — ${v.voucherNo}` },
+          },
+        },
+      })
+      results.push({ shipmentId: s.id, shipmentNo: s.shipmentNo, receivingVoucherNo: v.voucherNo, ok: true })
+    }
+
+    // تسجيل فعل "mark_received" على إذن المرتجع الأصلي + تدقيق
+    const succeeded = results.filter((r) => r.ok).length
+    const failed = results.length - succeeded
+    await tx.opVoucherAction.create({
+      data: {
+        voucherId: rv.id, userId: user.userId, userName: user.username, action: 'mark_received',
+        notes: body.notes ?? `تم التسليم (${succeeded}/${results.length} شحنة${failed ? ` — ${failed} فشل` : ''})`,
+      },
+    })
+    await logAudit(tx, {
+      action: 'mark_received', entity: 'voucher', entityId: rv.id,
+      notes: `تسليم مرتجع ${rv.voucherNo} (${succeeded}/${results.length} شحنة)`,
+      user: { userId: user.userId, username: user.username },
+      after: { results },
+    })
+    return { ok: true, results, total: results.length, succeeded, failed }
+  })
+}

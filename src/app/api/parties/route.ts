@@ -10,8 +10,8 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    await requirePerm(req, 'parties.view')
-    return listParties(new URL(req.url).searchParams)
+    const user = await requirePerm(req, 'parties.view')
+    return listParties(new URL(req.url).searchParams, user)
   })
 }
 

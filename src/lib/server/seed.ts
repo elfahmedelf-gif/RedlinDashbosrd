@@ -170,6 +170,10 @@ async function runSeed(): Promise<void> {
       await ensureRole('operations', 'موظف عمليات', ['shipments.view', 'shipments.create', 'shipments.edit', 'shipments.status', 'shipments.assign', 'shipments.print', 'shipments.export', 'parties.view', 'inventory.view', 'dashboard.view', 'vouchers.view', 'vouchers.create', 'vouchers.edit', 'vouchers.submit', 'vouchers.print', 'vouchers.export'])
       await ensureRole('voucher_clerk', 'كاتب أذونات', ['dashboard.view', 'shipments.view', 'parties.view', 'structure.view', 'vouchers.view', 'vouchers.create', 'vouchers.edit', 'vouchers.submit', 'vouchers.print'])
       await ensureRole('viewer', 'عارض (مشاهدة فقط)', ['dashboard.view', 'shipments.view', 'parties.view', 'inventory.view', 'accounting.view', 'reports.view', 'vouchers.view'])
+      // دور خاص: رؤية الأسعار/المبالغ — يُمنح فقط لمن يحق له رؤية التكلفة/البيع/التحصيل
+      // (في هذا النظام: المالك admin عبر '*' + محمود عبر إسناد دور إضافي)
+      // يشمل reports.view حتى يتمكن حامل الدور من الوصول لتقارير الأسعار
+      await ensureRole('prices_viewer', 'رؤية الأسعار (خاص)', ['prices.view', 'reports.view'])
 
       const mainBranch = branches[0]?.id ?? null
       const users: { username: string; name: string; password: string; role: string }[] = [
@@ -197,6 +201,13 @@ async function runSeed(): Promise<void> {
         })
         userIds.set(u.username, created.id)
       }
+      // إسناد دور "رؤية الأسعار" لمحمود (ops) — استثناء صريح من المالك
+      // محمود فقط (بالإضافة للمالك عبر '*') يرى التكلفة/البيع/التحصيل في كل العمليات
+      await tx.userRole.upsert({
+        where: { userId_roleId: { userId: userIds.get('ops')!, roleId: roleIds.get('prices_viewer')! } },
+        update: {},
+        create: { userId: userIds.get('ops')!, roleId: roleIds.get('prices_viewer')! },
+      })
 
       // ---------- الشحنات + سجل الحالات ----------
       await tx.shipment.createMany({

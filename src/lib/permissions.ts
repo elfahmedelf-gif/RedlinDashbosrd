@@ -53,6 +53,8 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'vouchers.cancel', label: 'إلغاء إذن', group: 'الأذونات التشغيلية' },
   { key: 'vouchers.print', label: 'طباعة إذن', group: 'الأذونات التشغيلية' },
   { key: 'vouchers.export', label: 'تصدير الأذونات', group: 'الأذونات التشغيلية' },
+  // رؤية الأسعار/المبالغ — يُمنح فقط لمن يحق له رؤية التكلفة/البيع/التحصيل
+  { key: 'prices.view', label: 'رؤية الأسعار والمبالغ (تكلفة/بيع/تحصيل)', group: 'الأذونات التشغيلية' },
   // التقارير
   { key: 'reports.view', label: 'عرض التقارير', group: 'التقارير' },
   { key: 'reports.export', label: 'تصدير التقارير', group: 'التقارير' },

@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    await requirePerm(req, 'vouchers.view')
+    const user = await requirePerm(req, 'vouchers.view')
     const { id } = await params
-    return shipmentVouchers(id)
+    return shipmentVouchers(id, user)
   })
 }

@@ -2,21 +2,27 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { FileBarChart, FileSpreadsheet, Printer, Truck, Banknote, Users, Boxes, BookOpen, MapPin } from 'lucide-react'
+import { FileBarChart, FileSpreadsheet, Printer, Truck, Banknote, Users, Boxes, BookOpen, MapPin, Undo2, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { DataTable } from '../data-table'
-import { fetcher } from '@/lib/api'
+import { fetcher, apiPost } from '@/lib/api'
 import { exportToCSV, exportToExcel } from '@/lib/export'
-import { fmtNum, fmtDate, ACCOUNT_TYPE, SHIPMENT_STATUS, MOVEMENT_TYPE } from '@/lib/format'
+import { fmtNum, fmtDate, fmtDateTime, ACCOUNT_TYPE, SHIPMENT_STATUS, MOVEMENT_TYPE } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useAuth } from '../auth-provider'
+import { useToast } from '@/hooks/use-toast'
 
-type ReportType = 'shipments' | 'freight-margin' | 'contractor-dues' | 'customer-debts' | 'trial-balance' | 'inventory-movements' | 'low-stock'
+type ReportType = 'shipments' | 'freight-margin' | 'contractor-dues' | 'customer-debts' | 'trial-balance' | 'inventory-movements' | 'low-stock' | 'pending-returns'
+
+// تقارير تكشف أسعارًا — تتطلب صلاحية prices.view (يُفرض أيضًا على الخادم)
+const PRICE_REPORTS = new Set<ReportType>(['shipments', 'freight-margin', 'contractor-dues', 'customer-debts'])
 
 const REPORTS: { type: ReportType; title: string; desc: string; icon: React.ElementType; tone: string }[] = [
+  { type: 'pending-returns', title: 'المرتجعات لم تُستلم', desc: 'مرتجعات لا تزال مع المندوبين — تتبع العهدة', icon: Undo2, tone: 'bg-amber-100 text-amber-700' },
   { type: 'shipments', title: 'سجل الشحنات', desc: 'كل الشحنات بالتفصيل حسب الفرع والمنطقة', icon: Truck, tone: 'bg-amber-100 text-amber-700' },
   { type: 'freight-margin', title: 'هامش النولون', desc: 'مقارنة سعر البيع بالتكلفة وصافي الربح', icon: Banknote, tone: 'bg-emerald-100 text-emerald-700' },
   { type: 'contractor-dues', title: 'مستحقات المقاولين', desc: 'مستحقات المقاولين والمدفوع والمتبقي', icon: Users, tone: 'bg-sky-100 text-sky-700' },
@@ -27,12 +33,15 @@ const REPORTS: { type: ReportType; title: string; desc: string; icon: React.Elem
 ]
 
 export function ReportsModule() {
+  const { has } = useAuth()
+  const canPrices = has('prices.view')
+  const { toast } = useToast()
   const [active, setActive] = React.useState<ReportType | null>(null)
   const [from, setFrom] = React.useState(''); const [to, setTo] = React.useState('')
   const qs = new URLSearchParams()
   if (from) qs.set('from', from)
   if (to) qs.set('to', to)
-  const { data, isLoading } = useSWR<{ items: any[] }>(active ? `/api/reports/${active}?${qs.toString()}` : null, fetcher)
+  const { data, isLoading, mutate } = useSWR<{ items: any[]; byCourier?: any[]; total?: number }>(active ? `/api/reports/${active}?${qs.toString()}` : null, fetcher)
 
   const exportCSV = () => {
     if (!data?.items?.length) return
@@ -64,13 +73,32 @@ export function ReportsModule() {
     exportToExcel(rows, `${active}-${new Date().toISOString().slice(0, 10)}.xls`)
   }
 
+  // إجراء "تم التسليم" من تقرير المرتجعات — ينشئ إذن استلام مرتجعات تلقائيًا
+  const markReceived = async (voucherId: string, voucherNo?: string) => {
+    if (!confirm(`تأكيد تسليم مرتجع ${voucherNo ?? ''}؟ سيُنشأ إذن استلام مرتجعات تلقائيًا.`)) return
+    try {
+      const res: any = await apiPost(`/api/vouchers/${voucherId}/mark-received`, { userName: 'admin' })
+      const summary = res?.succeeded != null && res?.total != null
+        ? `تم تسليم ${res.succeeded}/${res.total} شحنة${res.failed ? ` — ${res.failed} فشل` : ''}`
+        : 'تم التسليم'
+      toast({ title: 'تم التسليم', description: summary })
+      mutate()
+    } catch (e: any) {
+      toast({ title: 'خطأ', description: e.message, variant: 'destructive' })
+    }
+  }
+
+  // تصفية التقارير حسب الصلاحية — تقارير الأسعار تُخفى عن غير المصرح لهم
+  const visibleReports = REPORTS.filter((r) => !PRICE_REPORTS.has(r.type) || canPrices)
+
   if (active && data) {
+    const activeReport = REPORTS.find((r) => r.type === active)
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => setActive(null)}>← رجوع للتقارير</Button>
-            <h3 className="text-base font-semibold">{REPORTS.find((r) => r.type === active)?.title}</h3>
+            <h3 className="text-base font-semibold">{activeReport?.title}</h3>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-36 h-8 text-xs" />
@@ -80,7 +108,20 @@ export function ReportsModule() {
             <Button variant="outline" size="sm" onClick={exportXls}><FileSpreadsheet className="size-4" /> Excel</Button>
           </div>
         </div>
-        <ReportTable type={active} items={data.items} loading={isLoading} />
+
+        {/* عرض مخصص لتقرير المرتجعات لم تُستلم — مع بطاقة مسؤولية السائقين */}
+        {active === 'pending-returns' ? (
+          <PendingReturnsReport
+            items={data.items}
+            byCourier={data.byCourier ?? []}
+            total={data.total ?? 0}
+            loading={isLoading}
+            onMarkReceived={markReceived}
+            canExecute={has('vouchers.execute')}
+          />
+        ) : (
+          <ReportTable type={active} items={data.items} loading={isLoading} />
+        )}
       </div>
     )
   }
@@ -88,7 +129,7 @@ export function ReportsModule() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {REPORTS.map((r) => (
+        {visibleReports.map((r) => (
           <Card key={r.type} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setActive(r.type)}>
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
@@ -101,7 +142,144 @@ export function ReportsModule() {
             </CardContent>
           </Card>
         ))}
+        {!canPrices && (
+          <Card className="border-dashed bg-muted/30">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex items-center justify-center size-11 rounded-xl bg-amber-100 text-amber-700"><AlertCircle className="size-5" /></div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm leading-tight">تقارير الأسعار محجوبة</div>
+                  <div className="text-xs text-muted-foreground mt-1 leading-snug">
+                    تقارير هامش النولون/مستحقات المقاولين/ديون العملاء تتطلب صلاحية «رؤية الأسعار».
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// تقرير المرتجعات لم تُستلم — مع بطاقة مسؤولية كل سائق وزر "تم التسليم"
+// ---------------------------------------------------------------------------
+function PendingReturnsReport({
+  items,
+  byCourier,
+  total,
+  loading,
+  onMarkReceived,
+  canExecute,
+}: {
+  items: any[]
+  byCourier: any[]
+  total: number
+  loading: boolean
+  onMarkReceived: (voucherId: string, voucherNo?: string) => void
+  canExecute: boolean
+}) {
+  if (loading) return <Skeleton className="h-96 rounded-xl" />
+  if (!items.length) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground">
+          <Undo2 className="size-10 mx-auto mb-2 text-muted-foreground/60" />
+          <div className="text-sm font-medium">لا توجد مرتجعات معلقة</div>
+          <div className="text-xs text-muted-foreground mt-1">كل المرتجعات المسجلة تم استلامها بالفرع.</div>
+        </CardContent>
+      </Card>
+    )
+  }
+  return (
+    <div className="space-y-4">
+      {/* بطاقة المسؤولية حسب المندوب */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="size-4 text-muted-foreground" />
+            مسؤولية المندوبين ({byCourier.length})
+          </CardTitle>
+          <CardDescription>عدد المرتجعات غير المستلمة لكل مندوب + أقدم مدة بقاء</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {byCourier.map((c, i) => (
+              <div key={c.courierId || i} className={cn(
+                'border rounded-lg p-3',
+                c.oldestDays > 7
+                  ? 'border-rose-300 bg-rose-50 dark:bg-rose-950/30'
+                  : c.oldestDays > 3
+                    ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30'
+                    : 'border-border bg-muted/30'
+              )}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-sm truncate">{c.courierName}</span>
+                  <Badge variant="outline" className={cn('text-[11px] tnum',
+                    c.oldestDays > 7 ? 'bg-rose-100 text-rose-700' :
+                    c.oldestDays > 3 ? 'bg-amber-100 text-amber-700' :
+                    'bg-slate-100 text-slate-700')}>
+                    {c.oldestDays} يوم
+                  </Badge>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  <b className="text-foreground tnum">{c.count}</b> مرتجع لم يُستلم بعد
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* جدول التفاصيل */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Undo2 className="size-4 text-muted-foreground" />
+            المرتجعات لم تُستلم ({total})
+          </CardTitle>
+          <CardDescription>كل شحنة بحالة «مرتجعة» لا تزال مع المندوب — اضغط «تم التسليم» لتسجيل استلامها</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DataTable
+            rows={items}
+            columns={[
+              { key: 'no', header: 'رقم الشحنة', primary: true, align: 'center' as const, width: 'w-28', render: (s: any) => <span className="font-mono text-xs font-bold">{s.shipmentNo ?? '—'}</span> },
+              { key: 'recipient', header: 'المستلم', width: 'w-40', render: (s: any) => <span className="text-xs truncate-1 block">{s.recipientName ?? '—'}</span> },
+              { key: 'dest', header: 'الوجهة', hideInCard: true, width: 'w-32', render: (s: any) => <span className="text-xs truncate-1 block">{s.destination ?? '—'}</span> },
+              { key: 'customer', header: 'العميل', hideInCard: true, width: 'w-32', render: (s: any) => <span className="text-xs truncate-1 block">{s.customerName ?? '—'}</span> },
+              { key: 'courier', header: 'المندوب', width: 'w-32', render: (s: any) => <span className="text-xs font-medium truncate-1 block">{s.courierName ?? 'غير محدد'}</span> },
+              { key: 'voucher', header: 'إذن المرتجع', align: 'center' as const, hideInCard: true, width: 'w-28', render: (s: any) => <span className="font-mono text-xs">{s.returnVoucherNo ?? '—'}</span> },
+              {
+                key: 'days', header: 'المدة', align: 'center' as const, width: 'w-24',
+                render: (s: any) => (
+                  <Badge variant="outline" className={cn('text-[11px] tnum',
+                    (s.daysOutstanding ?? 0) > 7 ? 'bg-rose-100 text-rose-700' :
+                    (s.daysOutstanding ?? 0) > 3 ? 'bg-amber-100 text-amber-700' :
+                    'bg-slate-100 text-slate-700')}>
+                    {s.daysOutstanding ?? '—'} يوم
+                  </Badge>
+                ),
+              },
+              {
+                key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-32',
+                render: (s: any) => (
+                  canExecute && s.returnVoucherId ? (
+                    <Button size="sm" variant="default" onClick={(e) => { e.stopPropagation(); onMarkReceived(s.returnVoucherId, s.returnVoucherNo) }}>
+                      <Undo2 className="size-3.5" /> تم التسليم
+                    </Button>
+                  ) : <span className="text-xs text-muted-foreground">—</span>
+                ),
+              },
+            ]}
+            getRowKey={(s) => s.shipmentId}
+            minW={1100}
+            searchFn={(s, q) => (s.shipmentNo || '').toLowerCase().includes(q) || (s.courierName || '').toLowerCase().includes(q) || (s.recipientName || '').toLowerCase().includes(q)}
+            searchPlaceholder="بحث برقم الشحنة/المندوب..."
+          />
+        </CardContent>
+      </Card>
     </div>
   )
 }

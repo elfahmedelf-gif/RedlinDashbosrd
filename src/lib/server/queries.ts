@@ -1,6 +1,7 @@
 // ============================================================================
 // طبقة الاستعلامات (GET) — تعيد نفس أشكال الاستجابة السابقة تمامًا
 // لكن مستمدة من قاعدة البيانات الحقيقية (Prisma)
+// + فلترة الأسعار/المبالغ على الخادم لغير المصرح لهم (prices.view)
 // ============================================================================
 import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
@@ -8,6 +9,7 @@ import { ApiError, num, round2 } from './http'
 import { accountBalancesMap } from './accounting'
 import { VOUCHER_CATEGORIES, VOUCHER_STATES, VOUCHER_TYPES } from '../voucher-catalog'
 import { enrichVoucherRows, voucherInclude } from './vouchers-queries'
+import { canSeePrices, reportRequiresPrices, stripDashboardStats, stripParties, stripShipmentPrices, stripVoucherPrices, stripVoucherStats } from './prices'
 
 const SHIPMENT_INCLUDE = {
   customer: { select: { id: true, name: true } },
@@ -40,12 +42,12 @@ function ref(r?: { id: string; name: string } | null) {
   return r ? { id: r.id, name: r.name } : null
 }
 
-export function enrichShipment(s: ShipmentRow, voucherLinks?: Map<string, { id: string; voucherNo: string; type: string; status: string; createdAt: Date; amount: number | null; notes: string | null }[]>) {
+export function enrichShipment(s: ShipmentRow, voucherLinks?: Map<string, { id: string; voucherNo: string; type: string; status: string; createdAt: Date; amount: number | null; notes: string | null }[]>, canPrices: boolean = true) {
   const sell = Number(s.freightTotal ?? 0)
   const cost = Number(s.totalSuppliers ?? 0)
   const history = (s.statusHistory ?? []).map((h) => ({ status: h.toStatus, notes: h.notes ?? null, date: h.changedAt, userName: h.userName ?? null }))
   const vh = voucherLinks?.get(s.id) ?? []
-  return {
+  const base: any = {
     ...s,
     customer: ref(s.customer),
     contractor: ref(s.contractor),
@@ -57,6 +59,12 @@ export function enrichShipment(s: ShipmentRow, voucherLinks?: Map<string, { id: 
       : [{ status: s.status, notes: 'استيراد أولي', date: s.updatedAt ?? s.createdAt ?? null, userName: 'system' }],
     vouchers: [...vh].sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()),
   }
+  // إخفاء روابط الإذن التي تحمل مبالغ لو المستخدم لا يملك صلاحية الأسعار
+  // (روابط السندات المالية تكشف المبلغ — نُفرّغها)
+  if (!canPrices) {
+    base.vouchers = base.vouchers.map((v: any) => ({ ...v, amount: null, notes: v.notes }))
+  }
+  return stripShipmentPrices(base, canPrices)
 }
 
 /** روابط إذن↔شحنة لدفعة معرفات (لتفادي N+1) */
@@ -80,7 +88,8 @@ export async function voucherLinksForShipments(shipments: { id: string }[]) {
 // ---------------------------------------------------------------------------
 // Shipments
 // ---------------------------------------------------------------------------
-export async function listShipments(q: URLSearchParams) {
+export async function listShipments(q: URLSearchParams, user?: { permissions: string[] } | null) {
+  const canPrices = canSeePrices(user)
   const search = (q.get('q') ?? '').trim().toLowerCase()
   const status = q.get('status')
   const dest = q.get('destination')
@@ -107,25 +116,28 @@ export async function listShipments(q: URLSearchParams) {
         .some((f) => String(f ?? '').toLowerCase().includes(search)))
   }
   const links = await voucherLinksForShipments(rows.slice(0, 60))
-  const items = rows.map((s) => enrichShipment(s, links))
+  const items = rows.map((s) => enrichShipment(s, links, canPrices))
   const page = Math.max(1, parseInt(q.get('page') || '1', 10))
   const pageSize = Math.min(500, Math.max(1, parseInt(q.get('pageSize') || '20', 10)))
   return paginate(items, page, pageSize)
 }
 
-export async function getShipment(id: string) {
+export async function getShipment(id: string, user?: { permissions: string[] } | null) {
+  const canPrices = canSeePrices(user)
   const s = await db.shipment.findUnique({ where: { id }, include: SHIPMENT_INCLUDE })
   if (!s) throw new ApiError(404, 'الشحنة غير موجودة')
   const links = await voucherLinksForShipments([s])
-  return enrichShipment(s, links)
+  return enrichShipment(s, links, canPrices)
 }
 
-export async function shipmentVouchers(id: string) {
-  return enrichVoucherRows(await db.opVoucher.findMany({
+export async function shipmentVouchers(id: string, user?: { permissions: string[] } | null) {
+  const canPrices = canSeePrices(user)
+  const rows = await db.opVoucher.findMany({
     where: { items: { some: { shipmentId: id } } },
     include: voucherInclude(),
     orderBy: { createdAt: 'desc' },
-  }))
+  })
+  return enrichVoucherRows(rows).map((v: any) => stripVoucherPrices(v, canPrices))
 }
 
 
@@ -133,7 +145,8 @@ export async function shipmentVouchers(id: string) {
 // ---------------------------------------------------------------------------
 // Parties
 // ---------------------------------------------------------------------------
-export async function listParties(q: URLSearchParams) {
+export async function listParties(q: URLSearchParams, user?: { permissions: string[] } | null) {
+  const canPrices = canSeePrices(user)
   const type = q.get('type')
   const search = (q.get('q') ?? '').trim().toLowerCase()
   const where: Prisma.PartyWhereInput = {}
@@ -169,7 +182,8 @@ export async function listParties(q: URLSearchParams) {
       _sum: { freightTotal: round2(a.freightTotal), totalSuppliers: round2(a.totalSuppliers), customerPay: round2(a.customerPay) },
     }
   })
-  return { items, total: items.length }
+  const stripped = stripParties(items, canPrices)
+  return { items: stripped, total: stripped.length }
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +294,8 @@ export async function listMovements() {
 // ---------------------------------------------------------------------------
 // Vouchers (operational unified)
 // ---------------------------------------------------------------------------
-export async function listVouchers(q: URLSearchParams) {
+export async function listVouchers(q: URLSearchParams, user?: { permissions: string[] } | null) {
+  const canPrices = canSeePrices(user)
   const type = q.get('type')
   const status = q.get('status')
   const branchId = q.get('branchId')
@@ -308,16 +323,20 @@ export async function listVouchers(q: URLSearchParams) {
       (v.notes || '').toLowerCase().includes(search) ||
       (v.typeLabel || '').toLowerCase().includes(search))
   }
+  // إخفاء المبالغ لغير المصرح لهم
+  enriched = enriched.map((v: any) => stripVoucherPrices(v, canPrices))
   return { items: enriched, total: enriched.length }
 }
 
-export async function getVoucher(id: string) {
+export async function getVoucher(id: string, user?: { permissions: string[] } | null) {
+  const canPrices = canSeePrices(user)
   const rows = await db.opVoucher.findMany({ where: { id }, include: voucherInclude() })
   if (!rows.length) throw new ApiError(404, 'الإذن غير موجود')
-  return enrichVoucherRows(rows)[0]
+  return stripVoucherPrices(enrichVoucherRows(rows)[0], canPrices)
 }
 
-export async function voucherStats() {
+export async function voucherStats(user?: { permissions: string[] } | null) {
+  const canPrices = canSeePrices(user)
   const rows = await db.opVoucher.findMany({ select: { status: true, type: true, sourceBranchId: true, employeeId: true, amount: true, items: { select: { shipmentId: true } } } })
   const byStatus: Record<string, number> = {}
   const byType: Record<string, number> = {}
@@ -334,7 +353,7 @@ export async function voucherStats() {
     for (const it of v.items) shipmentIds.add(it.shipmentId)
   }
   const completedFin = rows.filter((v) => v.status === 'completed')
-  return {
+  const stats = {
     total: rows.length,
     byStatus, byType, byBranch, byEmployee,
     draft: byStatus.draft ?? 0,
@@ -348,6 +367,7 @@ export async function voucherStats() {
     disbursementTotal: round2(completedFin.filter((v) => v.type === 'cash_disbursement').reduce((s, v) => s + (v.amount || 0), 0)),
     shipmentsLinked: shipmentIds.size,
   }
+  return stripVoucherStats(stats, canPrices)
 }
 
 export function voucherTypesCatalog() {
@@ -357,13 +377,99 @@ export function voucherTypesCatalog() {
 // ---------------------------------------------------------------------------
 // Reports — كلها مشتقة من البيانات المحاسبية الفعلية
 // ---------------------------------------------------------------------------
-export async function report(type: string, q: URLSearchParams) {
+export async function report(type: string, q: URLSearchParams, user?: { permissions: string[] } | null) {
   const from = q.get('from')
   const to = q.get('to')
+  const canPrices = canSeePrices(user)
+
+  // التقارير التي تكشف أسعارًا تتطلب صلاحية prices.view (فرض من الخادم)
+  if (reportRequiresPrices(type) && !canPrices) {
+    throw new ApiError(403, 'هذا التقرير يكشف أسعارًا/مبالغ — يتطلب صلاحية "prices.view"')
+  }
+
+  if (type === 'pending-returns') {
+    // تقرير المرتجعات التي لم تُستلم بعد — مع المندوب، لا يكشف أسعارًا
+    const rows = await db.shipment.findMany({
+      where: { status: 'returned' },
+      include: {
+        customer: { select: { id: true, name: true } },
+        branch: { select: { id: true, name: true } },
+      },
+      orderBy: { updatedAt: 'asc' },
+    })
+    const shipmentIds = rows.map((s) => s.id)
+    // ابحث عن إذن المرتجع المكتمل المرتبط بكل شحنة
+    const returnLinks = await db.opVoucherItem.findMany({
+      where: { shipmentId: { in: shipmentIds }, voucher: { type: 'return', status: 'completed' } },
+      include: {
+        voucher: {
+          select: {
+            id: true, voucherNo: true, courierId: true, createdAt: true, notes: true,
+            courier: { select: { id: true, name: true } },
+          },
+        },
+      },
+    })
+    // ابحث عن أي إذن استلام مرتجعات مكتمل مرتبط بنفس الشحنة (للاستبعاد)
+    const receivedLinks = await db.opVoucherItem.findMany({
+      where: { shipmentId: { in: shipmentIds }, voucher: { type: 'returned_receiving', status: 'completed' } },
+      select: { shipmentId: true },
+    })
+    const receivedSet = new Set(receivedLinks.map((r) => r.shipmentId))
+    const linkMap = new Map<string, any>()
+    for (const l of returnLinks) {
+      const arr = linkMap.get(l.shipmentId) ?? []
+      arr.push(l.voucher)
+      linkMap.set(l.shipmentId, arr)
+    }
+    const items = rows
+      .filter((s) => !receivedSet.has(s.id))
+      .map((s) => {
+        const vs = linkMap.get(s.id) ?? []
+        const returnVoucher = vs[0]
+        const courier = returnVoucher?.courier
+        const daysOutstanding = returnVoucher?.createdAt
+          ? Math.floor((Date.now() - new Date(returnVoucher.createdAt).getTime()) / 86400000)
+          : null
+        return {
+          shipmentId: s.id,
+          shipmentNo: s.shipmentNo,
+          recipientName: s.recipientName,
+          destination: s.destination,
+          customerName: s.customer?.name ?? null,
+          branchName: s.branch?.name ?? null,
+          returnVoucherNo: returnVoucher?.voucherNo ?? null,
+          returnVoucherId: returnVoucher?.id ?? null,
+          courierId: courier?.id ?? null,
+          courierName: courier?.name ?? null,
+          returnDate: returnVoucher?.createdAt ?? null,
+          daysOutstanding,
+        }
+      })
+    // ملخص حسب المندوب (مسؤولية السائق)
+    const byCourier = new Map<string, { courierId: string; courierName: string; count: number; oldestDays: number }>()
+    for (const it of items) {
+      const key = it.courierId ?? '_unknown'
+      const cur = byCourier.get(key) ?? {
+        courierId: it.courierId ?? '',
+        courierName: it.courierName ?? 'غير محدد',
+        count: 0,
+        oldestDays: 0,
+      }
+      cur.count += 1
+      cur.oldestDays = Math.max(cur.oldestDays, it.daysOutstanding ?? 0)
+      byCourier.set(key, cur)
+    }
+    return {
+      items,
+      byCourier: [...byCourier.values()].sort((a, b) => b.count - a.count),
+      total: items.length,
+    }
+  }
 
   if (type === 'shipments' || type === 'freight-margin') {
     const rows = await db.shipment.findMany({ where: dateWhere('date', from, to), include: SHIPMENT_INCLUDE, orderBy: { date: 'desc' } })
-    const items = rows.map((s) => enrichShipment(s)).map((s: any) => {
+    const items = rows.map((s) => enrichShipment(s, undefined, canPrices)).map((s: any) => {
       const sell = s.salePrice ?? s.freightTotal ?? 0
       return { ...s, sell, margin: sell - (s.freightCost ?? 0) }
     })
@@ -520,7 +626,8 @@ function dateRange(from: string | null, to: string | null) {
 // ---------------------------------------------------------------------------
 // Dashboard stats — محسوبة من قاعدة البيانات
 // ---------------------------------------------------------------------------
-export async function dashboardStats() {
+export async function dashboardStats(user?: { permissions: string[] } | null) {
+  const canPrices = canSeePrices(user)
   const [agg, statusGroup, dailyRows, contractorRows, destRows, codRows] = await Promise.all([
     db.shipment.aggregate({
       _count: { _all: true },
@@ -553,7 +660,7 @@ export async function dashboardStats() {
   const dates = dailyRows.map((s) => s.date).filter(Boolean) as Date[]
   const totalFreight = sum.freightTotal ?? 0
   const totalSale = sum.salePrice ?? 0
-  return {
+  return stripDashboardStats({
     summary: {
       totalShipments: agg._count._all,
       totalUnits: round2(sum.policyQty ?? 0),
@@ -591,7 +698,7 @@ export async function dashboardStats() {
       from: dates.length ? new Date(Math.min(...dates.map((d) => d.getTime()))).toISOString() : null,
       to: dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))).toISOString() : null,
     },
-  }
+  }, canPrices)
 }
 
 void num

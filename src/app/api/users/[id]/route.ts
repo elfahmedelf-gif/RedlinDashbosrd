@@ -31,6 +31,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (b.roleId !== undefined) {
       await db.userRole.deleteMany({ where: { userId: id } })
       if (b.roleId) await db.userRole.create({ data: { userId: id, roleId: b.roleId } })
+    } else if (Array.isArray(b.roleIds)) {
+      // دعم إسناد عدة أدوار للمستخدم الواحد (دمج الصلاحيات)
+      await db.userRole.deleteMany({ where: { userId: id } })
+      for (const rid of b.roleIds) {
+        if (rid) await db.userRole.create({ data: { userId: id, roleId: rid } })
+      }
     }
     await logAudit(db, { action: 'update', entity: 'user', entityId: id, notes: `تعديل مستخدم: ${usr.username}${b.password ? ' — تغيير كلمة المرور' : ''}`, user: { userId: user.userId, username: user.username } })
     return { ok: true }
