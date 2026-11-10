@@ -13,7 +13,7 @@ import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import { exportToCSV } from '@/lib/export'
 import { fmtNum } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
-import { useAuth } from '../auth-provider'
+import { useCanPrices } from '../auth-provider'
 import type { ModuleKey } from '../sidebar'
 
 interface Party {
@@ -31,9 +31,8 @@ interface Party {
 
 export function PartiesModule({ type, title }: { type: 'customer' | 'contractor' | 'supplier'; title: string }) {
   const { toast } = useToast()
-  const { has } = useAuth()
   // إجمالي التعامل يُعرض فقط لمن يملك صلاحية الأسعار
-  const canPrices = has('prices.view')
+  const canPrices = useCanPrices()
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Party | null>(null)
   // Client-side pagination for the card grid

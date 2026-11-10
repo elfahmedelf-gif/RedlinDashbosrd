@@ -32,7 +32,7 @@ import { DataTable } from '../data-table'
 import { fetcher, apiPost, apiPatch, apiDelete, VOUCHER_TYPES, VOUCHER_STATES, VOUCHER_CATEGORIES } from '@/lib/api'
 import { exportToCSV } from '@/lib/export'
 import { fmtNum, fmtDate, fmtDateTime } from '@/lib/format'
-import { useAuth } from '../auth-provider'
+import { useAuth, useCanPrices } from '../auth-provider'
 import { VoucherOpsPrint } from '../voucher-print-ops'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -248,7 +248,7 @@ export function VouchersModule() {
   const { toast } = useToast()
   const { has, user: me } = useAuth()
   // صلاحية رؤية الأسعار/المبالغ — فقط للمالك ومحمود
-  const canPrices = has('prices.view')
+  const canPrices = useCanPrices()
 
   // ---- Filters ----
   const [typeFilter, setTypeFilter] = React.useState<string>('all')

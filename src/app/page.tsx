@@ -1,9 +1,16 @@
 'use client'
 
+// ============================================================================
+// الصفحة الرئيسية — هيكل لوحة التحكم
+// - قائمة جانبية + هيدر + محتوى ديناميكي حسب التبويب
+// - عدّادات موحدة عبر /api/counts (طلب واحد بدل 13)
+// - هيدر ذكي: عنوان + وصف + شارة المجموعة (breadcrumb) + نطاق تاريخ سريع
+// ============================================================================
+
 import * as React from 'react'
 import useSWR from 'swr'
-import { Calendar, X } from 'lucide-react'
-import { Sidebar, MobileNav, MobileHeader, type ModuleKey, MODULES, MODULE_PERMISSIONS, visibleModules } from '@/components/dashboard/sidebar'
+import { Calendar, X, ChevronLeft } from 'lucide-react'
+import { Sidebar, MobileNav, MobileHeader, type ModuleKey, MODULES, MODULE_PERMISSIONS, visibleModules, GROUP_LABELS } from '@/components/dashboard/sidebar'
 import { DarkModeToggle } from '@/components/dashboard/dark-mode-toggle'
 import { UserMenu } from '@/components/dashboard/user-menu'
 import { AuthProvider, useAuth } from '@/components/dashboard/auth-provider'
@@ -21,9 +28,11 @@ import { ImportModule } from '@/components/dashboard/modules/import-wizard'
 import { UsersModule, RolesModule, SettingsModule, AuditModule } from '@/components/dashboard/modules/system'
 import { LookupsModule } from '@/components/dashboard/modules/lookups'
 import { fetcher } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
-const fetcherCounts = fetcher
-
+// ----------------------------------------------------------------------------
+// بيانات تعريف التبويبات — تُستورد إلى الهيدر والقائمة
+// ----------------------------------------------------------------------------
 const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
   overview: { title: 'الرئيسية', subtitle: 'لوحة المؤشرات والعمليات الرئيسية' },
   shipments: { title: 'الشحنات', subtitle: 'سجل عمليات الشحن وحالاتها' },
@@ -48,6 +57,158 @@ const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
   lookups: { title: 'القوائم المنسدلة', subtitle: 'إدارة قوائم النظام المنسدلة' },
 }
 
+// ----------------------------------------------------------------------------
+// نطاقات تاريخ سريعة للوحة المؤشرات
+// ----------------------------------------------------------------------------
+type DatePreset = 'today' | '7d' | '30d' | 'all'
+const PRESETS: { key: DatePreset; label: string }[] = [
+  { key: 'today', label: 'اليوم' },
+  { key: '7d', label: '7 أيام' },
+  { key: '30d', label: '30 يوم' },
+  { key: 'all', label: 'الكل' },
+]
+
+function presetToRange(preset: DatePreset): { from: string; to: string } {
+  const today = new Date()
+  const todayISO = today.toISOString().slice(0, 10)
+  if (preset === 'today') return { from: todayISO, to: todayISO }
+  if (preset === '7d' || preset === '30d') {
+    const days = preset === '7d' ? 7 : 30
+    const start = new Date(today)
+    start.setDate(today.getDate() - days + 1)
+    return { from: start.toISOString().slice(0, 10), to: todayISO }
+  }
+  return { from: '', to: '' } // all
+}
+
+// ----------------------------------------------------------------------------
+// هيدر لوحة التحكم — عنوان + وصف + شارة المجموعة + نطاق تاريخ (overview فقط)
+// ----------------------------------------------------------------------------
+function DashboardHeader({
+  tab,
+  from,
+  to,
+  setFrom,
+  setTo,
+}: {
+  tab: ModuleKey
+  from: string
+  to: string
+  setFrom: (v: string) => void
+  setTo: (v: string) => void
+}) {
+  const activeMod = MODULES.find((m) => m.key === tab)
+  const ActiveIcon = activeMod?.icon
+  const groupLabel = activeMod ? GROUP_LABELS[activeMod.group] : null
+
+  // اكتشاف البريسيت الحالي من from/to (لإبرار الزر النشط)
+  const activePreset: DatePreset | null = React.useMemo(() => {
+    if (!from && !to) return 'all'
+    const today = new Date().toISOString().slice(0, 10)
+    if (from === today && to === today) return 'today'
+    const start7 = new Date(); start7.setDate(new Date().getDate() - 6)
+    if (from === start7.toISOString().slice(0, 10) && to === today) return '7d'
+    const start30 = new Date(); start30.setDate(new Date().getDate() - 29)
+    if (from === start30.toISOString().slice(0, 10) && to === today) return '30d'
+    return null
+  }, [from, to])
+
+  const applyPreset = (p: DatePreset) => {
+    const r = presetToRange(p)
+    setFrom(r.from)
+    setTo(r.to)
+  }
+
+  return (
+    <header className="sticky top-0 z-20 h-auto min-h-16 px-4 sm:px-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 dark:supports-[backdrop-filter]:bg-slate-900/85 border-b border-slate-250 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 py-2">
+      {/* يمين: شارة المجموعة (breadcrumb) + الأيقونة + العنوان + الوصف */}
+      <div className="flex items-center gap-3 min-w-0">
+        {ActiveIcon && (
+          <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-primary/10 dark:bg-primary/20 text-primary border border-primary/20 dark:border-primary/30 shadow-sm shrink-0">
+            <ActiveIcon className="w-5 h-5" />
+          </div>
+        )}
+        <div className="flex flex-col justify-center min-w-0">
+          {/* breadcrumb: المجموعة ← الوحدة */}
+          {groupLabel && (
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70 mb-0.5 leading-none">
+              <span className="truncate">{groupLabel}</span>
+              <ChevronLeft className="size-2.5 shrink-0" />
+              <span className="text-foreground/90 font-medium truncate">{TAB_LABELS[tab].title}</span>
+            </div>
+          )}
+          <h1 className="text-base sm:text-lg font-bold text-slate-850 dark:text-white leading-tight truncate">
+            {TAB_LABELS[tab].title}
+          </h1>
+          <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+            {TAB_LABELS[tab].subtitle}
+          </span>
+        </div>
+      </div>
+
+      {/* يسار: نطاق التاريخ (overview فقط) + ثيم + مستخدم */}
+      <div className="flex items-center gap-2 shrink-0">
+        {tab === 'overview' && (
+          <div className="hidden sm:flex items-center gap-1.5">
+            {/* أزرار البريسيت السريعة */}
+            <div className="flex items-center gap-0.5 bg-secondary/60 rounded-lg p-0.5">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => applyPreset(p.key)}
+                  className={cn(
+                    'text-[11px] font-medium px-2 py-1 rounded-md transition-all',
+                    activePreset === p.key
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  title={p.label}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {/* نطاق مخصص */}
+            <div className="flex items-center gap-1.5 bg-card border border-border rounded-xl p-1 px-2 min-w-0">
+              <Calendar className="size-3.5 text-muted-foreground shrink-0" />
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="text-xs bg-transparent border-0 outline-none px-1 py-1 min-w-0 w-24 sm:w-28"
+                aria-label="من تاريخ"
+              />
+              <span className="text-muted-foreground text-xs shrink-0">→</span>
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="text-xs bg-transparent border-0 outline-none px-1 py-1 min-w-0 w-24 sm:w-28"
+                aria-label="إلى تاريخ"
+              />
+              {(from || to) && activePreset !== 'all' && (
+                <button
+                  onClick={() => { setFrom(''); setTo('') }}
+                  className="size-6 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
+                  title="مسح"
+                  aria-label="مسح"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        <DarkModeToggle />
+        <UserMenu />
+      </div>
+    </header>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// هيكل لوحة التحكم الرئيسي
+// ----------------------------------------------------------------------------
 function DashboardShell() {
   const { user, logout, has } = useAuth()
   const [tab, setTab] = React.useState<ModuleKey>('overview')
@@ -63,43 +224,12 @@ function DashboardShell() {
     }
   }, [user, tab, has])
 
-  const { data: statsData } = useSWR<any>('/api/stats', fetcherCounts, { refreshInterval: 0 })
-  const { data: freightData } = useSWR<any>('/api/freight', fetcherCounts, { refreshInterval: 0 })
-  const { data: partiesData } = useSWR<any>('/api/parties', fetcherCounts, { refreshInterval: 0 })
-  const { data: branchesData } = useSWR<any>('/api/branches', fetcherCounts, { refreshInterval: 0 })
-  const { data: warehousesData } = useSWR<any>('/api/warehouses', fetcherCounts, { refreshInterval: 0 })
-  const { data: itemsData } = useSWR<any>('/api/items', fetcherCounts, { refreshInterval: 0 })
-  const { data: movementsData } = useSWR<any>('/api/movements', fetcherCounts, { refreshInterval: 0 })
-  const { data: accountsData } = useSWR<any>('/api/accounts', fetcherCounts, { refreshInterval: 0 })
-  const { data: journalData } = useSWR<any>('/api/journal', fetcherCounts, { refreshInterval: 0 })
-  const { data: vouchersData } = useSWR<any>('/api/vouchers', fetcherCounts, { refreshInterval: 0 })
-  const { data: pendingReturnsData } = useSWR<any>('/api/reports/pending-returns', fetcherCounts, { refreshInterval: 0 })
-  const { data: usersData } = useSWR<any>('/api/users', fetcherCounts, { refreshInterval: 0 })
-  const { data: auditData } = useSWR<any>('/api/audit', fetcherCounts, { refreshInterval: 0 })
-  const { data: lookupsData } = useSWR<any>('/api/lookups', fetcherCounts, { refreshInterval: 0 })
-
-  const counts: Partial<Record<ModuleKey, number>> = React.useMemo(() => ({
-    overview: statsData?.summary?.totalShipments ?? 0,
-    shipments: statsData?.summary?.totalShipments ?? 0,
-    customers: partiesData?.items?.filter((p: any) => p.isCustomer).length ?? 0,
-    contractors: partiesData?.items?.filter((p: any) => p.isContractor).length ?? 0,
-    suppliers: partiesData?.items?.filter((p: any) => p.isSupplier).length ?? 0,
-    branches: branchesData?.items?.length ?? 0,
-    warehouses: warehousesData?.items?.length ?? 0,
-    inventory: itemsData?.total ?? 0,
-    movements: movementsData?.total ?? 0,
-    freight: freightData?.total ?? 0,
-    accounts: accountsData?.items?.length ?? 0,
-    journal: journalData?.total ?? 0,
-    vouchers: vouchersData?.total ?? 0,
-    'pending-returns': pendingReturnsData?.total ?? 0,
-    users: usersData?.items?.length ?? 0,
-    audit: auditData?.total ?? 0,
-    lookups: lookupsData?.total ?? 0,
-  }), [statsData, freightData, partiesData, branchesData, warehousesData, itemsData, movementsData, accountsData, journalData, vouchersData, pendingReturnsData, usersData, auditData, lookupsData])
-
-  const activeMod = MODULES.find((m) => m.key === tab)
-  const ActiveIcon = activeMod?.icon
+  // طلب موحّد لكل العدّادات (استبدل 13 طلب SWR منفصل)
+  const { data: countsData } = useSWR<Partial<Record<ModuleKey, number>>>('/api/counts', fetcher, {
+    refreshInterval: 60000, // تحديث كل دقيقة بدل 30 ثانية لخفض الحمل
+    revalidateOnFocus: false,
+  })
+  const counts: Partial<Record<ModuleKey, number>> = countsData ?? {}
 
   return (
     <div className="min-h-screen flex flex-col bg-background" dir="rtl">
@@ -107,56 +237,7 @@ function DashboardShell() {
       <div className="flex flex-1 min-h-0">
         <Sidebar active={tab} onChange={setTab} counts={counts} permissions={user?.permissions} user={user} onLogout={logout} />
         <main className="flex-1 min-w-0 flex flex-col pb-20 md:pb-0">
-          <header className="h-16 px-6 bg-white dark:bg-slate-900 border-b border-slate-250 dark:border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-3.5">
-              {/* الأيقونة بحجم مناسب ومحاذاة مركزية */}
-              {ActiveIcon && (
-                <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 border border-blue-150 dark:border-blue-800 shadow-sm shrink-0">
-                  <ActiveIcon className="w-5 h-5" />
-                </div>
-              )}
-
-              {/* العنوان والوصف فقط بدون كلمة النظام */}
-              <div className="flex flex-col justify-center">
-                <h1 className="text-lg font-bold text-slate-850 dark:text-white leading-tight">
-                  {TAB_LABELS[tab].title}
-                </h1>
-                <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {TAB_LABELS[tab].subtitle}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {tab === 'overview' && (
-                <div className="hidden lg:flex items-center gap-1.5 bg-card border border-border rounded-xl p-1 px-2 min-w-0">
-                  <Calendar className="size-4 text-muted-foreground shrink-0" />
-                  <input
-                    type="date"
-                    value={from}
-                    onChange={(e) => setFrom(e.target.value)}
-                    className="text-xs bg-transparent border-0 outline-none px-1 py-1 min-w-0 w-24 sm:w-28"
-                  />
-                  <span className="text-muted-foreground text-xs shrink-0">→</span>
-                  <input
-                    type="date"
-                    value={to}
-                    onChange={(e) => setTo(e.target.value)}
-                    className="text-xs bg-transparent border-0 outline-none px-1 py-1 min-w-0 w-24 sm:w-28"
-                  />
-                  {(from || to) && (
-                    <button
-                      onClick={() => { setFrom(''); setTo('') }}
-                      className="size-6 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  )}
-                </div>
-              )}
-              <DarkModeToggle />
-              <UserMenu />
-            </div>
-          </header>
+          <DashboardHeader tab={tab} from={from} to={to} setFrom={setFrom} setTo={setTo} />
           <div className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 w-full mx-auto max-w-[1600px]">
             <div key={tab} className="anim-fade-in">
               {tab === 'overview' && <DashboardModule from={from || undefined} to={to || undefined} />}

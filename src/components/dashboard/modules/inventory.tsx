@@ -22,14 +22,13 @@ import { exportToCSV } from '@/lib/export'
 import { fmtNum, fmtDate, MOVEMENT_TYPE } from '@/lib/format'
 import { useLookup } from '@/lib/lookups'
 import { useToast } from '@/hooks/use-toast'
-import { useAuth } from '../auth-provider'
+import { useCanPrices } from '../auth-provider'
 import { cn } from '@/lib/utils'
 
 export function InventoryModule() {
   const { toast } = useToast()
-  const { has } = useAuth()
   // التكلفة/سعر البيع وقيمة المخزون تُعرض فقط لمن يملك صلاحية الأسعار
-  const canPrices = has('prices.view')
+  const canPrices = useCanPrices()
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<any>(null)
   const [lowOnly, setLowOnly] = React.useState(false)
@@ -142,9 +141,8 @@ export function InventoryModule() {
 
 export function MovementsModule() {
   const { toast } = useToast()
-  const { has } = useAuth()
   // تكلفة الحركة تُعرض فقط لمن يملك صلاحية الأسعار
-  const canPrices = has('prices.view')
+  const canPrices = useCanPrices()
   const [open, setOpen] = React.useState(false)
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/movements', fetcher, { refreshInterval: 30000 })
   const { data: items } = useSWR<{ items: any[] }>('/api/items', fetcher)
@@ -270,9 +268,8 @@ export function MovementsModule() {
 
 export function FreightModule() {
   const { toast } = useToast()
-  const { has } = useAuth()
   // جدول أسعار النولون — التكلفة/سعر البيع يُعرضان فقط لمن يملك صلاحية الأسعار
-  const canPrices = has('prices.view')
+  const canPrices = useCanPrices()
   const [editing, setEditing] = React.useState<any>(null)
   const [open, setOpen] = React.useState(false)
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/freight', fetcher, { refreshInterval: 30000 })

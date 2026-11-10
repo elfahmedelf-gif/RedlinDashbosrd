@@ -13,7 +13,7 @@ import { fetcher, apiPost } from '@/lib/api'
 import { exportToCSV, exportToExcel } from '@/lib/export'
 import { fmtNum, fmtDate, fmtDateTime, ACCOUNT_TYPE, SHIPMENT_STATUS, MOVEMENT_TYPE } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { useAuth } from '../auth-provider'
+import { useAuth, useCanPrices } from '../auth-provider'
 import { useToast } from '@/hooks/use-toast'
 
 type ReportType = 'shipments' | 'freight-margin' | 'contractor-dues' | 'customer-debts' | 'trial-balance' | 'inventory-movements' | 'low-stock' | 'pending-returns'
@@ -34,7 +34,7 @@ const REPORTS: { type: ReportType; title: string; desc: string; icon: React.Elem
 
 export function ReportsModule() {
   const { has } = useAuth()
-  const canPrices = has('prices.view')
+  const canPrices = useCanPrices()
   const { toast } = useToast()
   const [active, setActive] = React.useState<ReportType | null>(null)
   const [from, setFrom] = React.useState(''); const [to, setTo] = React.useState('')

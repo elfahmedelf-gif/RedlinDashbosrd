@@ -80,7 +80,7 @@ export function visibleModules(permissions: string[] | null | undefined): Module
   return MODULES.filter((m) => matchPermission(permissions, MODULE_PERMISSIONS[m.key]))
 }
 
-const GROUP_LABELS: Record<string, string> = {
+export const GROUP_LABELS: Record<string, string> = {
   main: 'العمليات الرئيسية',
   parties: 'الأطراف',
   structure: 'الهيكل التنظيمي',

@@ -2,6 +2,7 @@
 
 // ============================================================================
 // مزود المصادقة — سياق React للجلسة الحالية والصلاحيات
+// + خطافات مساعدة (useCanPrices) لتقليل التكرار عبر الوحدات
 // ============================================================================
 
 import * as React from 'react'
@@ -66,4 +67,36 @@ export function useAuth(): AuthContextValue {
   const ctx = React.useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used within AuthProvider')
   return ctx
+}
+
+/**
+ * خطاف مختصر لصلاحية رؤية الأسعار/المبالغ (prices.view).
+ * استخدمه بدلًا من `const { has } = useAuth(); const canPrices = has('prices.view')`
+ * في كل وحدة. يحفظ سطرًا ويزامن السلوك عبر التطبيق.
+ *
+ * @example
+ *   const canPrices = useCanPrices()
+ *   {canPrices && <span>{fmtNum(amount)} ج.م</span>}
+ */
+export function useCanPrices(): boolean {
+  const { has } = useAuth()
+  return has('prices.view')
+}
+
+/**
+ * خطاف مختصر لصلاحيات متعددة دفعة واحدة — يُعيد كائن boolean لكل صلاحية.
+ * مفيد للأزرار المعقدة (مثلًا: يمكن التنفيذ + الطباعة + التصدير).
+ *
+ * ملاحظة: نتجنّب useMemo هنا لأن React Compiler يتعامل مع المُحفّظات
+ * تلقائيًا، والإشارة إلى `keys` المتبدّلة عبر الاستدعاءات تسبب تحذيرات.
+ *
+ * @example
+ *   const p = usePerms('vouchers.execute', 'vouchers.print', 'vouchers.export')
+ *   {p['vouchers.execute'] && <button>تنفيذ</button>}
+ */
+export function usePerms(...keys: string[]): Record<string, boolean> {
+  const { has } = useAuth()
+  const out: Record<string, boolean> = {}
+  for (const k of keys) out[k] = has(k)
+  return out
 }

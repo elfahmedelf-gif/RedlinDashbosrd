@@ -24,7 +24,7 @@ import { fmtNum, fmtDate, fmtDateTime } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import { useLookup } from '@/lib/lookups'
 import { cn } from '@/lib/utils'
-import { useAuth } from '../auth-provider'
+import { useCanPrices } from '../auth-provider'
 
 interface PartyLite { id: string; name: string }
 interface Shipment {
@@ -45,9 +45,8 @@ interface ShipmentsResponse { items: Shipment[]; total: number; page: number; to
 
 export function ShipmentsModule() {
   const { toast } = useToast()
-  const { has } = useAuth()
   // صلاحية رؤية الأسعار — تتحكم في إظهار كل المبالغ (نولون/تكلفة/تحصيل/هامش)
-  const canPrices = has('prices.view')
+  const canPrices = useCanPrices()
   // Dynamic shipment status options from the lookup table
   const { items: statusItems } = useLookup('shipment_status')
   const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.key, label: i.label, tone: i.tone }))
@@ -643,9 +642,8 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
 
 function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const { toast } = useToast()
-  const { has } = useAuth()
   // صلاحية رؤية الأسعار — تتحكم في إظهار المبالغ المالية في بطاقة الشحنة
-  const canPrices = has('prices.view')
+  const canPrices = useCanPrices()
   const { data: shipment, mutate } = useSWR<any>(`/api/shipments/${id}`, fetcher)
   const { items: statusItems } = useLookup('shipment_status')
   const { items: collectionItems } = useLookup('collection_status')
