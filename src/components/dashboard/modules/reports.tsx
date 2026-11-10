@@ -80,7 +80,7 @@ export function ReportsModule() {
     const ok = await confirmDialog({
       title: 'تأكيد تسليم المرتجع',
       message: `تأكيد تسليم مرتجع ${voucherNo ?? ''}؟ سيُنشأ إذن استلام مرتجعات تلقائيًا.`,
-      tone: 'success',
+      variant: 'primary',
       confirmText: 'تم التسليم',
     })
     if (!ok) return

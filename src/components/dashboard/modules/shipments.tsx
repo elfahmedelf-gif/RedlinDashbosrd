@@ -48,6 +48,7 @@ export function ShipmentsModule() {
   const { toast } = useToast()
   // صلاحية رؤية الأسعار — تتحكم في إظهار كل المبالغ (نولون/تكلفة/تحصيل/هامش)
   const canPrices = useCanPrices()
+  const { confirm: confirmDialog } = useConfirm()
   // Dynamic shipment status options from the lookup table
   const { items: statusItems } = useLookup('shipment_status')
   const STATUS_OPTIONS = statusItems.map((i) => ({ value: i.key, label: i.label, tone: i.tone }))
@@ -132,6 +133,15 @@ export function ShipmentsModule() {
 
   const runBulkStatus = async () => {
     if (!bulkStatus || selectedIds.size === 0) return
+    // تأكيد قبل التغيير الجماعي للحالة — تشغيلية جوهرية (primary)
+    const targetLabel = STATUS_LABEL[bulkStatus]?.label ?? bulkStatus
+    const ok = await confirmDialog({
+      title: 'تغيير حالة الشحنات المحددة',
+      message: `سيتم تغيير حالة ${selectedIds.size} شحنة إلى «${targetLabel}». هل تريد المتابعة؟`,
+      variant: 'primary',
+      confirmText: 'تغيير الحالة',
+    })
+    if (!ok) return
     try {
       await apiPost('/api/shipments/bulk/status', { ids: Array.from(selectedIds), status: bulkStatus, notes: bulkNotes, userName: 'admin' })
       toast({ title: `تم تحديث حالة ${selectedIds.size} شحنة` })
@@ -643,7 +653,7 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
 
 function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const { toast } = useToast()
-  const { confirmDelete } = useConfirm()
+  const { confirmDelete, confirm: confirmDialog } = useConfirm()
   // صلاحية رؤية الأسعار — تتحكم في إظهار المبالغ المالية في بطاقة الشحنة
   const canPrices = useCanPrices()
   const { data: shipment, mutate } = useSWR<any>(`/api/shipments/${id}`, fetcher)
@@ -678,6 +688,15 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
   const changeStatus = async () => {
     if (!newStatus) return
+    // تأكيد قبل تغيير الحالة — تشغيلية جوهرية (primary)
+    const targetLabel = STATUS_LOOKUP[newStatus]?.label ?? newStatus
+    const ok = await confirmDialog({
+      title: 'تغيير حالة الشحنة',
+      message: `سيتم تغيير حالة الشحنة إلى «${targetLabel}». هل تريد المتابعة؟`,
+      variant: 'primary',
+      confirmText: 'تغيير الحالة',
+    })
+    if (!ok) return
     try {
       await apiPost(`/api/shipments/${id}/status`, { status: newStatus, notes: statusNotes, userName: 'admin' })
       toast({ title: 'تم تحديث الحالة' })

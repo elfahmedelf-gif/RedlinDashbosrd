@@ -73,7 +73,7 @@ export function PendingReturnsModule() {
     const ok = await confirmDialog({
       title: 'تأكيد تسليم المرتجع',
       message: `تأكيد تسليم مرتجع ${voucherNo ?? ''}؟ سيُنشأ إذن استلام مرتجعات تلقائيًا.`,
-      tone: 'success',
+      variant: 'primary',
       confirmText: 'تم التسليم',
     })
     if (!ok) return
@@ -104,7 +104,7 @@ export function PendingReturnsModule() {
     const ok = await confirmDialog({
       title: 'تسليم كل المرتجعات',
       message: `تأكيد تسليم ${uniqueVouchers.size} إذن مرتجع (يغطي ${items.length} شحنة)؟`,
-      tone: 'success',
+      variant: 'primary',
       confirmText: 'تسليم الكل',
     })
     if (!ok) return

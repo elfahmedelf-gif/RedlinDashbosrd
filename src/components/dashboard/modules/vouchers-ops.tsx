@@ -494,6 +494,32 @@ export function VouchersModule() {
   }
 
   const transition = async (vid: string, action: string) => {
+    // تأكيد قبل الإجراءات الجوهرية: اعتماد (primary)، رفض/إلغاء (warning)
+    const CONFIRM_MAP: Record<string, { title: string; message: string; variant: 'primary' | 'warning'; confirmText: string } | undefined> = {
+      approve: {
+        title: 'اعتماد الإذن',
+        message: 'سيتم اعتماد هذا الإذن وانتقاله إلى مرحلة التنفيذ. هل تريد المتابعة؟',
+        variant: 'primary',
+        confirmText: 'اعتماد',
+      },
+      reject: {
+        title: 'رفض الإذن',
+        message: 'سيتم رفض هذا الإذن وإعادته للتعديل. هل تريد المتابعة؟',
+        variant: 'warning',
+        confirmText: 'رفض',
+      },
+      cancel: {
+        title: 'إلغاء الإذن',
+        message: 'سيتم إلغاء هذا الإذن نهائيًا ولا يمكن التراجع. هل تريد المتابعة؟',
+        variant: 'warning',
+        confirmText: 'إلغاء الإذن',
+      },
+    }
+    const c = CONFIRM_MAP[action]
+    if (c) {
+      const ok = await confirmDialog(c)
+      if (!ok) return
+    }
     setActionLoading(true)
     try {
       const res: any = await apiPost(`/api/vouchers/${vid}/transition`, {
@@ -517,7 +543,7 @@ export function VouchersModule() {
     const ok = await confirmDialog({
       title: 'تأكيد التسليم',
       message: 'سيُنشأ إذن استلام مرتجعات لكل شحنة لم تُستلم بعد. هل تريد المتابعة؟',
-      tone: 'success',
+      variant: 'primary',
       confirmText: 'تم التسليم',
     })
     if (!ok) return
