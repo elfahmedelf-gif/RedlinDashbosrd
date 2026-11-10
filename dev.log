@@ -4,8 +4,13 @@
 - Environments: .env
 
 ✓ Starting...
-✓ Ready in 594ms
+✓ Ready in 651ms
 ○ Compiling / ...
- GET / 200 in 4.3s (compile: 4.1s, render: 225ms)
- POST /api/auth/login 200 in 166ms (compile: 135ms, render: 30ms)
- GET /api/vouchers 200 in 68ms (compile: 51ms, render: 18ms)
+ GET / 200 in 1537ms (compile: 1488ms, render: 49ms)
+ GET / 200 in 4.4s (compile: 4.2s, render: 258ms)
+ POST /api/auth/login 200 in 144ms (compile: 115ms, render: 28ms)
+ GET /api/vouchers 200 in 71ms (compile: 55ms, render: 17ms)
+ GET / 200 in 29ms (compile: 3ms, render: 26ms)
+ POST /api/auth/validate 401 in 35ms (compile: 28ms, render: 7ms)
+ GET / 200 in 31ms (compile: 3ms, render: 29ms)
+ GET / 200 in 27ms (compile: 2ms, render: 25ms)
