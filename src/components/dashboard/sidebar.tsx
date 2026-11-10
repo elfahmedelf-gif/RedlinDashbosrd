@@ -6,14 +6,14 @@ import {
   Warehouse as WarehouseIcon, Boxes, ArrowRightLeft, Receipt, BookOpen,
   FileText, Landmark, FileBarChart, Upload, UserCircle, Settings, History,
   ChevronRight, ChevronLeft, ChevronDown, PanelRightClose, PanelRightOpen,
-  LogOut, ListChecks, Shield, type LucideIcon,
+  LogOut, ListChecks, Shield, Undo2, type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { matchPermission } from '@/lib/permissions'
 import type { SessionUser } from '@/lib/permissions'
 
 export type ModuleKey =
-  | 'overview' | 'shipments' | 'customers' | 'contractors' | 'suppliers'
+  | 'overview' | 'shipments' | 'pending-returns' | 'customers' | 'contractors' | 'suppliers'
   | 'branches' | 'warehouses' | 'inventory' | 'movements' | 'freight'
   | 'accounts' | 'journal' | 'vouchers' | 'reports' | 'import'
   | 'users' | 'roles' | 'lookups' | 'settings' | 'audit'
@@ -29,6 +29,7 @@ export interface ModuleDef {
 export const MODULES: ModuleDef[] = [
   { key: 'overview', label: 'الرئيسية', icon: LayoutDashboard, desc: 'لوحة المؤشرات', group: 'main' },
   { key: 'shipments', label: 'الشحنات', icon: PackageSearch, desc: 'سجل الشحنات', group: 'main' },
+  { key: 'pending-returns', label: 'المرتجعات لم تُستلم', icon: Undo2, desc: 'تتبع عهدة المرتجعات', group: 'main' },
   { key: 'customers', label: 'العملاء', icon: Users, desc: 'ملفات العملاء', group: 'parties' },
   { key: 'contractors', label: 'المقاولون', icon: UserCog, desc: 'الناقلون', group: 'parties' },
   { key: 'suppliers', label: 'الموردون', icon: Truck, desc: 'الموردون', group: 'parties' },
@@ -53,6 +54,7 @@ export const MODULES: ModuleDef[] = [
 export const MODULE_PERMISSIONS: Record<ModuleKey, string> = {
   overview: 'dashboard.view',
   shipments: 'shipments.view',
+  'pending-returns': 'vouchers.view',
   customers: 'parties.view',
   contractors: 'parties.view',
   suppliers: 'parties.view',

@@ -15,6 +15,7 @@ import { BranchesModule, WarehousesModule } from '@/components/dashboard/modules
 import { InventoryModule, MovementsModule, FreightModule } from '@/components/dashboard/modules/inventory'
 import { AccountsModule, JournalModule } from '@/components/dashboard/modules/accounting'
 import { VouchersModule } from '@/components/dashboard/modules/vouchers-ops'
+import { PendingReturnsModule } from '@/components/dashboard/modules/pending-returns'
 import { ReportsModule } from '@/components/dashboard/modules/reports'
 import { ImportModule } from '@/components/dashboard/modules/import-wizard'
 import { UsersModule, RolesModule, SettingsModule, AuditModule } from '@/components/dashboard/modules/system'
@@ -26,6 +27,7 @@ const fetcherCounts = fetcher
 const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
   overview: { title: 'الرئيسية', subtitle: 'لوحة المؤشرات والعمليات الرئيسية' },
   shipments: { title: 'الشحنات', subtitle: 'سجل عمليات الشحن وحالاتها' },
+  'pending-returns': { title: 'المرتجعات لم تُستلم', subtitle: 'تتبع عهدة المرتجعات مع المندوبين' },
   customers: { title: 'العملاء', subtitle: 'ملفات العملاء وأرصدتهم' },
   contractors: { title: 'المقاولون', subtitle: 'الناقلون وأداؤهم' },
   suppliers: { title: 'الموردون', subtitle: 'موردو الخدمات' },
@@ -71,6 +73,7 @@ function DashboardShell() {
   const { data: accountsData } = useSWR<any>('/api/accounts', fetcherCounts, { refreshInterval: 0 })
   const { data: journalData } = useSWR<any>('/api/journal', fetcherCounts, { refreshInterval: 0 })
   const { data: vouchersData } = useSWR<any>('/api/vouchers', fetcherCounts, { refreshInterval: 0 })
+  const { data: pendingReturnsData } = useSWR<any>('/api/reports/pending-returns', fetcherCounts, { refreshInterval: 0 })
   const { data: usersData } = useSWR<any>('/api/users', fetcherCounts, { refreshInterval: 0 })
   const { data: auditData } = useSWR<any>('/api/audit', fetcherCounts, { refreshInterval: 0 })
   const { data: lookupsData } = useSWR<any>('/api/lookups', fetcherCounts, { refreshInterval: 0 })
@@ -89,10 +92,11 @@ function DashboardShell() {
     accounts: accountsData?.items?.length ?? 0,
     journal: journalData?.total ?? 0,
     vouchers: vouchersData?.total ?? 0,
+    'pending-returns': pendingReturnsData?.total ?? 0,
     users: usersData?.items?.length ?? 0,
     audit: auditData?.total ?? 0,
     lookups: lookupsData?.total ?? 0,
-  }), [statsData, freightData, partiesData, branchesData, warehousesData, itemsData, movementsData, accountsData, journalData, vouchersData, usersData, auditData, lookupsData])
+  }), [statsData, freightData, partiesData, branchesData, warehousesData, itemsData, movementsData, accountsData, journalData, vouchersData, pendingReturnsData, usersData, auditData, lookupsData])
 
   const activeMod = MODULES.find((m) => m.key === tab)
   const ActiveIcon = activeMod?.icon
@@ -157,6 +161,7 @@ function DashboardShell() {
             <div key={tab} className="anim-fade-in">
               {tab === 'overview' && <DashboardModule from={from || undefined} to={to || undefined} />}
               {tab === 'shipments' && <ShipmentsModule />}
+              {tab === 'pending-returns' && <PendingReturnsModule />}
               {tab === 'customers' && <PartiesModule type="customer" title="عملاء" />}
               {tab === 'contractors' && <PartiesModule type="contractor" title="مقاولون" />}
               {tab === 'suppliers' && <PartiesModule type="supplier" title="موردون" />}
