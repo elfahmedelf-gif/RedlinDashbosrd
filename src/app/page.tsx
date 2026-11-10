@@ -121,7 +121,7 @@ function DashboardHeader({
   }
 
   return (
-    <header className="sticky top-0 z-20 h-auto min-h-16 px-4 sm:px-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 dark:supports-[backdrop-filter]:bg-slate-900/85 border-b border-slate-250 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 py-2">
+    <header className="hidden md:flex sticky top-0 z-20 h-auto min-h-16 px-4 sm:px-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 dark:supports-[backdrop-filter]:bg-slate-900/85 border-b border-slate-250 dark:border-slate-800 flex-wrap items-center justify-between gap-2 py-2">
       {/* يمين: شارة المجموعة (breadcrumb) + الأيقونة + العنوان + الوصف */}
       <div className="flex items-center gap-3 min-w-0">
         {ActiveIcon && (
@@ -232,16 +232,23 @@ function DashboardShell() {
   })
   const counts: Partial<Record<ModuleKey, number>> = countsData ?? {}
 
+  // الوحدة النشطة حاليًا — تُمرّر للهيدر والموبايل-هيدر
+  const activeMod = MODULES.find((m) => m.key === tab)
+
   return (
     <div className="min-h-screen flex flex-col bg-background" dir="rtl">
-      <MobileHeader />
+      <MobileHeader
+        title={TAB_LABELS[tab].title}
+        subtitle={TAB_LABELS[tab].subtitle}
+        icon={activeMod?.icon}
+      />
       <div className="flex flex-1 min-h-0">
         <Sidebar active={tab} onChange={setTab} counts={counts} permissions={user?.permissions} user={user} onLogout={logout} />
         <main className="flex-1 min-w-0 flex flex-col pb-20 md:pb-0">
           <DashboardHeader tab={tab} from={from} to={to} setFrom={setFrom} setTo={setTo} />
           <div className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 w-full mx-auto max-w-[1600px]">
             <div key={tab} className="anim-fade-in">
-              {tab === 'overview' && <DashboardModule from={from || undefined} to={to || undefined} />}
+              {tab === 'overview' && <DashboardModule from={from || undefined} to={to || undefined} setFrom={setFrom} setTo={setTo} />}
               {tab === 'shipments' && <ShipmentsModule />}
               {tab === 'pending-returns' && <PendingReturnsModule />}
               {tab === 'customers' && <PartiesModule type="customer" title="عملاء" />}

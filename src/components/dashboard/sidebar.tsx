@@ -11,6 +11,8 @@ import {
 import { cn } from '@/lib/utils'
 import { matchPermission } from '@/lib/permissions'
 import type { SessionUser } from '@/lib/permissions'
+import { DarkModeToggle } from './dark-mode-toggle'
+import { UserMenu } from './user-menu'
 
 export type ModuleKey =
   | 'overview' | 'shipments' | 'pending-returns' | 'customers' | 'contractors' | 'suppliers'
@@ -495,17 +497,20 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
   )
 }
 
-// Mobile top header (refined)
-export function MobileHeader() {
+// Mobile top header (refined) — brand + current page title + dark mode + user menu
+// Replaces the separate desktop DashboardHeader on mobile (which is hidden on small screens).
+export function MobileHeader({ title, subtitle, icon: Icon }: { title: string; subtitle: string; icon?: LucideIcon }) {
   return (
-    <header className="md:hidden sticky top-0 z-30 flex items-center gap-2 px-4 h-14 border-b border-border glass supports-[backdrop-filter]:bg-card/85 backdrop-blur-xl">
-      <div className="flex items-center justify-center size-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-md">
-        <Truck className="size-5" />
+    <header className="md:hidden sticky top-0 z-30 flex items-center gap-2 px-3 h-14 border-b border-border glass supports-[backdrop-filter]:bg-card/90 backdrop-blur-xl">
+      <div className="flex items-center justify-center size-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-md shrink-0">
+        {Icon ? <Icon className="size-5" /> : <Truck className="size-5" />}
       </div>
       <div className="flex-1 min-w-0">
-        <h1 className="font-bold text-sm leading-tight truncate">شركة النقل والشحن</h1>
-        <p className="text-[11px] text-muted-foreground leading-tight truncate">نظام الإدارة</p>
+        <h1 className="font-bold text-sm leading-tight truncate">{title}</h1>
+        <p className="text-[11px] text-muted-foreground leading-tight truncate">{subtitle}</p>
       </div>
+      <DarkModeToggle className="size-9" />
+      <UserMenu />
     </header>
   )
 }

@@ -200,7 +200,7 @@ export function UsersModule() {
               {editing ? 'عدّل بيانات الحساب — اترك كلمة المرور فارغة للإبقاء عليها.' : 'أنشئ حسابًا جديدًا وحدد دوره وصلاحياته.'}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
             <div><label className="text-xs font-medium">اسم المستخدم *</label><Input value={v.username} onChange={(e) => setV({ ...v, username: e.target.value })} dir="ltr" disabled={!!editing} /></div>
             <div><label className="text-xs font-medium">الاسم الكامل *</label><Input value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></div>
             <div>
@@ -452,7 +452,7 @@ export function RolesModule() {
             <DialogTitle>{editing ? `تعديل دور: ${editing.label || editing.name}` : 'دور جديد'}</DialogTitle>
             <DialogDescription>حدد صلاحيات هذا الدور — تُطبق فورًا على جميع المستخدمين المرتبطين به.</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-1">
             <div><label className="text-xs font-medium">اسم العرض *</label><Input value={v.label} onChange={(e) => setV({ ...v, label: e.target.value })} placeholder="مثال: محاسب" /></div>
             <div><label className="text-xs font-medium">المعرف (إنجليزي) *</label><Input value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} dir="ltr" disabled={!!editing} placeholder="accountant" /></div>
           </div>
@@ -545,14 +545,14 @@ export function SettingsModule() {
               <CardHeader className="pb-2"><CardTitle className="text-sm">{catLabels[cat] || cat}</CardTitle><CardDescription>{fmtNum(items.length)} إعداد</CardDescription></CardHeader>
               <CardContent className="space-y-2.5">
                 {items.map((s) => (
-                  <div key={s.key} className="flex items-center gap-3">
+                  <div key={s.key} className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium">{s.label}</div>
                       <div className="text-[10px] text-muted-foreground tnum">{s.key}</div>
                     </div>
                     {s.key === 'inventory_valuation' ? (
                       <Select value={drafts[s.key] || ''} onValueChange={(val) => setDrafts((d) => ({ ...d, [s.key]: val }))}>
-                        <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-full sm:w-56"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="weighted_average">متوسط مرجح</SelectItem>
                           <SelectItem value="fifo">الوارد أولًا يصرف أولًا (FIFO)</SelectItem>
@@ -560,7 +560,7 @@ export function SettingsModule() {
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Input value={drafts[s.key] || ''} onChange={(e) => setDrafts((d) => ({ ...d, [s.key]: e.target.value }))} className="w-64" dir={s.key.includes('label') || s.key === 'company_name' ? undefined : 'ltr'} />
+                      <Input value={drafts[s.key] || ''} onChange={(e) => setDrafts((d) => ({ ...d, [s.key]: e.target.value }))} className="w-full sm:w-64" dir={s.key.includes('label') || s.key === 'company_name' ? undefined : 'ltr'} />
                     )}
                   </div>
                 ))}

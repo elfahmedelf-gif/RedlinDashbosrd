@@ -81,9 +81,9 @@ export function EntityFormDialog({
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-3 py-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
           {fields.map((f) => (
-            <div key={f.name} className={cn('space-y-1.5', f.span === 2 && 'col-span-2')}>
+            <div key={f.name} className={cn('space-y-1.5', f.span === 2 && 'sm:col-span-2')}>
               <Label className="text-xs font-medium">{f.label}</Label>
               {f.type === 'textarea' ? (
                 <Textarea

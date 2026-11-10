@@ -137,13 +137,13 @@ export function ImportModule() {
         <div className="space-y-3">
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                <div className="min-w-0">
                   <div className="font-semibold text-sm">أوراق الملف</div>
                   <div className="text-xs text-muted-foreground">{preview.sheets.length} ورقة</div>
                 </div>
                 <Select value={sheet} onValueChange={(v) => { setSheet(v); const sh = preview.sheets.find((s: any) => s.name === v); if (sh && preview.suggestedMapping) setMapping(preview.suggestedMapping) }}>
-                  <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-64"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {preview.sheets.map((s: any) => <SelectItem key={s.name} value={s.name}>{s.name} ({fmtNum(s.totalRows)} صف)</SelectItem>)}
                   </SelectContent>
@@ -189,10 +189,10 @@ export function ImportModule() {
                   const sh = preview.sheets.find((s: any) => s.name === sheet)
                   return sh.headers.map((h: string) => (
                     <div key={h} className="flex items-center gap-2">
-                      <div className="text-xs font-medium w-40 truncate" title={h}>{h || '(فارغ)'}</div>
-                      <ArrowRight className="size-3 text-muted-foreground rotate-180" />
+                      <div className="text-xs font-medium w-28 sm:w-40 truncate shrink-0" title={h}>{h || '(فارغ)'}</div>
+                      <ArrowRight className="size-3 text-muted-foreground rotate-180 shrink-0" />
                       <Select value={mapping[h] || '__ignore__'} onValueChange={(v) => setMapping((m) => ({ ...m, [h]: v }))}>
-                        <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="flex-1 h-8 text-xs min-w-0"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {SCHEMA_FIELDS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
                         </SelectContent>
@@ -206,7 +206,7 @@ export function ImportModule() {
           <Card>
             <CardContent className="p-4">
               <h3 className="font-semibold text-sm mb-3">إعدادات الاستيراد</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium">الفرع *</label>
                   <Select value={branchId} onValueChange={setBranchId}>

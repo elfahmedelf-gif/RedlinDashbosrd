@@ -226,17 +226,18 @@ export function JournalModule() {
           </div>
           {/* Lines */}
           <div className="border border-border rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-xs">
-                <tr className="text-right">
-                  <th className="font-medium px-2 py-2">الحساب</th>
-                  <th className="font-medium px-2 py-2">الطرف</th>
-                  <th className="font-medium px-2 py-2 text-left">مدين</th>
-                  <th className="font-medium px-2 py-2 text-left">دائن</th>
-                  <th className="font-medium px-2 py-2">بيان</th>
-                  <th className="font-medium px-2 py-2 w-10"></th>
-                </tr>
-              </thead>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" style={{ minWidth: 640 }}>
+                <thead className="bg-muted/40 text-xs">
+                  <tr className="text-right">
+                    <th className="font-medium px-2 py-2">الحساب</th>
+                    <th className="font-medium px-2 py-2">الطرف</th>
+                    <th className="font-medium px-2 py-2 text-left">مدين</th>
+                    <th className="font-medium px-2 py-2 text-left">دائن</th>
+                    <th className="font-medium px-2 py-2">بيان</th>
+                    <th className="font-medium px-2 py-2 w-10"></th>
+                  </tr>
+                </thead>
               <tbody>
                 {lines.map((l, i) => (
                   <tr key={i} className="border-t border-border">
@@ -277,6 +278,7 @@ export function JournalModule() {
                 </tr>
               </tfoot>
             </table>
+            </div>
           </div>
           {err && <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{err}</div>}
           <DialogFooter>
@@ -507,8 +509,8 @@ export function VouchersModule() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>سند قبض/صرف</DialogTitle><DialogDescription>يسجل في الصندوق أو البنك ويرتبط بالطرف — ويمكن ربطه اختياريًا بشحنة محددة.</DialogDescription></DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-2">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
+            <div className="sm:col-span-2">
               <label className="text-xs font-medium">نوع السند *</label>
               <Select value={v.type} onValueChange={(val) => setV({ ...v, type: val })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -518,14 +520,14 @@ export function VouchersModule() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <label className="text-xs font-medium">الطرف *</label>
               <Select value={v.partyId} onValueChange={(val) => setV({ ...v, partyId: val })}>
                 <SelectTrigger><SelectValue placeholder="اختر الطرف..." /></SelectTrigger>
                 <SelectContent>{(parties?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <label className="text-xs font-medium">شحنة مرتبطة (اختياري)</label>
               <Select value={v.shipmentId} onValueChange={(val) => setV({ ...v, shipmentId: val === '__' ? '' : val })}>
                 <SelectTrigger><SelectValue placeholder="— بدون شحنة —" /></SelectTrigger>
@@ -539,7 +541,7 @@ export function VouchersModule() {
             <div><label className="text-xs font-medium">المبلغ *</label><Input type="number" value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} /></div>
             <div><label className="text-xs font-medium">التاريخ</label><Input type="date" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} /></div>
             <div><label className="text-xs font-medium">الحساب (صندوق/بنك)</label><Input value={v.accountName} onChange={(e) => setV({ ...v, accountName: e.target.value })} /></div>
-            <div className="col-span-2"><label className="text-xs font-medium">البيان</label><Textarea value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} rows={2} /></div>
+            <div className="sm:col-span-2"><label className="text-xs font-medium">البيان</label><Textarea value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} rows={2} /></div>
           </div>
           {err && <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{err}</div>}
           <DialogFooter>

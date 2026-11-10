@@ -14,7 +14,7 @@ import useSWR from 'swr'
 import {
   Package, Banknote, Receipt, TrendingUp, TrendingDown,
   Truck, Clock, Moon, Undo2, ArrowRightLeft, Boxes,
-  MapPin, UserCog, CalendarDays, Wallet, AlertCircle,
+  MapPin, UserCog, CalendarDays, Wallet, AlertCircle, Calendar, X,
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart,
@@ -30,6 +30,38 @@ import { useCanPrices } from '../auth-provider'
 import { Kpi, StatCard, Mini, Alert } from '../ui-cards'
 
 const PIE_COLORS = ['#e8902a', '#1e9e8a', '#7a5bd6', '#5eb04a', '#d9532f', '#2c8fb8', '#c98d3b']
+
+type DatePreset = 'today' | '7d' | '30d' | 'all'
+const PRESETS: { key: DatePreset; label: string }[] = [
+  { key: 'today', label: 'اليوم' },
+  { key: '7d', label: '7 أيام' },
+  { key: '30d', label: '30 يوم' },
+  { key: 'all', label: 'الكل' },
+]
+
+function presetToRange(preset: DatePreset): { from: string; to: string } {
+  const today = new Date()
+  const todayISO = today.toISOString().slice(0, 10)
+  if (preset === 'today') return { from: todayISO, to: todayISO }
+  if (preset === '7d' || preset === '30d') {
+    const days = preset === '7d' ? 7 : 30
+    const start = new Date(today)
+    start.setDate(today.getDate() - days + 1)
+    return { from: start.toISOString().slice(0, 10), to: todayISO }
+  }
+  return { from: '', to: '' } // all
+}
+
+function detectPreset(from: string, to: string): DatePreset | null {
+  if (!from && !to) return 'all'
+  const today = new Date().toISOString().slice(0, 10)
+  if (from === today && to === today) return 'today'
+  const start7 = new Date(); start7.setDate(new Date().getDate() - 6)
+  if (from === start7.toISOString().slice(0, 10) && to === today) return '7d'
+  const start30 = new Date(); start30.setDate(new Date().getDate() - 29)
+  if (from === start30.toISOString().slice(0, 10) && to === today) return '30d'
+  return null
+}
 
 // ---------------------------------------------------------------------------
 // أنواع
@@ -62,23 +94,121 @@ const CHART_STYLE = {
 }
 
 // ---------------------------------------------------------------------------
+// شريط فلترة التاريخ للموبايل — يظهر فقط على الشاشات الصغيرة (md:hidden)
+// يتيح الوصول لنطاق التاريخ دون الحاجة لهيدر سطح المكتب
+// ---------------------------------------------------------------------------
+function MobileDateFilter({
+  from,
+  to,
+  setFrom,
+  setTo,
+}: {
+  from: string
+  to: string
+  setFrom: (v: string) => void
+  setTo: (v: string) => void
+}) {
+  const activePreset = detectPreset(from, to)
+  const applyPreset = (p: DatePreset) => {
+    const r = presetToRange(p)
+    setFrom(r.from)
+    setTo(r.to)
+  }
+  const hasRange = !!from || !!to
+  return (
+    <div className="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+      {/* أزرار البريسيت السريعة */}
+      <div className="flex items-center gap-0.5 bg-secondary/60 rounded-lg p-0.5 shrink-0">
+        {PRESETS.map((p) => (
+          <button
+            key={p.key}
+            onClick={() => applyPreset(p.key)}
+            className={cn(
+              'text-[11px] font-medium px-2.5 py-1.5 rounded-md transition-all whitespace-nowrap',
+              activePreset === p.key
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+            title={p.label}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {/* نطاق مخصص */}
+      <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-1 px-1.5 shrink-0">
+        <Calendar className="size-3.5 text-muted-foreground shrink-0" />
+        <input
+          type="date"
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          className="text-[11px] bg-transparent border-0 outline-none px-0.5 py-1 w-[88px]"
+          aria-label="من تاريخ"
+        />
+        <span className="text-muted-foreground text-xs shrink-0">→</span>
+        <input
+          type="date"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          className="text-[11px] bg-transparent border-0 outline-none px-0.5 py-1 w-[88px]"
+          aria-label="إلى تاريخ"
+        />
+      </div>
+      {hasRange && activePreset !== 'all' && (
+        <button
+          onClick={() => { setFrom(''); setTo('') }}
+          className="size-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
+          title="مسح"
+          aria-label="مسح"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // الحاوية الرئيسية
 // ---------------------------------------------------------------------------
-export function DashboardModule({ from, to }: { from?: string; to?: string }) {
+export function DashboardModule({
+  from,
+  to,
+  setFrom,
+  setTo,
+}: {
+  from?: string
+  to?: string
+  setFrom?: (v: string) => void
+  setTo?: (v: string) => void
+}) {
   const canPrices = useCanPrices()
   const qs = new URLSearchParams()
   if (from) qs.set('from', from)
   if (to) qs.set('to', to)
   const { data, error, isLoading } = useSWR<StatsResponse>(`/api/stats?${qs.toString()}`, fetcher, { refreshInterval: 30000 })
 
-  if (isLoading) return <DashboardSkeleton />
+  // شريط فلترة التاريخ للموبايل — يظهر فقط على الشاشات الصغيرة (الهيدر الكامل مخفي)
+  const mobileFilter = setFrom && setTo ? (
+    <MobileDateFilter from={from ?? ''} to={to ?? ''} setFrom={setFrom} setTo={setTo} />
+  ) : null
+
+  if (isLoading) return (
+    <div className="space-y-4">
+      {mobileFilter}
+      <DashboardSkeleton />
+    </div>
+  )
   if (error) {
     return (
-      <Card>
-        <CardContent className="py-10 text-center text-destructive">
-          تعذّر تحميل البيانات: {error.message}
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {mobileFilter}
+        <Card>
+          <CardContent className="py-10 text-center text-destructive">
+            تعذّر تحميل البيانات: {error.message}
+          </CardContent>
+        </Card>
+      </div>
     )
   }
   if (!data) return null
@@ -94,6 +224,8 @@ export function DashboardModule({ from, to }: { from?: string; to?: string }) {
 
   return (
     <div className="space-y-4">
+      {/* شريط فلترة التاريخ للموبايل */}
+      {mobileFilter}
       {/* === المؤشرات الرئيسية (KPIs) === */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3 stagger">
         <Kpi title="إجمالي الشحنات" value={fmtNum(s.totalShipments)} icon={Package} tone="primary"

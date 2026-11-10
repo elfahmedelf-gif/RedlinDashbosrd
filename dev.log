@@ -55,3 +55,88 @@
  GET /api/branches 200 in 36ms (compile: 2ms, render: 33ms)
  GET /api/branches 200 in 8ms (compile: 2ms, render: 6ms)
  GET /api/warehouses 200 in 6ms (compile: 1729µs, render: 4ms)
+✓ Compiled in 695ms
+✓ Compiled in 705ms
+✓ Compiled in 217ms
+⚠ Cross origin request detected from preview-chat-9241c471-64e3-4864-b8c5-fd99a0cf37e8.space-z.ai to /_next/* resource. In a future major version of Next.js, you will need to explicitly configure "allowedDevOrigins" in next.config to allow this.
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET / 200 in 263ms (compile: 43ms, render: 220ms)
+ POST /api/auth/validate 200 in 29ms (compile: 23ms, render: 6ms)
+✓ Compiled in 185ms
+ GET / 200 in 216ms (compile: 38ms, render: 178ms)
+✓ Compiled in 141ms
+✓ Compiled in 191ms
+✓ Compiled in 183ms
+✓ Compiled in 193ms
+✓ Compiled in 380ms
+✓ Compiled in 157ms
+✓ Compiled in 142ms
+✓ Compiled in 161ms
+ POST /api/auth/login 200 in 13ms (compile: 3ms, render: 10ms)
+ GET /api/stats? 200 in 16ms (compile: 3ms, render: 13ms)
+ GET /api/counts 200 in 14ms (compile: 2ms, render: 12ms)
+✓ Compiled in 144ms
+✓ Compiled in 139ms
+✓ Compiled in 230ms
+ GET /api/stats? 200 in 20ms (compile: 2ms, render: 18ms)
+✓ Compiled in 199ms
+✓ Compiled in 187ms
+ GET / 200 in 72ms (compile: 38ms, render: 34ms)
+✓ Compiled in 234ms
+ GET /api/stats? 200 in 14ms (compile: 2ms, render: 12ms)
+✓ Compiled in 167ms
+✓ Compiled in 156ms
+✓ Compiled in 165ms
+✓ Compiled in 148ms
+✓ Compiled in 166ms
+✓ Compiled in 230ms
+✓ Compiled in 174ms
+✓ Compiled in 170ms
+✓ Compiled in 184ms
+✓ Compiled in 271ms
+ GET / 200 in 409ms (compile: 41ms, render: 367ms)
+ POST /api/auth/login 200 in 36ms (compile: 6ms, render: 30ms)
+ GET /api/stats? 200 in 54ms (compile: 2ms, render: 51ms)
+ GET /api/counts 200 in 56ms (compile: 5ms, render: 51ms)
+ GET /api/stats? 200 in 12ms (compile: 2ms, render: 10ms)
+ GET /api/counts 200 in 12ms (compile: 2ms, render: 10ms)
+ GET /api/stats? 200 in 10ms (compile: 1365µs, render: 9ms)
+ GET /api/stats? 200 in 13ms (compile: 2ms, render: 11ms)
+ GET /api/parties?type=customer 200 in 38ms (compile: 2ms, render: 36ms)
+ GET /api/branches 200 in 50ms (compile: 11ms, render: 39ms)
+ GET /api/warehouses 200 in 53ms (compile: 13ms, render: 40ms)
+ GET /api/parties?type=contractor 200 in 65ms (compile: 8ms, render: 57ms)
+ GET /api/lookups?category=load_type 200 in 74ms (compile: 7ms, render: 67ms)
+ GET /api/lookups?category=shipment_status 200 in 72ms (compile: 37ms, render: 35ms)
+ GET /api/stats 200 in 27ms (compile: 4ms, render: 22ms)
+ GET /api/shipments?page=1&pageSize=10 200 in 145ms (compile: 64ms, render: 81ms)
+ GET /api/counts 200 in 26ms (compile: 2ms, render: 24ms)
+ GET /api/shipments?page=1&pageSize=10 200 in 33ms (compile: 2ms, render: 30ms)
+ GET /api/lookups?category=load_type 200 in 11ms (compile: 3ms, render: 8ms)
+ GET /api/lookups?category=shipment_status 200 in 11ms (compile: 5ms, render: 6ms)
+ GET /api/shipments?page=1&pageSize=10 200 in 27ms (compile: 1494µs, render: 25ms)
+ GET /api/counts 200 in 15ms (compile: 2ms, render: 13ms)
+ GET /api/shipments?page=1&pageSize=10 200 in 33ms (compile: 3ms, render: 30ms)
+ GET /api/lookups?category=load_type 200 in 11ms (compile: 3ms, render: 8ms)
+ GET /api/lookups?category=shipment_status 200 in 12ms (compile: 5ms, render: 7ms)
+ GET /api/shipments?page=1&pageSize=10 200 in 32ms (compile: 3ms, render: 30ms)
+ GET /api/vouchers 200 in 30ms (compile: 3ms, render: 27ms)
+ GET /api/vouchers/stats 200 in 51ms (compile: 4ms, render: 47ms)
+ GET /api/users 200 in 52ms (compile: 12ms, render: 41ms)
+ GET /api/parties 200 in 86ms (compile: 15ms, render: 71ms)
+ GET /api/branches 200 in 11ms (compile: 3ms, render: 8ms)
+ GET /api/counts 200 in 15ms (compile: 3ms, render: 12ms)
+ GET /api/vouchers/stats 200 in 16ms (compile: 9ms, render: 7ms)
+ GET /api/vouchers 200 in 24ms (compile: 4ms, render: 20ms)
+ GET /api/vouchers/stats 200 in 13ms (compile: 4ms, render: 9ms)
+ GET /api/vouchers 200 in 16ms (compile: 4ms, render: 12ms)
+ GET /api/counts 200 in 16ms (compile: 3ms, render: 13ms)
+ GET /api/vouchers/stats 200 in 15ms (compile: 3ms, render: 13ms)
+ GET /api/vouchers 200 in 20ms (compile: 2ms, render: 18ms)
+ GET /api/vouchers/stats 200 in 9ms (compile: 1983µs, render: 7ms)
+ GET /api/vouchers 200 in 15ms (compile: 2ms, render: 13ms)
+ GET /api/reports/pending-returns? 200 in 74ms (compile: 40ms, render: 34ms)
+ GET /api/counts 200 in 16ms (compile: 3ms, render: 13ms)
+ GET /api/reports/pending-returns? 200 in 43ms (compile: 31ms, render: 13ms)
+ GET /api/reports/pending-returns? 200 in 44ms (compile: 31ms, render: 13ms)

@@ -93,7 +93,7 @@ export function DataTable<T>({
   return (
     <div className="space-y-2">
       {searchFn && (
-        <div className="relative max-w-md">
+        <div className="relative w-full sm:max-w-md">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={searchPlaceholder} className="pr-9 bg-card" />
           {q && (

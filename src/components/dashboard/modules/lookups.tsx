@@ -304,7 +304,7 @@ export function LookupsModule() {
               {editing?.isSystem && ' — عنصر أساسي (يمكن تعديل الاسم واللون فقط، لا يمكن تغيير المفتاح أو حذفه)'}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
             <div>
               <Label className="text-xs">المفتاح (Key) *</Label>
               <Input
@@ -333,7 +333,7 @@ export function LookupsModule() {
               <Label className="text-xs">الاسم (EN) اختياري</Label>
               <Input value={v.labelEn} onChange={(e) => setV({ ...v, labelEn: e.target.value })} dir="ltr" placeholder="New, Delivered..." />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Label className="text-xs">اللون (Tone)</Label>
               <Select value={v.tone || '__'} onValueChange={(val) => setV({ ...v, tone: val === '__' ? '' : val })}>
                 <SelectTrigger><SelectValue placeholder="بدون لون" /></SelectTrigger>
@@ -347,7 +347,7 @@ export function LookupsModule() {
                 </div>
               )}
             </div>
-            <div className="col-span-2 flex items-center gap-2 pt-1">
+            <div className="sm:col-span-2 flex items-center gap-2 pt-1">
               <Switch checked={v.active} onCheckedChange={(c) => setV({ ...v, active: c })} id="active" />
               <Label htmlFor="active" className="text-xs cursor-pointer">نشط (يظهر في القوائم المنسدلة)</Label>
             </div>

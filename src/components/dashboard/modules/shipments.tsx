@@ -561,7 +561,7 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
           <DialogDescription>أدخل بيانات الشحنة. الحقول النجمية مطلوبة.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <label className="text-xs font-medium">العميل / المستلم *</label>
             <Select value={v.customerId} onValueChange={(val) => setV({ ...v, customerId: val === '__' ? '' : val, recipientName: parties?.items.find(p => p.id === val)?.name || '' })}>
               <SelectTrigger><SelectValue placeholder="اختر عميلاً..." /></SelectTrigger>
@@ -636,7 +636,7 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
             <label className="text-xs font-medium">إجمالي النولون</label>
             <Input type="number" value={v.freightTotal} onChange={(e) => setV({ ...v, freightTotal: e.target.value })} placeholder="0" />
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <label className="text-xs font-medium">ملاحظات</label>
             <Textarea value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} rows={2} />
           </div>
@@ -763,12 +763,12 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
       {/* شريط هامش الربح — يُعرض فقط لمن يملك صلاحية الأسعار */}
       {canPrices && (
         <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="p-4 grid grid-cols-3 gap-3 text-center">
+          <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
             <div>
               <div className="text-xs text-muted-foreground">نولون العميل (بيع)</div>
               <div className="text-lg font-bold tnum num-ltr">{fmtNum(shipment.freightTotal ?? 0)} ج.م</div>
             </div>
-            <div className="border-x border-border/60">
+            <div className="sm:border-x sm:border-border/60">
               <div className="text-xs text-muted-foreground">نولون المقاول (تكلفة)</div>
               <div className="text-lg font-bold tnum num-ltr">{fmtNum(shipment.totalSuppliers ?? 0)} ج.م</div>
             </div>
@@ -934,7 +934,7 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
               يصدر النظام سند قبض من العميل بقيمة نولون العميل وسند صرف للمقاول بقيمة نولون المقاول — مع قيود يومية تلقائية — ويُحدّث حالة التحصيل.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
             <div>
               <label className="text-xs font-medium">سند قبض من العميل (ج.م)</label>
               <Input type="number" value={codCustomerAmount} onChange={(e) => setCodCustomerAmount(e.target.value)} />

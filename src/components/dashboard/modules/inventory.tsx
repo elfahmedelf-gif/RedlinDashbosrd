@@ -207,8 +207,8 @@ export function MovementsModule() {
             <DialogTitle>تسجيل حركة مخزون</DialogTitle>
             <DialogDescription>الحركات تؤثر على الرصيد مباشرة. لا يسمح برصيد سالب (إلا بصلاحية).</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-2">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
+            <div className="sm:col-span-2">
               <label className="text-xs font-medium">نوع الحركة *</label>
               <Select value={v.type} onValueChange={(val) => setV({ ...v, type: val })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -219,7 +219,7 @@ export function MovementsModule() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <label className="text-xs font-medium">الصنف *</label>
               <Select value={v.itemId} onValueChange={(val) => setV({ ...v, itemId: val })}>
                 <SelectTrigger><SelectValue placeholder="اختر صنفًا..." /></SelectTrigger>
@@ -256,7 +256,7 @@ export function MovementsModule() {
               <label className="text-xs font-medium">تكلفة الوحدة</label>
               <Input type="number" value={v.unitCost} onChange={(e) => setV({ ...v, unitCost: e.target.value })} />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <label className="text-xs font-medium">ملاحظات</label>
               <Textarea value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} rows={2} />
             </div>
@@ -365,14 +365,14 @@ export function FreightModule() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editing ? 'تعديل سعر' : 'إضافة سعر نولون'}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
             <div><label className="text-xs font-medium">المنطقة (عربي)</label><Input value={v.regionAr} onChange={(e) => setV({ ...v, regionAr: e.target.value })} /></div>
             <div><label className="text-xs font-medium">Region (EN)</label><Input value={v.regionEn} onChange={(e) => setV({ ...v, regionEn: e.target.value })} dir="ltr" /></div>
-            <div className="col-span-2"><label className="text-xs font-medium">خط السير</label><Input value={v.routeName} onChange={(e) => setV({ ...v, routeName: e.target.value })} /></div>
+            <div className="sm:col-span-2"><label className="text-xs font-medium">خط السير</label><Input value={v.routeName} onChange={(e) => setV({ ...v, routeName: e.target.value })} /></div>
             <div><label className="text-xs font-medium">التكلفة</label><Input type="number" value={v.cost} onChange={(e) => setV({ ...v, cost: e.target.value })} /></div>
             <div><label className="text-xs font-medium">سعر البيع</label><Input type="number" value={v.sellPrice} onChange={(e) => setV({ ...v, sellPrice: e.target.value })} /></div>
             <div><label className="text-xs font-medium">سعر 2 (اختياري)</label><Input type="number" value={v.sellPrice2} onChange={(e) => setV({ ...v, sellPrice2: e.target.value })} /></div>
-            <div className="col-span-2"><label className="text-xs font-medium">ملاحظات</label><Input value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} /></div>
+            <div className="sm:col-span-2"><label className="text-xs font-medium">ملاحظات</label><Input value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>إلغاء</Button>
