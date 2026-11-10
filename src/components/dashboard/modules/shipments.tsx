@@ -25,6 +25,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useLookup } from '@/lib/lookups'
 import { cn } from '@/lib/utils'
 import { useCanPrices } from '../auth-provider'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 
 interface PartyLite { id: string; name: string }
 interface Shipment {
@@ -642,6 +643,7 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
 
 function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const { toast } = useToast()
+  const { confirmDelete } = useConfirm()
   // صلاحية رؤية الأسعار — تتحكم في إظهار المبالغ المالية في بطاقة الشحنة
   const canPrices = useCanPrices()
   const { data: shipment, mutate } = useSWR<any>(`/api/shipments/${id}`, fetcher)
@@ -698,7 +700,11 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
   }
 
   const remove = async () => {
-    if (!confirm('هل تريد حذف هذه الشحنة؟ لا يمكن التراجع.')) return
+    const ok = await confirmDelete({
+      title: 'حذف الشحنة',
+      message: 'هل تريد حذف هذه الشحنة؟ لا يمكن التراجع.',
+    })
+    if (!ok) return
     try {
       await apiDelete(`/api/shipments/${id}`)
       toast({ title: 'تم الحذف' })

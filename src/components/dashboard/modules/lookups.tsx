@@ -23,6 +23,7 @@ import { Switch } from '@/components/ui/switch'
 import { useAllLookups, LOOKUP_CATEGORIES, type LookupItem } from '@/lib/lookups'
 import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { cn } from '@/lib/utils'
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
@@ -45,6 +46,7 @@ const TONE_PALETTE = [
 
 export function LookupsModule() {
   const { toast } = useToast()
+  const { confirmDelete } = useConfirm()
   const { byCategory, all, loading, mutate } = useAllLookups()
   const [activeCategory, setActiveCategory] = React.useState<string>('shipment_status')
   const [editing, setEditing] = React.useState<LookupItem | null>(null)
@@ -84,7 +86,11 @@ export function LookupsModule() {
   }
 
   const del = async (item: LookupItem) => {
-    if (!confirm(`حذف "${item.label}"؟`)) return
+    const ok = await confirmDelete({
+      title: 'حذف العنصر',
+      message: `حذف «${item.label}»؟ لا يمكن التراجع.`,
+    })
+    if (!ok) return
     try {
       await apiDelete(`/api/lookups/${item.id}`)
       mutate(); toast({ title: 'تم الحذف' })

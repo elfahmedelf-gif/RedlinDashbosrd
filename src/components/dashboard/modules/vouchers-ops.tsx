@@ -33,6 +33,7 @@ import { fetcher, apiPost, apiPatch, apiDelete, VOUCHER_TYPES, VOUCHER_STATES, V
 import { exportToCSV } from '@/lib/export'
 import { fmtNum, fmtDate, fmtDateTime } from '@/lib/format'
 import { useAuth, useCanPrices } from '../auth-provider'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { VoucherOpsPrint } from '../voucher-print-ops'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -247,6 +248,7 @@ function ShipmentPicker({
 export function VouchersModule() {
   const { toast } = useToast()
   const { has, user: me } = useAuth()
+  const { confirmDelete, confirm: confirmDialog } = useConfirm()
   // صلاحية رؤية الأسعار/المبالغ — فقط للمالك ومحمود
   const canPrices = useCanPrices()
 
@@ -449,7 +451,11 @@ export function VouchersModule() {
   }
 
   const del = async (id: string, no?: string) => {
-    if (!confirm(`حذف الإذن ${no ?? ''}؟ (لا يمكن التراجع)`)) return
+    const ok = await confirmDelete({
+      title: 'حذف الإذن',
+      message: `حذف الإذن ${no ?? ''}؟ (لا يمكن التراجع)`,
+    })
+    if (!ok) return
     try {
       await apiDelete(`/api/vouchers/${id}`)
       toast({ title: 'تم الحذف' })
@@ -472,7 +478,11 @@ export function VouchersModule() {
   }
 
   const removeItem = async (vid: string, itemId: string) => {
-    if (!confirm('حذف الشحنة من الإذن؟')) return
+    const ok = await confirmDelete({
+      title: 'حذف الشحنة من الإذن',
+      message: 'سيتم حذف هذه الشحنة من الإذن. هل تريد المتابعة؟',
+    })
+    if (!ok) return
     try {
       await apiDelete(`/api/vouchers/${vid}/items/${itemId}`)
       toast({ title: 'تم حذف الشحنة من الإذن' })
@@ -504,7 +514,13 @@ export function VouchersModule() {
   // تسليم مرتجع: ينشئ إذن استلام مرتجعات مكتمل تلقائيًا لكل شحنة مع المندوب
   // وينقل حالتها من "returned" إلى "received_returned" (تم التسليم)
   const markReceived = async (vid: string) => {
-    if (!confirm('تأكيد التسليم؟ سيُنشأ إذن استلام مرتجعات لكل شحنة لم تُستلم بعد.')) return
+    const ok = await confirmDialog({
+      title: 'تأكيد التسليم',
+      message: 'سيُنشأ إذن استلام مرتجعات لكل شحنة لم تُستلم بعد. هل تريد المتابعة؟',
+      tone: 'success',
+      confirmText: 'تم التسليم',
+    })
+    if (!ok) return
     setActionLoading(true)
     try {
       const res: any = await apiPost(`/api/vouchers/${vid}/mark-received`, {

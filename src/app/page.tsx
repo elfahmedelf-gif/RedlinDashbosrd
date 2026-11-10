@@ -14,6 +14,7 @@ import { Sidebar, MobileNav, MobileHeader, type ModuleKey, MODULES, MODULE_PERMI
 import { DarkModeToggle } from '@/components/dashboard/dark-mode-toggle'
 import { UserMenu } from '@/components/dashboard/user-menu'
 import { AuthProvider, useAuth } from '@/components/dashboard/auth-provider'
+import { ConfirmProvider } from '@/components/ui/confirm-dialog'
 import { LoginScreen, AuthSplash } from '@/components/dashboard/login-screen'
 import { DashboardModule } from '@/components/dashboard/modules/dashboard'
 import { ShipmentsModule } from '@/components/dashboard/modules/shipments'
@@ -280,7 +281,9 @@ function Gate() {
 export default function Page() {
   return (
     <AuthProvider>
-      <Gate />
+      <ConfirmProvider>
+        <Gate />
+      </ConfirmProvider>
     </AuthProvider>
   )
 }

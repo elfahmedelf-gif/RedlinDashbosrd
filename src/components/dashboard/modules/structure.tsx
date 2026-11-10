@@ -10,9 +10,11 @@ import { EntityFormDialog, type Field } from '../entity-dialog'
 import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import { fmtNum } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 
 export function BranchesModule() {
   const { toast } = useToast()
+  const { confirmDelete } = useConfirm()
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<any>(null)
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/branches', fetcher, { refreshInterval: 30000 })
@@ -20,7 +22,11 @@ export function BranchesModule() {
   const onEdit = (b: any) => { setEditing(b); setOpen(true) }
   const onAdd = () => { setEditing(null); setOpen(true) }
   const del = async (id: string) => {
-    if (!confirm('حذف الفرع؟')) return
+    const ok = await confirmDelete({
+      title: 'حذف الفرع',
+      message: 'هل تريد حذف هذا الفرع؟ لا يمكن التراجع.',
+    })
+    if (!ok) return
     try { await apiDelete(`/api/branches/${id}`); mutate(); toast({ title: 'تم الحذف' }) }
     catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }
@@ -97,6 +103,7 @@ export function BranchesModule() {
 
 export function WarehousesModule() {
   const { toast } = useToast()
+  const { confirmDelete } = useConfirm()
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<any>(null)
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/warehouses', fetcher, { refreshInterval: 30000 })
@@ -105,7 +112,11 @@ export function WarehousesModule() {
   const onEdit = (b: any) => { setEditing(b); setOpen(true) }
   const onAdd = () => { setEditing(null); setOpen(true) }
   const del = async (id: string) => {
-    if (!confirm('حذف المخزن؟')) return
+    const ok = await confirmDelete({
+      title: 'حذف المخزن',
+      message: 'هل تريد حذف هذا المخزن؟ لا يمكن التراجع.',
+    })
+    if (!ok) return
     try { await apiDelete(`/api/warehouses/${id}`); mutate(); toast({ title: 'تم الحذف' }) }
     catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }

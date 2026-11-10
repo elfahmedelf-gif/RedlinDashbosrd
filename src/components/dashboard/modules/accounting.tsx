@@ -22,6 +22,7 @@ import { fetcher, apiPost, apiDelete } from '@/lib/api'
 import { exportToCSV } from '@/lib/export'
 import { fmtNum, fmtDate, fmtDateTime, ACCOUNT_TYPE } from '@/lib/format'
 import { useAuth } from '../auth-provider'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { VoucherPrint } from '../voucher-print'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -100,6 +101,7 @@ export function AccountsModule() {
 // === Journal Entries ===
 export function JournalModule() {
   const { toast } = useToast()
+  const { confirmDelete } = useConfirm()
   const [open, setOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<string>('all')
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>(`/api/journal?status=${statusFilter !== 'all' ? statusFilter : ''}`, fetcher, { refreshInterval: 30000 })
@@ -151,7 +153,11 @@ export function JournalModule() {
   }
 
   const del = async (id: string) => {
-    if (!confirm('حذف القيد؟ (لا يمكن حذف قيد مرحّل)')) return
+    const ok = await confirmDelete({
+      title: 'حذف القيد',
+      message: 'حذف القيد؟ (لا يمكن حذف قيد مرحّل)',
+    })
+    if (!ok) return
     try { await apiDelete(`/api/journal/${id}`); mutate(); toast({ title: 'تم الحذف' }) }
     catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }
@@ -287,6 +293,7 @@ export function JournalModule() {
 export function VouchersModule() {
   const { toast } = useToast()
   const { has, user: me } = useAuth()
+  const { confirmDelete } = useConfirm()
   const [open, setOpen] = React.useState(false)
   const [typeFilter, setTypeFilter] = React.useState<string>('all')
   // نجلب كل الأذونات لحساب العدّادات — والفلترة تتم محليًا
@@ -334,7 +341,11 @@ export function VouchersModule() {
     } catch (e: any) { setErr(e.message) } finally { setLoading(false) }
   }
   const del = async (id: string) => {
-    if (!confirm('حذف السند؟')) return
+    const ok = await confirmDelete({
+      title: 'حذف السند',
+      message: 'هل تريد حذف هذا السند؟ لا يمكن التراجع.',
+    })
+    if (!ok) return
     try { await apiDelete(`/api/vouchers/${id}`); mutate(); toast({ title: 'تم الحذف' }) }
     catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }

@@ -14,6 +14,7 @@ import { exportToCSV } from '@/lib/export'
 import { fmtNum } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import { useCanPrices } from '../auth-provider'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import type { ModuleKey } from '../sidebar'
 
 interface Party {
@@ -31,6 +32,7 @@ interface Party {
 
 export function PartiesModule({ type, title }: { type: 'customer' | 'contractor' | 'supplier'; title: string }) {
   const { toast } = useToast()
+  const { confirmDelete } = useConfirm()
   // إجمالي التعامل يُعرض فقط لمن يملك صلاحية الأسعار
   const canPrices = useCanPrices()
   const [open, setOpen] = React.useState(false)
@@ -60,7 +62,11 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
   const onAdd = () => { setEditing(null); setOpen(true) }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('حذف هذا الطرف؟')) return
+    const ok = await confirmDelete({
+      title: 'حذف الطرف',
+      message: 'هل تريد حذف هذا الطرف؟ لا يمكن التراجع.',
+    })
+    if (!ok) return
     try { await apiDelete(`/api/parties/${id}`); mutate(); toast({ title: 'تم الحذف' }) }
     catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }

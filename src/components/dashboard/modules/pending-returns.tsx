@@ -18,6 +18,7 @@ import { fetcher, apiPost } from '@/lib/api'
 import { exportToCSV, exportToExcel } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
 
 interface PendingItem {
@@ -51,6 +52,7 @@ interface PendingReturnsResponse {
 export function PendingReturnsModule() {
   const { has } = useAuth()
   const { toast } = useToast()
+  const { confirm: confirmDialog } = useConfirm()
   // التاريخ اختياري — المرتجعات المعلقة لا تعتمد على نطاق زمني (تنظر للحالة الراهنة)
   const [from, setFrom] = React.useState('')
   const [to, setTo] = React.useState('')
@@ -68,7 +70,13 @@ export function PendingReturnsModule() {
 
   // إجراء "تم التسليم" — ينشئ إذن استلام مرتجعات تلقائيًا
   const markReceived = async (voucherId: string, voucherNo?: string) => {
-    if (!confirm(`تأكيد تسليم مرتجع ${voucherNo ?? ''}؟ سيُنشأ إذن استلام مرتجعات تلقائيًا.`)) return
+    const ok = await confirmDialog({
+      title: 'تأكيد تسليم المرتجع',
+      message: `تأكيد تسليم مرتجع ${voucherNo ?? ''}؟ سيُنشأ إذن استلام مرتجعات تلقائيًا.`,
+      tone: 'success',
+      confirmText: 'تم التسليم',
+    })
+    if (!ok) return
     try {
       const res: any = await apiPost(`/api/vouchers/${voucherId}/mark-received`, { userName: 'admin' })
       const summary = res?.succeeded != null && res?.total != null
@@ -93,7 +101,13 @@ export function PendingReturnsModule() {
       toast({ title: 'لا توجد مرتجعات معلقة' })
       return
     }
-    if (!confirm(`تأكيد تسليم ${uniqueVouchers.size} إذن مرتجع (يغطي ${items.length} شحنة)؟`)) return
+    const ok = await confirmDialog({
+      title: 'تسليم كل المرتجعات',
+      message: `تأكيد تسليم ${uniqueVouchers.size} إذن مرتجع (يغطي ${items.length} شحنة)؟`,
+      tone: 'success',
+      confirmText: 'تسليم الكل',
+    })
+    if (!ok) return
     let totalSucceeded = 0
     let totalFailed = 0
     let totalProcessed = 0

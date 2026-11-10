@@ -23,10 +23,12 @@ import { fmtNum, fmtDate, MOVEMENT_TYPE } from '@/lib/format'
 import { useLookup } from '@/lib/lookups'
 import { useToast } from '@/hooks/use-toast'
 import { useCanPrices } from '../auth-provider'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { cn } from '@/lib/utils'
 
 export function InventoryModule() {
   const { toast } = useToast()
+  const { confirmDelete } = useConfirm()
   // التكلفة/سعر البيع وقيمة المخزون تُعرض فقط لمن يملك صلاحية الأسعار
   const canPrices = useCanPrices()
   const [open, setOpen] = React.useState(false)
@@ -60,7 +62,11 @@ export function InventoryModule() {
   }
 
   const del = async (id: string) => {
-    if (!confirm('حذف الصنف؟')) return
+    const ok = await confirmDelete({
+      title: 'حذف الصنف',
+      message: 'هل تريد حذف هذا الصنف؟ لا يمكن التراجع.',
+    })
+    if (!ok) return
     try { await apiDelete(`/api/items/${id}`); mutate(); toast({ title: 'تم الحذف' }) }
     catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }
@@ -268,6 +274,7 @@ export function MovementsModule() {
 
 export function FreightModule() {
   const { toast } = useToast()
+  const { confirmDelete } = useConfirm()
   // جدول أسعار النولون — التكلفة/سعر البيع يُعرضان فقط لمن يملك صلاحية الأسعار
   const canPrices = useCanPrices()
   const [editing, setEditing] = React.useState<any>(null)
@@ -296,7 +303,11 @@ export function FreightModule() {
   }
 
   const del = async (id: string) => {
-    if (!confirm('حذف هذا السعر؟')) return
+    const ok = await confirmDelete({
+      title: 'حذف السعر',
+      message: 'هل تريد حذف هذا السعر؟ لا يمكن التراجع.',
+    })
+    if (!ok) return
     try { await apiDelete(`/api/freight/${id}`); mutate(); toast({ title: 'تم الحذف' }) }
     catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }

@@ -14,6 +14,7 @@ import { exportToCSV, exportToExcel } from '@/lib/export'
 import { fmtNum, fmtDate, fmtDateTime, ACCOUNT_TYPE, SHIPMENT_STATUS, MOVEMENT_TYPE } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useAuth, useCanPrices } from '../auth-provider'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
 
 type ReportType = 'shipments' | 'freight-margin' | 'contractor-dues' | 'customer-debts' | 'trial-balance' | 'inventory-movements' | 'low-stock' | 'pending-returns'
@@ -36,6 +37,7 @@ export function ReportsModule() {
   const { has } = useAuth()
   const canPrices = useCanPrices()
   const { toast } = useToast()
+  const { confirm: confirmDialog } = useConfirm()
   const [active, setActive] = React.useState<ReportType | null>(null)
   const [from, setFrom] = React.useState(''); const [to, setTo] = React.useState('')
   const qs = new URLSearchParams()
@@ -75,7 +77,13 @@ export function ReportsModule() {
 
   // إجراء "تم التسليم" من تقرير المرتجعات — ينشئ إذن استلام مرتجعات تلقائيًا
   const markReceived = async (voucherId: string, voucherNo?: string) => {
-    if (!confirm(`تأكيد تسليم مرتجع ${voucherNo ?? ''}؟ سيُنشأ إذن استلام مرتجعات تلقائيًا.`)) return
+    const ok = await confirmDialog({
+      title: 'تأكيد تسليم المرتجع',
+      message: `تأكيد تسليم مرتجع ${voucherNo ?? ''}؟ سيُنشأ إذن استلام مرتجعات تلقائيًا.`,
+      tone: 'success',
+      confirmText: 'تم التسليم',
+    })
+    if (!ok) return
     try {
       const res: any = await apiPost(`/api/vouchers/${voucherId}/mark-received`, { userName: 'admin' })
       const summary = res?.succeeded != null && res?.total != null
