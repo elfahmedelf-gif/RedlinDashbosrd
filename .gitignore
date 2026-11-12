@@ -52,3 +52,7 @@ prompt
 server.log
 # Skills directory
 /skills/tool-results/
+
+# Tool artifacts
+/tool-results/
+.zscripts/dev.pid

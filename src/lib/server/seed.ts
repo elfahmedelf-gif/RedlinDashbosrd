@@ -466,3 +466,14 @@ export async function nextShipmentNo(): Promise<string> {
   })
   return `SH-${String(row.value).padStart(5, '0')}`
 }
+
+/** رقم الشحنة التالي داخل معاملة قائمة (للاستيراد الجماعي — تفادي deadlock) */
+type SeqTx = { seqCounter: { upsert: (args: any) => Promise<{ value: number }> } }
+export async function nextShipmentNoTx(tx: SeqTx): Promise<string> {
+  const row = await tx.seqCounter.upsert({
+    where: { key: 'shipment' },
+    update: { value: { increment: 1 } },
+    create: { key: 'shipment', value: 1 },
+  })
+  return `SH-${String(row.value).padStart(5, '0')}`
+}

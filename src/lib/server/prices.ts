@@ -103,6 +103,7 @@ export function stripParties(items: any[], canPrices: boolean): any[] {
     }
     if ('openingBalance' in out) out.openingBalance = 0
     if ('creditLimit' in out) out.creditLimit = null
+    if ('currentBalance' in out) out.currentBalance = 0
     return out
   })
 }

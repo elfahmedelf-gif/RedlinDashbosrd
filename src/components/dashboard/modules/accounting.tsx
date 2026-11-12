@@ -1,36 +1,47 @@
 'use client'
 
+// ============================================================================
+// وحدات المحاسبة — شجرة الحسابات (AccountsModule) + دفتر اليومية (JournalModule)
+// الحسابات: إضافة/تعديل (الاسم) + تفعيل/إيقاف + حذف — عبر PATCH و DELETE على
+// /api/accounts مع إظهار أخطاء الخادم العربية (409: حساب له حركات...)
+// اليومية: ترحيل/حذف للمسودات، إلغاء (void)، عكس القيود المرحّلة بالقيد العكسي،
+// وترحيل جماعي لقيود تسليم الشحنات غير المرحّلة (backfill) — بفرض الصلاحية.
+// ============================================================================
+
 import * as React from 'react'
 import useSWR from 'swr'
-import { Plus, Trash2, BookOpen, FileText, Landmark, ChevronRight, ChevronDown, Check, FileSpreadsheet, Printer, ReceiptText, TrendingDown, TrendingUp, CalendarDays } from 'lucide-react'
+import { Plus, Trash2, BookOpen, FileText, Check, Undo2, Ban, UploadCloud, SquarePen, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
-import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { EntityFormDialog, type Field } from '../entity-dialog'
 import { DataTable } from '../data-table'
-import { fetcher, apiPost, apiDelete } from '@/lib/api'
-import { exportToCSV } from '@/lib/export'
-import { fmtNum, fmtDate, fmtDateTime, ACCOUNT_TYPE } from '@/lib/format'
+import { fetcher, apiPost, apiPatch, apiDelete, getToken } from '@/lib/api'
+import { fmtNum, fmtDate, ACCOUNT_TYPE } from '@/lib/format'
 import { useAuth } from '../auth-provider'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { VoucherPrint } from '../voucher-print'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
 // === Chart of Accounts ===
 export function AccountsModule() {
   const { toast } = useToast()
+  const { has } = useAuth()
+  const { confirmDelete } = useConfirm()
+  const canManage = has('accounting.journal')
   const [open, setOpen] = React.useState(false)
+  // حوار تعديل الحساب (الاسم العربي/الإنجليزي — الكود والحساب الأب ثابتان على الخادم)
+  const [editAcc, setEditAcc] = React.useState<any>(null)
+  const [ev, setEv] = React.useState({ name: '', nameEn: '' })
+  const [eSaving, setESaving] = React.useState(false)
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/accounts', fetcher, { refreshInterval: 30000 })
 
   // build tree
@@ -58,15 +69,77 @@ export function AccountsModule() {
     { name: 'isDetail', label: 'حساب تفصيلي (يقبل قيودًا)', type: 'switch' },
   ]
   const submit = async (vals: any) => {
-    await apiPost('/api/accounts', { ...vals, isDetail: vals.isDetail !== false, userName: 'admin' })
+    await apiPost('/api/accounts', { ...vals, isDetail: vals.isDetail !== false })
     toast({ title: 'تمت الإضافة' }); mutate()
+  }
+
+  // ---- تعديل حساب ----
+  const openEdit = (a: any) => {
+    setEditAcc(a)
+    setEv({ name: a.name ?? '', nameEn: a.nameEn ?? '' })
+  }
+
+  const editSubmit = async () => {
+    if (!editAcc) return
+    if (!ev.name.trim()) { toast({ title: 'خطأ', description: 'اسم الحساب مطلوب', variant: 'destructive' }); return }
+    setESaving(true)
+    try {
+      await apiPatch('/api/accounts', { id: editAcc.id, name: ev.name.trim(), nameEn: ev.nameEn.trim() || null })
+      toast({ title: 'تم تعديل الحساب', description: `${editAcc.code} — ${ev.name.trim()}` })
+      setEditAcc(null)
+      mutate()
+    } catch (e: any) {
+      toast({ title: 'خطأ', description: e.message, variant: 'destructive' })
+    } finally {
+      setESaving(false)
+    }
+  }
+
+  // ---- تفعيل/إيقاف — الخادم يمنع إيقاف حساب له حركات أو أذونات مرتبطة (409) ----
+  const toggleActive = async (a: any, active: boolean) => {
+    try {
+      await apiPatch('/api/accounts', { id: a.id, active })
+      toast({ title: active ? 'تم تفعيل الحساب' : 'تم إيقاف الحساب', description: a.name })
+      mutate()
+    } catch (e: any) {
+      toast({ title: 'غير مسموح', description: e.message, variant: 'destructive' })
+    }
+  }
+
+  // ---- حذف حساب — الخادم يسمح فقط للحسابات بلا حركات/بلا أبناء/بلا أذونات مرتبطة ----
+  const delAccount = async (a: any) => {
+    const ok = await confirmDelete({
+      title: 'حذف الحساب',
+      message: `حذف الحساب "${a.name}"؟ يُسمح بالحذف فقط للحسابات بلا حركات محاسبية وبلا حسابات فرعية وبلا أذونات مرتبطة.`,
+    })
+    if (!ok) return
+    try {
+      // DELETE /api/accounts يتطلب {id} في جسم الطلب — apiDelete لا يرسل جسمًا، نستخدم fetch مباشرة
+      const token = getToken()
+      const res = await fetch('/api/accounts', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'x-session-token': token } : {}) },
+        body: JSON.stringify({ id: a.id }),
+      })
+      const d = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(d?.error ?? `فشل الطلب (${res.status})`)
+      toast({ title: 'تم حذف الحساب', description: a.name })
+      mutate()
+    } catch (e: any) {
+      toast({ title: 'خطأ', description: e.message, variant: 'destructive' })
+    }
   }
 
   const columns = [
     { key: 'code', header: 'الكود', align: 'center' as const, width: 'w-24', hideInCard: true, render: (a: any) => <span className="font-mono text-xs">{a.code}</span> },
     { key: 'name', header: 'اسم الحساب', primary: true, render: (a: any) => (
-      <span style={{ paddingRight: `${a.depth * 16}px` }} className={cn('text-sm block truncate-1', a.isDetail ? 'font-medium' : 'font-bold text-primary')}>
-        {a.name}
+      <span style={{ paddingRight: `${a.depth * 16}px` }} className={cn('text-sm flex items-center gap-1.5 min-w-0', a.isDetail ? 'font-medium' : 'font-bold text-primary', !a.active && 'opacity-50')}>
+        <span className="truncate-1 min-w-0">{a.name}</span>
+        {!a.active && (
+          <Badge variant="outline" className="text-[10px] shrink-0 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            موقوف
+          </Badge>
+        )}
       </span>
     ) },
     { key: 'type', header: 'النوع', align: 'center' as const, width: 'w-32', render: (a: any) => {
@@ -76,6 +149,26 @@ export function AccountsModule() {
     { key: 'debit', header: 'مدين', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum">{fmtNum(a.debit)}</span> },
     { key: 'credit', header: 'دائن', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum">{fmtNum(a.credit)}</span> },
     { key: 'balance', header: 'الرصيد', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum font-bold">{fmtNum(a.balance)}</span> },
+    // إدارة الحسابات — بصلاحية accounting.journal (الخادم يفرضها أيضًا)
+    ...(canManage ? [{
+      key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-36',
+      render: (a: any) => (
+        <div className="flex items-center justify-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => openEdit(a)} title="تعديل الحساب" aria-label={`تعديل الحساب ${a.name}`}>
+            <SquarePen className="size-3.5" />
+          </Button>
+          <Switch
+            checked={!!a.active}
+            onCheckedChange={(c) => toggleActive(a, c)}
+            aria-label={a.active ? `إيقاف الحساب ${a.name}` : `تفعيل الحساب ${a.name}`}
+            title={a.active ? 'إيقاف الحساب' : 'تفعيل الحساب'}
+          />
+          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => delAccount(a)} title="حذف الحساب" aria-label={`حذف الحساب ${a.name}`}>
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+      ),
+    }] : []),
   ]
 
   return (
@@ -85,15 +178,43 @@ export function AccountsModule() {
           <BookOpen className="size-5 text-muted-foreground shrink-0" />
           <span className="text-sm text-muted-foreground tnum">{data?.items.length ?? 0} حساب</span>
         </div>
-        <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">حساب جديد</span><span className="sm:hidden">جديد</span></Button>
+        {canManage && (
+          <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">حساب جديد</span><span className="sm:hidden">جديد</span></Button>
+        )}
       </div>
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">شجرة الحسابات</CardTitle><CardDescription>مع أرصدة من القيود المرحّلة</CardDescription></CardHeader>
         <CardContent className="p-0">
-          <DataTable rows={tree} columns={columns} loading={isLoading} getRowKey={(a: any) => a.id} minW={800} searchFn={(a, q) => (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالاسم أو الكود..." />
+          <DataTable rows={tree} columns={columns} loading={isLoading} getRowKey={(a: any) => a.id} minW={canManage ? 920 : 800} searchFn={(a, q) => (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالاسم أو الكود..." />
         </CardContent>
       </Card>
       <EntityFormDialog open={open} onOpenChange={setOpen} title="إضافة حساب" fields={fields} initial={{}} onSubmit={submit} />
+
+      {/* حوار تعديل الحساب — الاسم العربي/الإنجليزي فقط */}
+      <Dialog open={!!editAcc} onOpenChange={(o) => !o && setEditAcc(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>تعديل الحساب{editAcc?.code ? ` — ${editAcc.code}` : ''}</DialogTitle>
+            <DialogDescription>تعديل الاسم العربي/الإنجليزي فقط — الكود والحساب الأب ثابتان لحماية شجرة الحسابات والأرصدة.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-1">
+            <div>
+              <label className="text-xs font-medium">اسم الحساب *</label>
+              <Input value={ev.name} onChange={(e) => setEv({ ...ev, name: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-xs font-medium">الاسم (EN)</label>
+              <Input value={ev.nameEn} onChange={(e) => setEv({ ...ev, nameEn: e.target.value })} dir="ltr" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditAcc(null)}>إلغاء</Button>
+            <Button onClick={editSubmit} disabled={eSaving || !ev.name.trim()}>
+              {eSaving ? 'جاري...' : 'حفظ التعديل'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -101,7 +222,9 @@ export function AccountsModule() {
 // === Journal Entries ===
 export function JournalModule() {
   const { toast } = useToast()
-  const { confirmDelete } = useConfirm()
+  const { has } = useAuth()
+  const { confirmDelete, confirm: confirmDialog } = useConfirm()
+  const canManage = has('accounting.journal')
   const [open, setOpen] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<string>('all')
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>(`/api/journal?status=${statusFilter !== 'all' ? statusFilter : ''}`, fetcher, { refreshInterval: 30000 })
@@ -139,7 +262,6 @@ export function JournalModule() {
         ...header,
         date: header.date,
         lines: lines.map((l) => ({ accountId: l.accountId, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, description: l.description, partyId: l.partyId || null })),
-        userName: 'admin',
       })
       toast({ title: 'تم إنشاء القيد' }); setOpen(false); mutate()
     } catch (e: any) { setErr(e.message) } finally { setLoading(false) }
@@ -147,7 +269,7 @@ export function JournalModule() {
 
   const post = async (id: string) => {
     try {
-      await apiPost(`/api/journal/${id}/post`, { userName: 'admin' })
+      await apiPost(`/api/journal/${id}/post`, {})
       toast({ title: 'تم ترحيل القيد' }); mutate()
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }
@@ -162,21 +284,144 @@ export function JournalModule() {
     catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }
 
+  // عكس قيد مرحّل — يُنشئ قيدًا عكسيًا كاملًا (تبديل المدين والدائن) ويُفك ربطه بالأذونات
+  // الخادم يمنع العكس مرتين (409: تم عكس هذا القيد مسبقًا)
+  const reverse = async (e: any) => {
+    const ok = await confirmDialog({
+      title: `عكس القيد ${e.entryNo}`,
+      message: 'سيُنشأ قيد عكسي يعكس أثر هذا القيد المرحّل بالكامل (تبديل المدين والدائن). لا يمكن عكس القيد مرتين. هل تريد المتابعة؟',
+      variant: 'warning',
+      confirmText: 'عكس',
+    })
+    if (!ok) return
+    try {
+      const res: any = await apiPost(`/api/journal/${e.id}/reverse`, {})
+      toast({ title: 'تم إنشاء القيد العكسي', description: res?.reversalNo ? `رقم القيد العكسي: ${res.reversalNo}` : undefined })
+      mutate()
+    } catch (err: any) {
+      toast({ title: 'خطأ', description: err.message, variant: 'destructive' })
+    }
+  }
+
+  // إلغاء قيد مسودة (void) — يبقى في السجل بعلامة «ملغي» دون حذفه
+  const voidEntry = async (e: any) => {
+    const ok = await confirmDialog({
+      title: `إلغاء القيد ${e.entryNo}`,
+      message: 'سيتم إلغاء القيد المسودة دون حذفه من السجل (يبقى بعلامة «ملغي»). هل تريد المتابعة؟',
+      variant: 'warning',
+      confirmText: 'إلغاء القيد',
+    })
+    if (!ok) return
+    try {
+      await apiPost(`/api/journal/${e.id}`, { reason: 'إلغاء من واجهة دفتر اليومية' })
+      toast({ title: 'تم إلغاء القيد' })
+      mutate()
+    } catch (err: any) {
+      toast({ title: 'خطأ', description: err.message, variant: 'destructive' })
+    }
+  }
+
+  // ترحيل جماعي (أداة تصحيح): قيود تسليم لكل الشحنات المسلّمة التي لا يوجد لها قيد
+  const [backfilling, setBackfilling] = React.useState(false)
+  const backfillShipments = async () => {
+    const ok = await confirmDialog({
+      title: 'ترحيل قيود الشحنات غير المرحّلة',
+      message: 'سيُنشئ النظام قيود تسليم لكل الشحنات المسلّمة التي لا يوجد لها قيد بعد، داخل معاملة واحدة مع التدقيق. هل تريد المتابعة؟',
+      variant: 'primary',
+      confirmText: 'ترحيل',
+    })
+    if (!ok) return
+    setBackfilling(true)
+    try {
+      const res: any = await apiPost('/api/journal/backfill-shipments', {})
+      toast({ title: 'تم الترحيل', description: `تم ترحيل ${res?.posted ?? 0} من ${res?.processed ?? 0}` })
+      mutate()
+    } catch (err: any) {
+      toast({ title: 'خطأ', description: err.message, variant: 'destructive' })
+    } finally {
+      setBackfilling(false)
+    }
+  }
+
   const columns = [
     { key: 'no', header: 'رقم القيد', primary: true, align: 'center' as const, width: 'w-24', render: (e: any) => <span className="font-mono text-xs font-bold">{e.entryNo}</span> },
     { key: 'date', header: 'التاريخ', hideInCard: true, align: 'center' as const, width: 'w-32', render: (e: any) => <span className="text-xs tnum">{fmtDate(e.date)}</span> },
-    { key: 'desc', header: 'البيان', hideInCard: true, render: (e: any) => <div><div className="text-sm font-medium truncate-1">{e.description || '-'}</div>{e.reference && <div className="text-[10px] text-muted-foreground">مرجع: {e.reference}</div>}</div> },
+    {
+      key: 'desc', header: 'البيان', hideInCard: true,
+      render: (e: any) => (
+        <div className="min-w-0">
+          <div className="text-sm font-medium truncate-1">{e.description || '-'}</div>
+          {e.reference && <div className="text-[10px] text-muted-foreground">مرجع: {e.reference}</div>}
+          {/* سطور القيد — مع شارة الشحنة المرتبطة إن وُجدت */}
+          {(e.lines ?? []).length > 0 && (
+            <div className="mt-1 space-y-0.5 max-h-20 overflow-y-auto no-scrollbar">
+              {(e.lines ?? []).map((l: any) => (
+                <div key={l.id} className="flex items-center gap-1.5 text-[10px] text-muted-foreground min-w-0">
+                  <span className="truncate-1 min-w-0">{[l.account?.code, l.description || l.account?.name].filter(Boolean).join(' · ')}</span>
+                  {l.shipmentNo && (
+                    <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 bg-muted/50 text-muted-foreground font-normal">
+                      شحنة: {l.shipmentNo}
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ),
+    },
     { key: 'branch', header: 'الفرع', hideInCard: true, width: 'w-32', render: (e: any) => <span className="text-xs">{e.branch?.name || '-'}</span> },
     { key: 'lines', header: 'السطور', hideInCard: true, align: 'center' as const, width: 'w-20', render: (e: any) => <Badge variant="outline" className="tnum">{e.lines?.length ?? 0}</Badge> },
     { key: 'debit', header: 'مدين', align: 'left' as const, width: 'w-28', render: (e: any) => <span className="tnum font-bold">{fmtNum(e.totalDebit)}</span> },
     { key: 'credit', header: 'دائن', align: 'left' as const, width: 'w-28', render: (e: any) => <span className="tnum font-bold">{fmtNum(e.totalCredit)}</span> },
-    { key: 'status', header: 'الحالة', align: 'center' as const, width: 'w-24', render: (e: any) => <Badge variant="outline" className={e.status === 'posted' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}>{e.status === 'posted' ? 'مرحّل' : 'مسودة'}</Badge> },
-    { key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-24', hideInCard: false, render: (e: any) => (
-      <div className="flex gap-1 justify-center">
-        {e.status === 'draft' && <Button variant="ghost" size="sm" onClick={() => post(e.id)} title="ترحيل"><Check className="size-3.5 text-emerald-600" /></Button>}
-        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(e.id)}><Trash2 className="size-3.5" /></Button>
-      </div>
-    ) },
+    {
+      key: 'status', header: 'الحالة', align: 'center' as const, width: 'w-24',
+      render: (e: any) => (
+        <div className="flex flex-col items-center gap-1">
+          <Badge variant="outline" className={
+            e.status === 'posted'
+              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+              : e.status === 'void'
+                ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                : 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+          }>
+            {e.status === 'posted' ? 'مرحّل' : e.status === 'void' ? 'ملغي' : 'مسودة'}
+          </Badge>
+          {e.status === 'posted' && !!e.reversalOfId && (
+            <Badge variant="outline" className="text-[10px] text-muted-foreground">مُعكوس</Badge>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-28', hideInCard: false,
+      render: (e: any) => {
+        // عمليات القيود تتطلب صلاحية accounting.journal (الخادم يفرضها أيضًا)
+        if (!canManage) return <span className="text-muted-foreground text-xs">—</span>
+        return (
+          <div className="flex items-center justify-center gap-0.5">
+            {e.status === 'draft' && (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => post(e.id)} title="ترحيل القيد" aria-label={`ترحيل القيد ${e.entryNo}`}>
+                  <Check className="size-3.5 text-emerald-600" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => voidEntry(e)} title="إلغاء القيد (يبقى في السجل)" aria-label={`إلغاء القيد ${e.entryNo}`}>
+                  <Ban className="size-3.5 text-amber-600" />
+                </Button>
+                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(e.id)} title="حذف القيد" aria-label={`حذف القيد ${e.entryNo}`}>
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </>
+            )}
+            {e.status === 'posted' && !e.reversalOfId && (
+              <Button variant="ghost" size="sm" onClick={() => reverse(e)} title="عكس القيد" aria-label={`عكس القيد ${e.entryNo}`}>
+                <Undo2 className="size-3.5 text-primary" />
+              </Button>
+            )}
+          </div>
+        )
+      },
+    },
   ]
 
   return (
@@ -191,13 +436,38 @@ export function JournalModule() {
               <SelectItem value="all">كل القيود</SelectItem>
               <SelectItem value="draft">مسودات فقط</SelectItem>
               <SelectItem value="posted">مرحّلة فقط</SelectItem>
+              <SelectItem value="void">الملغية فقط</SelectItem>
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">قيد جديد</span><span className="sm:hidden">جديد</span></Button>
+        <div className="flex items-center gap-2 shrink-0">
+          {canManage && (
+            <Button variant="outline" size="sm" onClick={backfillShipments} disabled={backfilling} className="shrink-0">
+              {backfilling ? <Loader2 className="size-4 animate-spin" /> : <UploadCloud className="size-4" />}
+              <span className="hidden lg:inline">ترحيل قيود الشحنات غير المرحّلة</span>
+              <span className="lg:hidden">ترحيل الشحنات</span>
+            </Button>
+          )}
+          {canManage && (
+            <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">قيد جديد</span><span className="sm:hidden">جديد</span></Button>
+          )}
+        </div>
       </div>
 
-      <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(e: any) => e.id} minW={1100} searchFn={(e, q) => (e.entryNo || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q)} searchPlaceholder="بحث برقم القيد أو البيان..." />
+      <DataTable
+        rows={data?.items ?? []}
+        columns={columns}
+        loading={isLoading}
+        getRowKey={(e: any) => e.id}
+        minW={1100}
+        searchFn={(e, q) =>
+          (e.entryNo || '').toLowerCase().includes(q) ||
+          (e.description || '').toLowerCase().includes(q) ||
+          (e.reference || '').toLowerCase().includes(q) ||
+          (e.lines ?? []).some((l: any) => (l.shipmentNo || '').toLowerCase().includes(q))
+        }
+        searchPlaceholder="بحث برقم القيد/البيان/الشحنة..."
+      />
 
       {/* Create journal entry dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
@@ -261,7 +531,7 @@ export function JournalModule() {
                     <td className="p-1"><Input type="number" className="h-8 text-left tnum" value={l.debit} onChange={(e) => setLine(i, 'debit', e.target.value)} /></td>
                     <td className="p-1"><Input type="number" className="h-8 text-left tnum" value={l.credit} onChange={(e) => setLine(i, 'credit', e.target.value)} /></td>
                     <td className="p-1"><Input className="h-8 text-xs" value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} /></td>
-                    <td className="p-1 text-center">{lines.length > 2 && <button onClick={() => removeLine(i)} className="text-destructive"><Trash2 className="size-3.5" /></button>}</td>
+                    <td className="p-1 text-center">{lines.length > 2 && <button onClick={() => removeLine(i)} className="text-destructive" aria-label="حذف السطر"><Trash2 className="size-3.5" /></button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -287,272 +557,6 @@ export function JournalModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  )
-}
-
-// === Vouchers ===
-export function VouchersModule() {
-  const { toast } = useToast()
-  const { has, user: me } = useAuth()
-  const { confirmDelete } = useConfirm()
-  const [open, setOpen] = React.useState(false)
-  const [typeFilter, setTypeFilter] = React.useState<string>('all')
-  // نجلب كل الأذونات لحساب العدّادات — والفلترة تتم محليًا
-  const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/vouchers', fetcher, { refreshInterval: 30000 })
-  const { data: parties } = useSWR<{ items: any[] }>('/api/parties', fetcher)
-  // recent shipments for optional voucher-shipment link
-  const { data: shipmentsRes } = useSWR<{ items: any[] }>('/api/shipments?pageSize=200', fetcher)
-  const shipmentsList = shipmentsRes?.items ?? []
-
-  const allVouchers = React.useMemo(() => data?.items ?? [], [data])
-  const items = React.useMemo(
-    () => (typeFilter !== 'all' ? allVouchers.filter((v: any) => v.type === typeFilter) : allVouchers),
-    [allVouchers, typeFilter],
-  )
-
-  // ==== عدّادات الأذونات ====
-  const stats = React.useMemo(() => {
-    const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-    const receipts = allVouchers.filter((v: any) => v.type === 'receipt')
-    const payments = allVouchers.filter((v: any) => v.type === 'payment')
-    const monthItems = allVouchers.filter((v: any) => v.date && new Date(v.date).toISOString() >= monthStart)
-    return {
-      total: allVouchers.length,
-      receiptCount: receipts.length,
-      receiptSum: receipts.reduce((s: number, v: any) => s + (Number(v.amount) || 0), 0),
-      paymentCount: payments.length,
-      paymentSum: payments.reduce((s: number, v: any) => s + (Number(v.amount) || 0), 0),
-      monthCount: monthItems.length,
-    }
-  }, [allVouchers])
-
-  const [printVoucher, setPrintVoucher] = React.useState<any>(null)
-
-  const [v, setV] = React.useState<any>({ type: 'receipt', partyId: '', shipmentId: '', amount: 1, description: '', date: new Date().toISOString().slice(0, 10), accountName: 'الصندوق' })
-  React.useEffect(() => { if (open) setV({ type: 'receipt', partyId: '', shipmentId: '', amount: 1, description: '', date: new Date().toISOString().slice(0, 10), accountName: 'الصندوق' }) }, [open])
-  const [err, setErr] = React.useState(''); const [loading, setLoading] = React.useState(false)
-
-  const submit = async () => {
-    setLoading(true); setErr('')
-    try {
-      const res: any = await apiPost('/api/vouchers', { ...v, amount: Number(v.amount), shipmentId: v.shipmentId || null, userName: me?.username || 'admin' })
-      toast({ title: 'تم إنشاء السند', description: `رقم الإذن: ${res?.voucherNo ?? '—'} — قُيد قيد محاسبي تلقائي` })
-      setOpen(false); mutate()
-    } catch (e: any) { setErr(e.message) } finally { setLoading(false) }
-  }
-  const del = async (id: string) => {
-    const ok = await confirmDelete({
-      title: 'حذف السند',
-      message: 'هل تريد حذف هذا السند؟ لا يمكن التراجع.',
-    })
-    if (!ok) return
-    try { await apiDelete(`/api/vouchers/${id}`); mutate(); toast({ title: 'تم الحذف' }) }
-    catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
-  }
-
-  const exportVouchers = () => {
-    if (!items?.length) { toast({ title: 'لا توجد بيانات للتصدير' }); return }
-    const rows = items.map((v: any) => ({
-      'رقم السند': v.voucherNo, 'النوع': v.type === 'receipt' ? 'قبض' : 'صرف',
-      'التاريخ': v.date ? fmtDate(v.date) : '', 'الطرف': v.party?.name ?? '',
-      'الشحنة المرتبطة': v.shipment?.shipmentNo ?? '',
-      'المبلغ': v.amount, 'الحساب': v.accountName, 'البيان': v.description ?? '',
-    }))
-    exportToCSV(rows, `vouchers-${new Date().toISOString().slice(0, 10)}.csv`)
-    toast({ title: `تم تصدير ${rows.length} سند` })
-  }
-
-  const columns = [
-    { key: 'no', header: 'رقم السند', primary: true, align: 'center' as const, width: 'w-24', render: (v: any) => <span className="font-mono text-xs font-bold">{v.voucherNo}</span> },
-    { key: 'type', header: 'النوع', align: 'center' as const, width: 'w-24', render: (v: any) => <Badge variant="outline" className={v.type === 'receipt' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'}>{v.type === 'receipt' ? 'قبض' : 'صرف'}</Badge> },
-    { key: 'date', header: 'التاريخ', hideInCard: true, align: 'center' as const, width: 'w-28', render: (v: any) => <span className="text-xs tnum">{fmtDate(v.date)}</span> },
-    { key: 'party', header: 'الطرف', hideInCard: true, width: 'w-36', render: (v: any) => <span className="text-sm font-medium truncate-1 block">{v.party?.name || '-'}</span> },
-    { key: 'shipment', header: 'الشحنة', align: 'center' as const, width: 'w-28', render: (v: any) => v.shipment?.shipmentNo ? <span className="font-mono text-xs font-bold text-primary">{v.shipment.shipmentNo}</span> : <span className="text-xs text-muted-foreground">—</span> },
-    { key: 'amount', header: 'المبلغ', align: 'left' as const, width: 'w-28', render: (v: any) => <span className="tnum font-bold">{fmtNum(v.amount)} ج.م</span> },
-    { key: 'desc', header: 'البيان', hideInCard: true, render: (v: any) => <span className="text-xs text-muted-foreground truncate-1 block">{v.description || '-'}</span> },
-    {
-      key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-24',
-      render: (v: any) => (
-        <div className="flex items-center justify-center gap-0.5">
-          <Button variant="ghost" size="sm" onClick={() => setPrintVoucher(v)} title="طباعة السند" aria-label={`طباعة السند ${v.voucherNo}`}>
-            <Printer className="size-3.5" />
-          </Button>
-          {has('accounting.vouchers.delete') && (
-            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(v.id)} title="حذف السند" aria-label={`حذف السند ${v.voucherNo}`}>
-              <Trash2 className="size-3.5" />
-            </Button>
-          )}
-        </div>
-      ),
-    },
-  ]
-
-  const pendingSettle = shipmentsList.filter((s: any) => s.collectionStatus !== 'collected' && s.customerId && s.contractorId && (s.freightTotal ?? 0) > 0)
-
-  return (
-    <div className="space-y-4">
-      {/* ==== عدّادات الأذونات ==== */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-        <Card className="py-0 gap-0">
-          <CardContent className="p-3.5 flex items-center gap-2.5">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0"><ReceiptText className="size-4.5" /></div>
-            <div className="min-w-0">
-              <div className="text-xl font-extrabold tnum leading-none">{fmtNum(stats.total)}</div>
-              <div className="text-[11px] text-muted-foreground mt-1">إجمالي الأذونات</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="py-0 gap-0">
-          <CardContent className="p-3.5 flex items-center gap-2.5">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 shrink-0"><TrendingUp className="size-4.5" /></div>
-            <div className="min-w-0">
-              <div className="text-xl font-extrabold tnum leading-none text-emerald-700 dark:text-emerald-300">{fmtNum(stats.receiptCount)}</div>
-              <div className="text-[11px] text-muted-foreground mt-1 truncate">قبض — {fmtNum(stats.receiptSum)} ج.م</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="py-0 gap-0">
-          <CardContent className="p-3.5 flex items-center gap-2.5">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 shrink-0"><TrendingDown className="size-4.5" /></div>
-            <div className="min-w-0">
-              <div className="text-xl font-extrabold tnum leading-none text-rose-700 dark:text-rose-300">{fmtNum(stats.paymentCount)}</div>
-              <div className="text-[11px] text-muted-foreground mt-1 truncate">صرف — {fmtNum(stats.paymentSum)} ج.م</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="py-0 gap-0">
-          <CardContent className="p-3.5 flex items-center gap-2.5">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 shrink-0"><CalendarDays className="size-4.5" /></div>
-            <div className="min-w-0">
-              <div className="text-xl font-extrabold tnum leading-none">{fmtNum(stats.monthCount)}</div>
-              <div className="text-[11px] text-muted-foreground mt-1">أذونات هذا الشهر</div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <Landmark className="size-5 text-muted-foreground shrink-0" />
-          <span className="text-sm text-muted-foreground tnum shrink-0">{items.length} سند معروض</span>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-28 sm:w-32 h-8 min-w-0"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">الكل</SelectItem>
-              <SelectItem value="receipt">قبض</SelectItem>
-              <SelectItem value="payment">صرف</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={exportVouchers} disabled={!items?.length} className="shrink-0">
-            <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">تصدير</span>
-          </Button>
-          {has('accounting.vouchers.create') && (
-            <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">سند جديد</span><span className="sm:hidden">جديد</span></Button>
-          )}
-        </div>
-      </div>
-      <DataTable rows={items} columns={columns} loading={isLoading} getRowKey={(v: any) => v.id} minW={950} searchFn={(v: any, q: string) => (v.voucherNo || '').toLowerCase().includes(q) || (v.party?.name || '').toLowerCase().includes(q) || (v.shipment?.shipmentNo || '').toLowerCase().includes(q)} searchPlaceholder="بحث برقم السند/الطرف/الشحنة..." />
-
-      {/* Quick COD settlement panel — show shipments ready to settle */}
-      {has('shipments.settle') && (
-        <Card className="print:hidden">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2"><Landmark className="size-4" /> تسوية سريعة للشحنات (COD)</CardTitle>
-            <CardDescription>شحنات لم تُسوَّ بعد ولها عميل ومقاول — يصدر النظام سند قبض من العميل وسند صرف للمقاول دفعة واحدة.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-3">
-            <div className="space-y-2 max-h-72 overflow-y-auto no-scrollbar">
-              {pendingSettle.slice(0, 20).map((s: any) => {
-                const margin = (s.freightTotal ?? 0) - (s.totalSuppliers ?? 0)
-                return (
-                  <div key={s.id} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border hover:bg-muted/30 text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-mono text-xs font-bold shrink-0">{s.shipmentNo}</span>
-                      <span className="text-xs text-muted-foreground truncate-1">{s.customer?.name || s.recipientName}</span>
-                      <span className="text-xs text-muted-foreground truncate-1 hidden sm:inline">→ {s.contractor?.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="tnum text-xs text-muted-foreground">هامش: <b className={margin >= 0 ? 'text-emerald-700' : 'text-rose-700'}>{fmtNum(margin)}</b></span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={async () => {
-                          try {
-                            const res = await apiPost(`/api/shipments/${s.id}/settle-cod`, {
-                              customerAmount: s.freightTotal ?? 0,
-                              contractorAmount: s.totalSuppliers ?? 0,
-                              userName: me?.username || 'admin',
-                            })
-                            toast({ title: 'تمت تسوية COD', description: `قبض ${res.receiptVoucherNo ?? '—'} • صرف ${res.paymentVoucherNo ?? '—'}` })
-                            mutate()
-                          } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
-                        }}
-                      >
-                        تسوية
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
-              {pendingSettle.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-6">لا توجد شحنات معلقة للتسوية.</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>سند قبض/صرف</DialogTitle><DialogDescription>يسجل في الصندوق أو البنك ويرتبط بالطرف — ويمكن ربطه اختياريًا بشحنة محددة.</DialogDescription></DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
-            <div className="sm:col-span-2">
-              <label className="text-xs font-medium">نوع السند *</label>
-              <Select value={v.type} onValueChange={(val) => setV({ ...v, type: val })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="receipt">سند قبض (تحصيل)</SelectItem>
-                  <SelectItem value="payment">سند صرف (سداد)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="text-xs font-medium">الطرف *</label>
-              <Select value={v.partyId} onValueChange={(val) => setV({ ...v, partyId: val })}>
-                <SelectTrigger><SelectValue placeholder="اختر الطرف..." /></SelectTrigger>
-                <SelectContent>{(parties?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="text-xs font-medium">شحنة مرتبطة (اختياري)</label>
-              <Select value={v.shipmentId} onValueChange={(val) => setV({ ...v, shipmentId: val === '__' ? '' : val })}>
-                <SelectTrigger><SelectValue placeholder="— بدون شحنة —" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__">— بدون شحنة —</SelectItem>
-                  {shipmentsList.map((s) => <SelectItem key={s.id} value={s.id}>{s.shipmentNo} — {s.customer?.name || s.recipientName || '-'} — {s.destination ?? '-'}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <p className="text-[10px] text-muted-foreground mt-0.5">يربط السند بالشحنة المحددة — يظهر في تفاصيل الشحنة وتقارير التسويات.</p>
-            </div>
-            <div><label className="text-xs font-medium">المبلغ *</label><Input type="number" value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} /></div>
-            <div><label className="text-xs font-medium">التاريخ</label><Input type="date" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} /></div>
-            <div><label className="text-xs font-medium">الحساب (صندوق/بنك)</label><Input value={v.accountName} onChange={(e) => setV({ ...v, accountName: e.target.value })} /></div>
-            <div className="sm:col-span-2"><label className="text-xs font-medium">البيان</label><Textarea value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} rows={2} /></div>
-          </div>
-          {err && <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{err}</div>}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>إلغاء</Button>
-            <Button onClick={submit} disabled={loading || !v.partyId}>{loading ? 'جاري...' : 'حفظ السند'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* طباعة السند */}
-      <VoucherPrint voucher={printVoucher} open={!!printVoucher} onOpenChange={(o) => !o && setPrintVoucher(null)} />
     </div>
   )
 }

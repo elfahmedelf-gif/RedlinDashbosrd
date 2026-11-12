@@ -3,17 +3,24 @@ import { requirePerm, requireUser } from '@/lib/server/session'
 import { ensureSeeded } from '@/lib/server/seed'
 import { logAudit } from '@/lib/server/audit'
 import { db } from '@/lib/db'
+import { canSeePrices } from '@/lib/server/prices'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * قائمة أسعار النولون — الأسعار (cost/sellPrice/sellPrice2) تُخفى على الخادم
+ * لغير المصرح لهم (prices.view) — كانت تتسرب لكل المستخدمين
+ */
 export async function GET(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    await requireUser(req)
+    const user = await requireUser(req)
+    const canPrices = canSeePrices(user)
     const q = (new URL(req.url).searchParams.get('q') ?? '').trim().toLowerCase()
     let rows = await db.freightPrice.findMany({ orderBy: { createdAt: 'desc' } })
     if (q) rows = rows.filter((r) => [r.regionAr, r.regionEn, r.routeName].some((f) => String(f ?? '').toLowerCase().includes(q)))
-    return { items: rows, total: rows.length }
+    const items = rows.map((r) => (canPrices ? r : { ...r, cost: null, sellPrice: null, sellPrice2: null }))
+    return { items, total: items.length, canPrices }
   })
 }
 

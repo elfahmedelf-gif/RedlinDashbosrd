@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { Plus, PackageSearch, Filter, X, Search, Printer, ArrowLeft, Trash2, FileSpreadsheet, CheckSquare, Square, Layers, Banknote, Link2, Truck } from 'lucide-react'
+import { Plus, PackageSearch, Filter, X, Search, Printer, ArrowLeft, Trash2, FileSpreadsheet, CheckSquare, Layers, Banknote, Link2, Truck, Pencil } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -18,14 +18,23 @@ import { Textarea } from '@/components/ui/textarea'
 import { WaybillPrint } from '../waybill-print'
 import { EntityFormDialog } from '../entity-dialog'
 import { DataTablePagination } from '../data-table-pagination'
-import { fetcher, apiPost, apiDelete } from '@/lib/api'
+import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import { exportToCSV } from '@/lib/export'
 import { fmtNum, fmtDate, fmtDateTime } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import { useLookup } from '@/lib/lookups'
 import { cn } from '@/lib/utils'
-import { useCanPrices } from '../auth-provider'
+import { useAuth, useCanPrices } from '../auth-provider'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+// كتالوج آلة حالات الشحنة الصارمة — مصدر واحد للخادم والواجهة
+import {
+  SHIPMENT_STATUSES,
+  allowedShipmentTransitions,
+  canTransitionShipment,
+  isTerminalShipmentStatus,
+  shipmentStatusDef,
+  shipmentStatusLabel,
+} from '@/lib/shipment-catalog'
 
 interface PartyLite { id: string; name: string }
 interface Shipment {
@@ -43,6 +52,26 @@ interface Shipment {
 }
 
 interface ShipmentsResponse { items: Shipment[]; total: number; page: number; totalPages: number }
+
+// قوائم الحقول القابلة للتعديل — متوافقة مع القائمة البيضاء على الخادم (PATCH /api/shipments/{id})
+const SHIPMENT_EDIT_TEXT_FIELDS = [
+  'billNo', 'recipientName', 'deliveryPhones', 'destination', 'destinationEn', 'routeCode',
+  'loadType', 'customerId', 'contractorId', 'branchId', 'warehouseId', 'notes', 'vehicleNo', 'shipToParty',
+] as const
+const SHIPMENT_EDIT_NUM_FIELDS = [
+  'freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay',
+  'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'policyQty',
+] as const
+
+// نموذج الإنشاء الفارغ — الحالة تُفرض دائمًا من الخادم (جديدة)
+function emptyCreateForm(): any {
+  return {
+    recipientName: '', destination: '', loadType: '', customerId: '', contractorId: '',
+    branchId: '', warehouseId: '', date: new Date().toISOString().slice(0, 10),
+    freightCost: '', freightTotal: '', notes: '',
+    salePrice: '', customerPay: '', aging: '', overnight: '', returns: '', transfer: '', other: '', drop: '', policyQty: '',
+  }
+}
 
 export function ShipmentsModule() {
   const { toast } = useToast()
@@ -68,6 +97,8 @@ export function ShipmentsModule() {
   const [selected, setSelected] = React.useState<string | null>(null)
   // bulk selection + actions
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
+  // حالة كل شحنة محددة وقت التحديد — لحساب تقاطع الانتقالات المسموحة في التغيير الجماعي
+  const [selectedStatuses, setSelectedStatuses] = React.useState<Map<string, string>>(new Map())
   const [bulkActionOpen, setBulkActionOpen] = React.useState<null | 'status' | 'assign'>(null)
   const [bulkStatus, setBulkStatus] = React.useState('')
   const [bulkContractor, setBulkContractor] = React.useState('')
@@ -112,29 +143,38 @@ export function ShipmentsModule() {
   const allOnPageSelected = pageItems.length > 0 && pageIds.every((id) => selectedIds.has(id))
   const someSelected = pageIds.some((id) => selectedIds.has(id))
   const toggleAll = () => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (allOnPageSelected) {
-        for (const id of pageIds) next.delete(id)
-      } else {
-        for (const id of pageIds) next.add(id)
-      }
-      return next
-    })
+    if (allOnPageSelected) {
+      setSelectedIds((prev) => { const next = new Set(prev); for (const id of pageIds) next.delete(id); return next })
+      setSelectedStatuses((prev) => { const next = new Map(prev); for (const id of pageIds) next.delete(id); return next })
+    } else {
+      setSelectedIds((prev) => { const next = new Set(prev); for (const id of pageIds) next.add(id); return next })
+      setSelectedStatuses((prev) => { const next = new Map(prev); for (const s of pageItems) next.set(s.id, s.status); return next })
+    }
   }
-  const toggleOne = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
+  const toggleOne = (id: string, status?: string) => {
+    if (selectedIds.has(id)) {
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next })
+      setSelectedStatuses((prev) => { const next = new Map(prev); next.delete(id); return next })
+    } else {
+      setSelectedIds((prev) => { const next = new Set(prev); next.add(id); return next })
+      if (status) setSelectedStatuses((prev) => { const next = new Map(prev); next.set(id, status); return next })
+    }
   }
-  const clearSelection = () => setSelectedIds(new Set())
+  const clearSelection = () => { setSelectedIds(new Set()); setSelectedStatuses(new Map()) }
+
+  // الانتقالات المسموحة المشتركة بين كل الشحنات المحددة (تقاطع آلة الحالات الصارمة)
+  const bulkAllowedOptions = React.useMemo(() => {
+    if (bulkActionOpen !== 'status' || selectedIds.size === 0) return []
+    const ids = Array.from(selectedIds)
+    return SHIPMENT_STATUSES.filter((s) => ids.every((id) => canTransitionShipment(selectedStatuses.get(id), s.key)))
+  }, [bulkActionOpen, selectedIds, selectedStatuses])
+  // تقاطع فارغ = لا يمكن تطبيق انتقال موحّد على التحديد الحالي
+  const bulkBlocked = bulkActionOpen === 'status' && selectedIds.size > 0 && bulkAllowedOptions.length === 0
 
   const runBulkStatus = async () => {
-    if (!bulkStatus || selectedIds.size === 0) return
+    if (!bulkStatus || selectedIds.size === 0 || bulkBlocked) return
     // تأكيد قبل التغيير الجماعي للحالة — تشغيلية جوهرية (primary)
-    const targetLabel = STATUS_LABEL[bulkStatus]?.label ?? bulkStatus
+    const targetLabel = STATUS_LABEL[bulkStatus]?.label ?? shipmentStatusLabel(bulkStatus)
     const ok = await confirmDialog({
       title: 'تغيير حالة الشحنات المحددة',
       message: `سيتم تغيير حالة ${selectedIds.size} شحنة إلى «${targetLabel}». هل تريد المتابعة؟`,
@@ -142,18 +182,39 @@ export function ShipmentsModule() {
       confirmText: 'تغيير الحالة',
     })
     if (!ok) return
+    const ids = Array.from(selectedIds)
     try {
-      await apiPost('/api/shipments/bulk/status', { ids: Array.from(selectedIds), status: bulkStatus, notes: bulkNotes, userName: 'admin' })
-      toast({ title: `تم تحديث حالة ${selectedIds.size} شحنة` })
-      setBulkActionOpen(null); setBulkStatus(''); setBulkNotes(''); clearSelection(); mutate()
+      // الخادم يفرض آلة الحالات لكل شحنة ويعيد نتيجة لكل معرف
+      const res = await apiPost('/api/shipments/bulk/status', { ids, status: bulkStatus, notes: bulkNotes })
+      const total = Number(res?.total ?? ids.length)
+      const count = Number(res?.count ?? 0)
+      const failures = (Array.isArray(res?.results) ? res.results : []).filter((r: any) => !r?.ok)
+      toast({
+        title: `نجح ${fmtNum(count)} من ${fmtNum(total)}`,
+        description: failures.length ? failures.slice(0, 2).map((f: any) => f.reason).filter(Boolean).join(' • ') : undefined,
+        variant: count === 0 ? 'destructive' : 'default',
+      })
+      setBulkActionOpen(null); setBulkStatus(''); setBulkNotes('')
+      if (failures.length) {
+        // إبقاء الشحنات التي فشلت محددة لإعادة المحاولة بحالة أخرى
+        const failedIds: string[] = failures.map((f: any) => f.id)
+        setSelectedIds(new Set(failedIds))
+        setSelectedStatuses((prev) => {
+          const next = new Map<string, string>()
+          for (const fid of failedIds) { const st = prev.get(fid); if (st) next.set(fid, st) }
+          return next
+        })
+      } else clearSelection()
+      mutate()
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }
 
   const runBulkAssign = async () => {
     if (!bulkContractor || selectedIds.size === 0) return
+    const ids = Array.from(selectedIds)
     try {
-      await apiPost('/api/shipments/bulk/assign', { ids: Array.from(selectedIds), contractorId: bulkContractor, userName: 'admin' })
-      toast({ title: `تم إسناد ${selectedIds.size} شحنة للمقاول` })
+      const res = await apiPost('/api/shipments/bulk/assign', { ids, contractorId: bulkContractor })
+      toast({ title: `تم إسناد ${fmtNum(res?.count ?? ids.length)} من ${fmtNum(res?.total ?? ids.length)} شحنة للمقاول` })
       setBulkActionOpen(null); setBulkContractor(''); clearSelection(); mutate()
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }
@@ -181,7 +242,7 @@ export function ShipmentsModule() {
     toast({ title: `تم تصدير ${rows.length} شحنة` })
   }
 
-  if (selected) return <ShipmentDetail id={selected} onBack={() => setSelected(null)} />
+  if (selected) return <ShipmentDetail id={selected} onBack={() => setSelected(null)} onChanged={() => mutate()} />
 
   return (
     <div className="space-y-4">
@@ -193,13 +254,13 @@ export function ShipmentsModule() {
           {q && <button onClick={() => setQ('')} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground shrink-0"><X className="size-4" /></button>}
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters((v) => !v)} className="flex-1 sm:flex-none">
+          <Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters((v) => !v)} className="flex-1 sm:flex-none min-h-[40px]">
             <Filter className="size-4" /> تصفية
           </Button>
-          <Button variant="outline" onClick={exportShipments} className="flex-1 sm:flex-none" disabled={!pageItems.length}>
+          <Button variant="outline" onClick={exportShipments} className="flex-1 sm:flex-none min-h-[40px]" disabled={!pageItems.length}>
             <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">تصدير</span>
           </Button>
-          <Button onClick={() => setAddOpen(true)} className="flex-1 sm:flex-none">
+          <Button onClick={() => setAddOpen(true)} className="flex-1 sm:flex-none min-h-[40px]">
             <Plus className="size-4" /> <span className="hidden sm:inline">شحنة جديدة</span><span className="sm:hidden">جديد</span>
           </Button>
         </div>
@@ -212,10 +273,10 @@ export function ShipmentsModule() {
             <span className="text-sm font-medium tnum">{selectedIds.size} شحنة محددة</span>
             <Button variant="ghost" size="sm" onClick={clearSelection} className="text-muted-foreground"><X className="size-3.5" /> إلغاء التحديد</Button>
             <div className="flex-1" />
-            <Button variant="outline" size="sm" onClick={() => setBulkActionOpen('status')}>
+            <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => { setBulkStatus(''); setBulkActionOpen('status') }}>
               <CheckSquare className="size-3.5" /> تغيير الحالة دفعة
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setBulkActionOpen('assign')}>
+            <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => { setBulkContractor(''); setBulkActionOpen('assign') }}>
               <Truck className="size-3.5" /> إسناد لمقاول
             </Button>
           </CardContent>
@@ -268,7 +329,7 @@ export function ShipmentsModule() {
             const sizeTone = s.loadType === '1.5TON' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
               : s.loadType === '3TON' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300'
               : 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
-            const sMeta = STATUS_LABEL[s.status] || { label: s.status, tone: '' }
+            const sMeta = STATUS_LABEL[s.status] || { label: shipmentStatusLabel(s.status), tone: shipmentStatusDef(s.status)?.tone || '' }
             const isSel = selectedIds.has(s.id)
             return (
               <div
@@ -279,7 +340,7 @@ export function ShipmentsModule() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2 min-w-0 flex-1">
                     <button
-                      onClick={(e) => { e.stopPropagation(); toggleOne(s.id) }}
+                      onClick={(e) => { e.stopPropagation(); toggleOne(s.id, s.status) }}
                       className={cn('shrink-0 mt-0.5 size-5 rounded-md border-2 flex items-center justify-center', isSel ? 'border-primary bg-primary text-primary-foreground' : 'border-slate-300 dark:border-slate-600')}
                       aria-label="تحديد"
                     >
@@ -386,14 +447,14 @@ export function ShipmentsModule() {
                   const sizeTone = s.loadType === '1.5TON' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
                     : s.loadType === '3TON' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300'
                     : 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
-                  const sMeta = STATUS_LABEL[s.status] || { label: s.status, tone: '' }
+                  const sMeta = STATUS_LABEL[s.status] || { label: shipmentStatusLabel(s.status), tone: shipmentStatusDef(s.status)?.tone || '' }
                   const margin = (s.freightTotal ?? 0) - (s.totalSuppliers ?? 0)
                   const isSel = selectedIds.has(s.id)
                   return (
                     <tr key={s.id} className={cn('border-t border-border hover:bg-muted/40', i % 2 ? 'bg-card' : 'bg-muted/15', isSel && 'bg-primary/10')}>
                       <td className="px-2 py-3 align-middle text-center print:hidden">
                         <button
-                          onClick={(e) => { e.stopPropagation(); toggleOne(s.id) }}
+                          onClick={(e) => { e.stopPropagation(); toggleOne(s.id, s.status) }}
                           aria-label="تحديد"
                           className={cn('inline-flex items-center justify-center size-5 rounded-md border-2', isSel ? 'border-primary bg-primary text-primary-foreground' : 'border-slate-300 dark:border-slate-600')}
                         >
@@ -502,17 +563,25 @@ export function ShipmentsModule() {
             <DialogDescription>سيتم تحديث حالة جميع الشحنات المحددة إلى الحالة الجديدة وإضافة سجل لكل شحنة.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <Select value={bulkStatus} onValueChange={setBulkStatus}>
-              <SelectTrigger><SelectValue placeholder="اختر الحالة الجديدة..." /></SelectTrigger>
-              <SelectContent>
-                {statusItems.map((i) => <SelectItem key={i.key} value={i.key}>{i.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {bulkBlocked ? (
+              <div className="text-xs leading-relaxed text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-900/50">
+                لا توجد انتقالات حالة متاحة مشتركة للشحنات المحددة — حالاتها الحالية لا تلتقي عند انتقال موحّد (بعضها قد يكون في حالة نهائية مثل ملغاة/مشطوبة).
+              </div>
+            ) : (
+              <Select value={bulkStatus} onValueChange={setBulkStatus}>
+                <SelectTrigger><SelectValue placeholder="اختر الحالة الجديدة (الانتقالات المسموحة فقط)..." /></SelectTrigger>
+                <SelectContent>
+                  {bulkAllowedOptions.map((o) => (
+                    <SelectItem key={o.key} value={o.key}>{STATUS_LABEL[o.key]?.label ?? o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Textarea value={bulkNotes} onChange={(e) => setBulkNotes(e.target.value)} placeholder="ملاحظات للسجل (اختياري)..." rows={2} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkActionOpen(null)}>إلغاء</Button>
-            <Button onClick={runBulkStatus} disabled={!bulkStatus}>تطبيق على {selectedIds.size} شحنة</Button>
+            <Button onClick={runBulkStatus} disabled={!bulkStatus || bulkBlocked}>تطبيق على {selectedIds.size} شحنة</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -543,6 +612,8 @@ export function ShipmentsModule() {
 
 function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (v: boolean) => void; onCreated: () => void }) {
   const { toast } = useToast()
+  // صلاحية رؤية الأسعار — تتحكم في إظهار حقول المبالغ ومحرك التسعير التلقائي
+  const canPrices = useCanPrices()
   const [loading, setLoading] = React.useState(false)
   const [err, setErr] = React.useState('')
   const { data: parties } = useSWR<{ items: any[] }>('/api/parties?type=customer', fetcher)
@@ -550,26 +621,56 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
   const { data: branches } = useSWR<{ items: any[] }>('/api/branches', fetcher)
   const { data: warehousesRes } = useSWR<{ items: any[] }>('/api/warehouses', fetcher)
   const { items: loadTypeItems } = useLookup('load_type')
-  const { items: statusItemsForCreate } = useLookup('shipment_status')
-  const STATUS_OPTIONS_CREATE = statusItemsForCreate.map((i) => ({ value: i.key, label: i.label }))
   const LOAD_TYPE_OPTIONS = loadTypeItems.map((i) => ({ value: i.key, label: i.label }))
 
-  const [v, setV] = React.useState<any>({
-    recipientName: '', destination: '', loadType: '', customerId: '', contractorId: '',
-    branchId: '', warehouseId: '', date: new Date().toISOString().slice(0, 10),
-    freightCost: '', freightTotal: '', notes: '', status: 'new',
-  })
+  const [v, setV] = React.useState<any>(emptyCreateForm())
+  // محرك التسعير التلقائي: تتبّع تعديل المستخدم لحقل النولون + السعر المقترح من جدول النولون
+  const freightTouchedRef = React.useRef(false)
+  const [suggested, setSuggested] = React.useState<{ routeName: string; sellPrice: number } | null>(null)
+  const quoteSeqRef = React.useRef(0)
+
   React.useEffect(() => {
     if (open) {
-      setV({ recipientName: '', destination: '', loadType: '', customerId: '', contractorId: '', branchId: '', warehouseId: '', date: new Date().toISOString().slice(0, 10), freightCost: '', freightTotal: '', notes: '', status: 'new' })
+      setV(emptyCreateForm())
+      freightTouchedRef.current = false
+      setSuggested(null)
       setErr('')
     }
   }, [open])
 
+  // محرك التسعير — يجلب السعر المقترح من جدول النولون (لمن يملك صلاحية الأسعار فقط)
+  const lookupQuote = React.useCallback(async (dest: string, lt: string) => {
+    const destination = String(dest ?? '').trim()
+    if (!destination || !canPrices) { setSuggested(null); return }
+    const seq = ++quoteSeqRef.current
+    try {
+      const res = await fetcher(`/api/freight/quote?destination=${encodeURIComponent(destination)}&loadType=${encodeURIComponent(String(lt ?? ''))}`)
+      if (seq !== quoteSeqRef.current) return
+      const price = res?.matched ? res.price : null
+      // تعبئة تلقائية فقط إذا كان الحقل فارغًا أو لم يلمسه المستخدم — لا نكتب أبدًا فوق إدخال يدوي
+      if (price && price.sellPrice != null && !freightTouchedRef.current) {
+        setV((prev: any) => ({ ...prev, freightTotal: String(price.sellPrice) }))
+        setSuggested({ routeName: String(price.routeName ?? price.regionAr ?? ''), sellPrice: Number(price.sellPrice) })
+      } else {
+        setSuggested(null)
+      }
+    } catch { /* تجاهل أخطاء التسعير — الإدخال اليدوي يبقى متاحًا */ }
+  }, [canPrices])
+
+  // استدعاء التسعير تلقائيًا (debounce 400ms) عند تغيير الوجهة أو نوع الحمولة
+  React.useEffect(() => {
+    if (!open || !canPrices) return
+    const dest = String(v.destination ?? '').trim()
+    if (!dest) { setSuggested(null); return }
+    const t = setTimeout(() => { lookupQuote(v.destination, v.loadType) }, 400)
+    return () => clearTimeout(t)
+  }, [open, canPrices, v.destination, v.loadType, lookupQuote])
+
   const submit = async () => {
     setLoading(true); setErr('')
     try {
-      await apiPost('/api/shipments', { ...v, userName: 'admin' })
+      // الحالة تُفرض دائمًا من الخادم (جديدة) — ونمرر الحقول المالية الكاملة
+      await apiPost('/api/shipments', { ...v })
       onOpenChange(false); onCreated()
     } catch (e: any) { setErr(e.message) } finally { setLoading(false) }
   }
@@ -594,7 +695,12 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
           </div>
           <div>
             <label className="text-xs font-medium">الوجهة (المدينة)</label>
-            <Input value={v.destination} onChange={(e) => setV({ ...v, destination: e.target.value })} placeholder="القاهرة، الإسكندرية..." />
+            <Input
+              value={v.destination}
+              onChange={(e) => setV({ ...v, destination: e.target.value })}
+              onBlur={() => lookupQuote(v.destination, v.loadType)}
+              placeholder="القاهرة، الإسكندرية..."
+            />
           </div>
           <div>
             <label className="text-xs font-medium">نوع الحمولة</label>
@@ -640,22 +746,79 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
             <label className="text-xs font-medium">تاريخ الشحن</label>
             <Input type="date" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} />
           </div>
+          {canPrices && (
+            <div>
+              <label className="text-xs font-medium">تكلفة النولون</label>
+              <Input type="number" value={v.freightCost} onChange={(e) => setV({ ...v, freightCost: e.target.value })} placeholder="0" />
+            </div>
+          )}
+          {canPrices && (
+            <div>
+              <label className="text-xs font-medium">إجمالي النولون</label>
+              <Input
+                type="number"
+                value={v.freightTotal}
+                onChange={(e) => { freightTouchedRef.current = true; setSuggested(null); setV({ ...v, freightTotal: e.target.value }) }}
+                onBlur={() => lookupQuote(v.destination, v.loadType)}
+                placeholder="0"
+              />
+              {/* سعر مقترح من محرك التسعير — مع إمكانية التراجع */}
+              {suggested && (
+                <div className="flex items-center justify-between gap-2 mt-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 dark:border-emerald-900/50 dark:bg-emerald-900/20">
+                  <span className="text-[11px] text-emerald-700 truncate-1 dark:text-emerald-300">
+                    سعر مقترح من جدول النولون: {suggested.routeName} — {fmtNum(suggested.sellPrice)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setV((prev: any) => ({ ...prev, freightTotal: '' })); setSuggested(null) }}
+                    className="shrink-0 min-h-[40px] px-2 text-[11px] font-medium text-emerald-800 underline-offset-2 hover:underline dark:text-emerald-200"
+                  >
+                    تراجع
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {/* الحقول المالية الممتدة — تُعرض فقط لمن يملك صلاحية الأسعار */}
+          {canPrices && (
+            <>
+              <div>
+                <label className="text-xs font-medium">سعر البيع</label>
+                <Input type="number" value={v.salePrice} onChange={(e) => setV({ ...v, salePrice: e.target.value })} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">مدفوع من العميل</label>
+                <Input type="number" value={v.customerPay} onChange={(e) => setV({ ...v, customerPay: e.target.value })} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">تعتيق</label>
+                <Input type="number" value={v.aging} onChange={(e) => setV({ ...v, aging: e.target.value })} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">مبيت</label>
+                <Input type="number" value={v.overnight} onChange={(e) => setV({ ...v, overnight: e.target.value })} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">مرتجعات</label>
+                <Input type="number" value={v.returns} onChange={(e) => setV({ ...v, returns: e.target.value })} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">تحويلة</label>
+                <Input type="number" value={v.transfer} onChange={(e) => setV({ ...v, transfer: e.target.value })} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">أخرى</label>
+                <Input type="number" value={v.other} onChange={(e) => setV({ ...v, other: e.target.value })} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">دروب</label>
+                <Input type="number" value={v.drop} onChange={(e) => setV({ ...v, drop: e.target.value })} placeholder="0" />
+              </div>
+            </>
+          )}
           <div>
-            <label className="text-xs font-medium">الحالة</label>
-            <Select value={v.status} onValueChange={(val) => setV({ ...v, status: val })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS_CREATE.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs font-medium">تكلفة النولون</label>
-            <Input type="number" value={v.freightCost} onChange={(e) => setV({ ...v, freightCost: e.target.value })} placeholder="0" />
-          </div>
-          <div>
-            <label className="text-xs font-medium">إجمالي النولون</label>
-            <Input type="number" value={v.freightTotal} onChange={(e) => setV({ ...v, freightTotal: e.target.value })} placeholder="0" />
+            <label className="text-xs font-medium">عدد القطع</label>
+            <Input type="number" value={v.policyQty} onChange={(e) => setV({ ...v, policyQty: e.target.value })} placeholder="0" />
           </div>
           <div className="sm:col-span-2">
             <label className="text-xs font-medium">ملاحظات</label>
@@ -672,14 +835,24 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
   )
 }
 
-function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
+function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => void; onChanged?: () => void }) {
   const { toast } = useToast()
+  const { has } = useAuth()
   const { confirmDelete, confirm: confirmDialog } = useConfirm()
   // صلاحية رؤية الأسعار — تتحكم في إظهار المبالغ المالية في بطاقة الشحنة
   const canPrices = useCanPrices()
+  // صلاحيات التشغيل — يفرضها الخادم أيضًا (تعديل الحقول البيضاء / تغيير الحالة)
+  const canEdit = has('shipments.edit')
+  const canChangeStatus = has('shipments.status')
   const { data: shipment, mutate } = useSWR<any>(`/api/shipments/${id}`, fetcher)
   const { items: statusItems } = useLookup('shipment_status')
   const { items: collectionItems } = useLookup('collection_status')
+  // خيارات نافذة التعديل — أطراف/فروع/مخازن/أنواع الحمولة
+  const { data: editParties } = useSWR<{ items: any[] }>('/api/parties?type=customer', fetcher)
+  const { data: editContractors } = useSWR<{ items: any[] }>('/api/parties?type=contractor', fetcher)
+  const { data: editBranches } = useSWR<{ items: any[] }>('/api/branches', fetcher)
+  const { data: editWarehouses } = useSWR<{ items: any[] }>('/api/warehouses', fetcher)
+  const { items: editLoadTypes } = useLookup('load_type')
   const [statusOpen, setStatusOpen] = React.useState(false)
   const [newStatus, setNewStatus] = React.useState('')
   const [statusNotes, setStatusNotes] = React.useState('')
@@ -687,6 +860,11 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [codOpen, setCodOpen] = React.useState(false)
   const [codCustomerAmount, setCodCustomerAmount] = React.useState('')
   const [codContractorAmount, setCodContractorAmount] = React.useState('')
+  // نافذة تعديل الشحنة — الحقول البيضاء المتوافقة مع الخادم
+  const [editOpen, setEditOpen] = React.useState(false)
+  const [editLoading, setEditLoading] = React.useState(false)
+  const [editErr, setEditErr] = React.useState('')
+  const [ev, setEv] = React.useState<any>(null)
 
   React.useEffect(() => {
     if (shipment && codOpen) {
@@ -706,11 +884,18 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const sMeta = STATUS_LOOKUP[shipment.status] || { label: shipment.status, tone: '' }
   const cMeta = COLLECTION_LOOKUP[shipment.collectionStatus] || { label: shipment.collectionStatus, tone: '' }
   const margin = (Number(shipment.freightTotal ?? 0)) - (Number(shipment.totalSuppliers ?? 0))
+  // آلة الحالات الصارمة: الحالات النهائية لا تقبل التغيير، والانتقالات تقتصر على الجدول المعتمد
+  const isTerminal = isTerminalShipmentStatus(shipment.status)
+  const allowedNext = allowedShipmentTransitions(shipment.status).map((key) => ({
+    key,
+    label: STATUS_LOOKUP[key]?.label ?? shipmentStatusLabel(key),
+    tone: STATUS_LOOKUP[key]?.tone || shipmentStatusDef(key)?.tone || '',
+  }))
 
   const changeStatus = async () => {
-    if (!newStatus) return
+    if (!newStatus || isTerminal) return
     // تأكيد قبل تغيير الحالة — تشغيلية جوهرية (primary)
-    const targetLabel = STATUS_LOOKUP[newStatus]?.label ?? newStatus
+    const targetLabel = STATUS_LOOKUP[newStatus]?.label ?? shipmentStatusLabel(newStatus)
     const ok = await confirmDialog({
       title: 'تغيير حالة الشحنة',
       message: `سيتم تغيير حالة الشحنة إلى «${targetLabel}». هل تريد المتابعة؟`,
@@ -719,11 +904,15 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
     })
     if (!ok) return
     try {
-      await apiPost(`/api/shipments/${id}/status`, { status: newStatus, notes: statusNotes, userName: 'admin' })
+      // الخادم يفرض آلة الحالات — 409 برسالة عربية عند انتقال غير مسموح
+      await apiPost(`/api/shipments/${id}/status`, { status: newStatus, notes: statusNotes })
       toast({ title: 'تم تحديث الحالة' })
       setStatusOpen(false); setNewStatus(''); setStatusNotes('')
       mutate()
-    } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+      onChanged?.()
+    } catch (e: any) {
+      toast({ title: 'تعذّر تغيير الحالة', description: e.message, variant: 'destructive' })
+    }
   }
 
   const settleCOD = async () => {
@@ -731,11 +920,11 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
       const res = await apiPost(`/api/shipments/${id}/settle-cod`, {
         customerAmount: Number(codCustomerAmount) || 0,
         contractorAmount: Number(codContractorAmount) || 0,
-        userName: 'admin',
       })
       toast({ title: 'تمت تسوية COD', description: `قبض ${res.receiptVoucherNo ?? '—'} • صرف ${res.paymentVoucherNo ?? '—'}` })
       setCodOpen(false)
       mutate()
+      onChanged?.()
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }
 
@@ -748,20 +937,75 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
     try {
       await apiDelete(`/api/shipments/${id}`)
       toast({ title: 'تم الحذف' })
+      onChanged?.()
       onBack()
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+  }
+
+  // فتح نافذة التعديل — تعبئة الحقول البيضاء فقط (المبالغ لمن يملك صلاحية الأسعار)
+  const openEdit = () => {
+    if (!shipment) return
+    setEv({
+      billNo: shipment.billNo ?? '', recipientName: shipment.recipientName ?? '', deliveryPhones: shipment.deliveryPhones ?? '',
+      destination: shipment.destination ?? '', destinationEn: shipment.destinationEn ?? '', routeCode: shipment.routeCode ?? '',
+      loadType: shipment.loadType ?? '', customerId: shipment.customerId ?? '', contractorId: shipment.contractorId ?? '',
+      branchId: shipment.branchId ?? '', warehouseId: shipment.warehouseId ?? '', notes: shipment.notes ?? '',
+      vehicleNo: shipment.vehicleNo ?? '', shipToParty: shipment.shipToParty ?? '',
+      ...(canPrices ? {
+        freightCost: shipment.freightCost ?? '', freightTotal: shipment.freightTotal ?? '', totalSuppliers: shipment.totalSuppliers ?? '',
+        salePrice: shipment.salePrice ?? '', customerPay: shipment.customerPay ?? '',
+        aging: shipment.aging ?? '', overnight: shipment.overnight ?? '', returns: shipment.returns ?? '',
+        transfer: shipment.transfer ?? '', other: shipment.other ?? '', drop: shipment.drop ?? '',
+        ton15: shipment.ton15 ?? '', ton3: shipment.ton3 ?? '', m6: shipment.m6 ?? '', policyQty: shipment.policyQty ?? '',
+      } : {}),
+    })
+    setEditErr('')
+    setEditOpen(true)
+  }
+
+  const submitEdit = async () => {
+    if (!ev) return
+    setEditLoading(true); setEditErr('')
+    try {
+      const payload: Record<string, unknown> = {}
+      for (const k of SHIPMENT_EDIT_TEXT_FIELDS) payload[k] = ev[k] ?? ''
+      if (canPrices) for (const k of SHIPMENT_EDIT_NUM_FIELDS) payload[k] = ev[k] ?? ''
+      // 409: حماية الخادم للمبالغ على الشحنات المحصّلة/المرحّلة قيدها — رسالة الخادم عربية
+      await apiPatch(`/api/shipments/${id}`, payload)
+      toast({ title: 'تم حفظ التعديلات بنجاح' })
+      setEditOpen(false)
+      mutate()
+      onChanged?.()
+    } catch (e: any) {
+      setEditErr(e.message)
+    } finally { setEditLoading(false) }
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between print:hidden">
         <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-4" /> رجوع للقائمة</Button>
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => setWaybillOpen(true)}><Printer className="size-4" /> طباعة بوليصة</Button>
+        <div className="flex gap-2 flex-wrap items-center">
+          <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => setWaybillOpen(true)}><Printer className="size-4" /> طباعة بوليصة</Button>
           {/* تسوية COD تتطلب صلاحية الأسعار (تتعامل مع مبالغ) */}
-          {canPrices && <Button variant="outline" size="sm" onClick={() => setCodOpen(true)}><Banknote className="size-4" /> تسوية COD</Button>}
-          <Button variant="outline" size="sm" onClick={() => setStatusOpen(true)}>تغيير الحالة</Button>
-          <Button variant="outline" size="sm" className="text-destructive" onClick={remove}><Trash2 className="size-4" /> حذف</Button>
+          {canPrices && <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => setCodOpen(true)}><Banknote className="size-4" /> تسوية COD</Button>}
+          {/* تعديل الشحنة — الحقول البيضاء المتوافقة مع الخادم */}
+          {canEdit && <Button variant="outline" size="sm" className="min-h-[40px]" onClick={openEdit}><Pencil className="size-4" /> تعديل</Button>}
+          {/* آلة الحالات الصارمة: الحالة النهائية لا تقبل التغيير */}
+          {isTerminal && <span className="text-[11px] text-muted-foreground">حالة نهائية — لا يمكن التغيير</span>}
+          {canChangeStatus && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-[40px]"
+              onClick={() => { setNewStatus(''); setStatusNotes(''); setStatusOpen(true) }}
+              disabled={isTerminal}
+              title={isTerminal ? 'حالة نهائية — لا يمكن التغيير' : undefined}
+            >
+              تغيير الحالة
+            </Button>
+          )}
+          <Button variant="outline" size="sm" className="text-destructive min-h-[40px]" onClick={remove}><Trash2 className="size-4" /> حذف</Button>
         </div>
       </div>
 
@@ -926,22 +1170,208 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </CardContent>
       </Card>
 
-      {/* Status change dialog */}
+      {/* Status change dialog — الانتقالات المسموحة فقط (آلة الحالات الصارمة) */}
       <Dialog open={statusOpen} onOpenChange={setStatusOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>تغيير حالة الشحنة</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
-            <Select value={newStatus} onValueChange={setNewStatus}>
-              <SelectTrigger><SelectValue placeholder="اختر الحالة الجديدة..." /></SelectTrigger>
-              <SelectContent>
-                {statusItems.map((i) => <SelectItem key={i.key} value={i.key}>{i.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {isTerminal ? (
+              <div className="text-xs leading-relaxed text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-900/50">
+                حالة نهائية — لا يمكن التغيير
+              </div>
+            ) : allowedNext.length === 0 ? (
+              <div className="text-xs leading-relaxed text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-900/50">
+                لا توجد انتقالات مسموحة من الحالة الحالية.
+              </div>
+            ) : (
+              <>
+                <Select value={newStatus} onValueChange={setNewStatus}>
+                  <SelectTrigger><SelectValue placeholder="اختر الحالة الجديدة (الانتقالات المسموحة فقط)..." /></SelectTrigger>
+                  <SelectContent>
+                    {allowedNext.map((o) => <SelectItem key={o.key} value={o.key}>{o.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">التسلسل القياسي: جديدة ← مستلمة ← محمّلة/في الطريق ← تم التسليم أو مرتجع</p>
+              </>
+            )}
             <Textarea value={statusNotes} onChange={(e) => setStatusNotes(e.target.value)} placeholder="ملاحظات (اختياري)..." rows={2} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setStatusOpen(false)}>إلغاء</Button>
-            <Button onClick={changeStatus}>تأكيد</Button>
+            <Button onClick={changeStatus} disabled={isTerminal || !newStatus}>تأكيد</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit dialog — الحقول البيضاء المتوافقة مع الخادم (المبالغ لمن يملك صلاحية الأسعار) */}
+      <Dialog open={editOpen} onOpenChange={(v2) => { if (!v2) setEditOpen(false) }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>تعديل الشحنة {shipment.shipmentNo}</DialogTitle>
+            <DialogDescription>
+              تعديل بيانات الشحنة ضمن الحقول المسموحة. لا يمكن تعديل مبالغ الشحنات المحصّلة أو التي رُحّل قيدها المحاسبي (409 من الخادم).
+            </DialogDescription>
+          </DialogHeader>
+          {ev && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
+              <div>
+                <label className="text-xs font-medium">رقم البوليصة</label>
+                <Input value={ev.billNo} onChange={(e) => setEv({ ...ev, billNo: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs font-medium">اسم المستلم</label>
+                <Input value={ev.recipientName} onChange={(e) => setEv({ ...ev, recipientName: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs font-medium">هواتف التوصيل</label>
+                <Input value={ev.deliveryPhones} onChange={(e) => setEv({ ...ev, deliveryPhones: e.target.value })} className="dir-ltr" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">رقم السيارة</label>
+                <Input value={ev.vehicleNo} onChange={(e) => setEv({ ...ev, vehicleNo: e.target.value })} className="dir-ltr" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">الوجهة (المدينة)</label>
+                <Input value={ev.destination} onChange={(e) => setEv({ ...ev, destination: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs font-medium">الوجهة (EN)</label>
+                <Input value={ev.destinationEn} onChange={(e) => setEv({ ...ev, destinationEn: e.target.value })} className="dir-ltr" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">كود الخط/التكويد</label>
+                <Input value={ev.routeCode} onChange={(e) => setEv({ ...ev, routeCode: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs font-medium">جهة الشحن</label>
+                <Input value={ev.shipToParty} onChange={(e) => setEv({ ...ev, shipToParty: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs font-medium">نوع الحمولة</label>
+                <Select value={ev.loadType || '__'} onValueChange={(val) => setEv({ ...ev, loadType: val === '__' ? '' : val })}>
+                  <SelectTrigger><SelectValue placeholder="اختر الحجم..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__">— غير محدد —</SelectItem>
+                    {editLoadTypes.map((i) => <SelectItem key={i.key} value={i.key}>{i.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium">العميل</label>
+                <Select value={ev.customerId || '__'} onValueChange={(val) => setEv({ ...ev, customerId: val === '__' ? '' : val })}>
+                  <SelectTrigger><SelectValue placeholder="اختر عميلاً..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__">— بدون —</SelectItem>
+                    {(editParties?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium">المقاول/الناقل</label>
+                <Select value={ev.contractorId || '__'} onValueChange={(val) => setEv({ ...ev, contractorId: val === '__' ? '' : val })}>
+                  <SelectTrigger><SelectValue placeholder="اختر مقاولًا..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__">— بدون —</SelectItem>
+                    {(editContractors?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium">الفرع</label>
+                <Select value={ev.branchId || '__'} onValueChange={(val) => setEv({ ...ev, branchId: val === '__' ? '' : val })}>
+                  <SelectTrigger><SelectValue placeholder="اختر فرعًا..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__">— بدون —</SelectItem>
+                    {(editBranches?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium">المخزن</label>
+                <Select value={ev.warehouseId || '__'} onValueChange={(val) => setEv({ ...ev, warehouseId: val === '__' ? '' : val })}>
+                  <SelectTrigger><SelectValue placeholder="اختر مخزنًا..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__">— بدون —</SelectItem>
+                    {(editWarehouses?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* أعداد تشغيلية — ليست مبالغ مالية */}
+              <div>
+                <label className="text-xs font-medium">عدد القطع</label>
+                <Input type="number" value={ev.policyQty ?? ''} onChange={(e) => setEv({ ...ev, policyQty: e.target.value })} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">عدد 1.5 طن</label>
+                <Input type="number" value={ev.ton15 ?? ''} onChange={(e) => setEv({ ...ev, ton15: e.target.value })} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">عدد 3 طن</label>
+                <Input type="number" value={ev.ton3 ?? ''} onChange={(e) => setEv({ ...ev, ton3: e.target.value })} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">عدد 6 متر</label>
+                <Input type="number" value={ev.m6 ?? ''} onChange={(e) => setEv({ ...ev, m6: e.target.value })} placeholder="0" />
+              </div>
+              {/* المبالغ المالية — تُعرض فقط لمن يملك صلاحية الأسعار */}
+              {canPrices && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium">تكلفة النولون</label>
+                    <Input type="number" value={ev.freightCost ?? ''} onChange={(e) => setEv({ ...ev, freightCost: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">إجمالي النولون</label>
+                    <Input type="number" value={ev.freightTotal ?? ''} onChange={(e) => setEv({ ...ev, freightTotal: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">نولون المقاول (إجمالي الموردين)</label>
+                    <Input type="number" value={ev.totalSuppliers ?? ''} onChange={(e) => setEv({ ...ev, totalSuppliers: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">سعر البيع</label>
+                    <Input type="number" value={ev.salePrice ?? ''} onChange={(e) => setEv({ ...ev, salePrice: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">مدفوع من العميل</label>
+                    <Input type="number" value={ev.customerPay ?? ''} onChange={(e) => setEv({ ...ev, customerPay: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">تعتيق</label>
+                    <Input type="number" value={ev.aging ?? ''} onChange={(e) => setEv({ ...ev, aging: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">مبيت</label>
+                    <Input type="number" value={ev.overnight ?? ''} onChange={(e) => setEv({ ...ev, overnight: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">مرتجعات</label>
+                    <Input type="number" value={ev.returns ?? ''} onChange={(e) => setEv({ ...ev, returns: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">تحويلة</label>
+                    <Input type="number" value={ev.transfer ?? ''} onChange={(e) => setEv({ ...ev, transfer: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">أخرى</label>
+                    <Input type="number" value={ev.other ?? ''} onChange={(e) => setEv({ ...ev, other: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">دروب</label>
+                    <Input type="number" value={ev.drop ?? ''} onChange={(e) => setEv({ ...ev, drop: e.target.value })} placeholder="0" />
+                  </div>
+                </>
+              )}
+              <div className="sm:col-span-2">
+                <label className="text-xs font-medium">ملاحظات</label>
+                <Textarea value={ev.notes} onChange={(e) => setEv({ ...ev, notes: e.target.value })} rows={2} />
+              </div>
+            </div>
+          )}
+          {editErr && <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{editErr}</div>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>إلغاء</Button>
+            <Button onClick={submitEdit} disabled={editLoading}>{editLoading ? 'جاري الحفظ...' : 'حفظ التعديلات'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

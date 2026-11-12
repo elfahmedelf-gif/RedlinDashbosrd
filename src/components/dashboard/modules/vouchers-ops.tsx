@@ -13,7 +13,7 @@ import useSWR from 'swr'
 import {
   Landmark, Plus, Trash2, Printer, FileSpreadsheet, Clock, CheckCircle2, FileText,
   Loader2, Banknote, BanknoteArrowDown, Link2, Search, X,
-  PackageCheck, AlertCircle,
+  PackageCheck, AlertCircle, Undo2,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,7 @@ import { fmtNum, fmtDate, fmtDateTime } from '@/lib/format'
 import { useAuth, useCanPrices } from '../auth-provider'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { VoucherOpsPrint } from '../voucher-print-ops'
+import { voucherTypeDef } from '@/lib/voucher-catalog'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
@@ -95,6 +96,28 @@ function buildShipmentStatusMap(lookups: any[] | undefined): Record<string, { la
     }
   }
   return base
+}
+
+// ---------------------------------------------------------------------------
+// حالة استلام المرتجعات — تُحسب من عناصر الإذن (حالة الشحنات) بدل شارة ثابتة:
+// كل الشحنات "مرتجعة مستلمة" → تم الاستلام | لا شيء مُستلم → لم يُستلم | خليط → جزئي
+// ---------------------------------------------------------------------------
+type ReturnReceiptState = 'received' | 'pending' | 'partial' | null
+
+function returnReceiptState(v: { type: string; status: string; items?: any[] | null }): ReturnReceiptState {
+  if ((v.type !== 'return' && v.type !== 'returned_receiving') || v.status !== 'completed') return null
+  const items = v.items ?? []
+  if (items.length === 0) return null
+  const received = items.filter((it: any) => it.shipment?.status === 'received_returned').length
+  if (received === items.length) return 'received'
+  if (received === 0) return 'pending'
+  return 'partial'
+}
+
+const RETURN_RECEIPT_BADGE: Record<Exclude<ReturnReceiptState, null>, { label: string; tone: string }> = {
+  received: { label: 'تم الاستلام', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+  pending: { label: 'لم يُستلم', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  partial: { label: 'استلام جزئي', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
 }
 
 // ---------------------------------------------------------------------------
@@ -405,7 +428,7 @@ export function VouchersModule() {
         accountName: t.isFinancial ? v.accountName : null,
         notes: v.notes || null,
         shipmentIds: addedShipments.map((s) => s.id),
-        userName: me?.username || 'admin',
+        userName: me?.username,
       }
       const res: any = await apiPost('/api/vouchers', body)
       toast({ title: 'تم إنشاء الإذن', description: `رقم الإذن: ${res?.voucherNo ?? '—'}` })
@@ -438,7 +461,7 @@ export function VouchersModule() {
         destBranchId: ev.destBranchId || null,
         amount: t.isFinancial ? Number(ev.amount) : undefined,
         accountName: t.isFinancial ? ev.accountName : undefined,
-        userName: me?.username || 'admin',
+        userName: me?.username,
       })
       toast({ title: 'تم تعديل الإذن' })
       setEditId(null)
@@ -467,7 +490,7 @@ export function VouchersModule() {
 
   const addItem = async (vid: string, shipment: any) => {
     try {
-      await apiPost(`/api/vouchers/${vid}/items`, { shipmentId: shipment.id, userName: me?.username || 'admin' })
+      await apiPost(`/api/vouchers/${vid}/items`, { shipmentId: shipment.id, userName: me?.username })
       toast({ title: 'تمت إضافة الشحنة', description: shipment.shipmentNo })
       mutateDetail()
       mutate()
@@ -525,7 +548,7 @@ export function VouchersModule() {
       const res: any = await apiPost(`/api/vouchers/${vid}/transition`, {
         action,
         notes: actionNotes || null,
-        userName: me?.username || 'admin',
+        userName: me?.username,
       })
       toast({ title: `تم تنفيذ الإجراء`, description: `الحالة الآن: ${res?.status ?? '—'}` })
       setActionNotes('')
@@ -551,13 +574,39 @@ export function VouchersModule() {
     try {
       const res: any = await apiPost(`/api/vouchers/${vid}/mark-received`, {
         notes: actionNotes || null,
-        userName: me?.username || 'admin',
+        userName: me?.username,
       })
       const summary = res?.succeeded != null && res?.total != null
         ? `تم تسليم ${res.succeeded}/${res.total} شحنة${res.failed ? ` — ${res.failed} فشل` : ''}`
         : 'تم التسليم'
       toast({ title: 'تم التسليم', description: summary })
       setActionNotes('')
+      refreshAll()
+    } catch (e: any) {
+      toast({ title: 'خطأ', description: e.message, variant: 'destructive' })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // إلغاء سند مالي مكتمل بالقيد العكسي — الخادم ينشئ قيدًا عكسيًا ويرد التحصيل عن الشحنات
+  // (متاح فقط للأذونات المالية: تحصيل/صرف نقدية/توريد خزينة/تسوية عهدة — يُفرض على الخادم)
+  const cancelCompletedFinancial = async (vid: string, voucherNo?: string) => {
+    const ok = await confirmDialog({
+      title: `إلغاء السند ${voucherNo ?? ''} بالقيد العكسي`,
+      message: 'سيُنشأ قيد عكسي للقيد المرتبط بهذا السند، ويُرد التحصيل عن الشحنات المرتبطة إن وُجدت. لا يمكن التراجع عن هذه العملية. هل تريد المتابعة؟',
+      variant: 'warning',
+      confirmText: 'إلغاء بالقيد العكسي',
+    })
+    if (!ok) return
+    setActionLoading(true)
+    try {
+      await apiPost(`/api/vouchers/${vid}/transition`, {
+        action: 'cancel',
+        notes: actionNotes || null,
+        userName: me?.username,
+      })
+      toast({ title: 'تم إلغاء السند بالقيد العكسي', description: 'أُنشئ القيد العكسي وأُرجع التحصيل عن الشحنات المرتبطة إن وُجدت' })
       refreshAll()
     } catch (e: any) {
       toast({ title: 'خطأ', description: e.message, variant: 'destructive' })
@@ -605,24 +654,22 @@ export function VouchersModule() {
     },
     {
       key: 'status', header: 'الحالة', align: 'center' as const, width: 'w-32',
-      render: (vch: any) => (
-        <div className="flex flex-col items-center gap-1">
-          <Badge variant="outline" className={cn('text-[11px]', vch.statusColor ?? '')}>
-            {vch.statusLabel ?? vch.status}
-          </Badge>
-          {/* شارة العهدة للمرتجعات المكتملة — "لم يُستلم" / "تم التسليم" */}
-          {vch.type === 'return' && vch.status === 'completed' && (
-            <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full', 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300')}>
-              لم يُستلم
-            </span>
-          )}
-          {vch.type === 'returned_receiving' && vch.status === 'completed' && (
-            <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full', 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300')}>
-              تم التسليم
-            </span>
-          )}
-        </div>
-      ),
+      render: (vch: any) => {
+        // شارة استلام المرتجعات — محسوبة من حالة شحنات الإذن (وليست ثابتة)
+        const receipt = returnReceiptState(vch)
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className={cn('text-[11px]', vch.statusColor ?? '')}>
+              {vch.statusLabel ?? vch.status}
+            </Badge>
+            {receipt && (
+              <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full', RETURN_RECEIPT_BADGE[receipt].tone)}>
+                {RETURN_RECEIPT_BADGE[receipt].label}
+              </span>
+            )}
+          </div>
+        )
+      },
     },
     {
       key: 'date', header: 'التاريخ', align: 'center' as const, width: 'w-28', hideInCard: true,
@@ -661,12 +708,18 @@ export function VouchersModule() {
       render: (vch: any) => <span className="tnum text-xs font-bold">{fmtNum(vch.totalValue ?? 0)} ج.م</span>,
     }] : []),
     {
-      key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-24',
+      key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-28',
       render: (vch: any) => (
         <div className="flex items-center justify-center gap-0.5">
           {has('vouchers.print') && (
             <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPrintVoucher(vch) }} title="طباعة الإذن" aria-label={`طباعة ${vch.voucherNo}`}>
               <Printer className="size-3.5" />
+            </Button>
+          )}
+          {/* إلغاء السند المالي المكتمل بالقيد العكسي — للأذونات المالية فقط (يُفرض على الخادم) */}
+          {has('vouchers.approve') && vch.status === 'completed' && voucherTypeDef(vch.type)?.isFinancial && (
+            <Button variant="ghost" size="sm" className="text-destructive" onClick={(e) => { e.stopPropagation(); cancelCompletedFinancial(vch.id, vch.voucherNo) }} title="إلغاء بالقيد العكسي" aria-label={`إلغاء ${vch.voucherNo} بالقيد العكسي`}>
+              <Undo2 className="size-3.5" />
             </Button>
           )}
           {has('vouchers.delete') && ['draft', 'cancelled'].includes(vch.status) && (
@@ -701,7 +754,7 @@ export function VouchersModule() {
 
   // Action buttons per status in detail dialog
   const renderDetailActions = (status: string) => {
-    const buttons: { label: string; action?: string; perm: string; variant?: 'default' | 'outline' | 'destructive' | 'secondary'; onClick?: () => void }[] = []
+    const buttons: { label: string; action?: string; perm: string; variant?: 'default' | 'outline' | 'destructive' | 'secondary'; onClick?: () => void; icon?: React.ReactNode }[] = []
     switch (status) {
       case 'draft':
         if (has('vouchers.submit')) buttons.push({ label: 'رفع للاعتماد', action: 'submit', perm: 'vouchers.submit' })
@@ -735,6 +788,17 @@ export function VouchersModule() {
           if (hasPending) {
             buttons.push({ label: 'تم التسليم', perm: 'vouchers.execute', variant: 'default', onClick: () => markReceived(detailData.id) })
           }
+        }
+        // إلغاء السند المالي المكتمل بالقيد العكسي — للأذونات المالية فقط (يُفرض على الخادم)
+        if (voucherTypeDef(detailData?.type)?.isFinancial && has('vouchers.approve')) {
+          buttons.push({
+            label: 'إلغاء بالقيد العكسي',
+            action: 'cancel',
+            perm: 'vouchers.approve',
+            variant: 'destructive',
+            icon: <Undo2 className="size-3.5" />,
+            onClick: () => cancelCompletedFinancial(detailData.id, detailData.voucherNo),
+          })
         }
         break
     }
@@ -1135,26 +1199,31 @@ export function VouchersModule() {
                   <span className="font-mono">{detailData.voucherNo}</span>
                   <Badge variant="outline" className={cn('text-[11px]', detailData.typeColor ?? '')}>{detailData.typeLabel ?? detailData.type}</Badge>
                   <Badge variant="outline" className={cn('text-[11px]', detailData.statusColor ?? '')}>{detailData.statusLabel ?? detailData.status}</Badge>
-                  {/* شارة حالة العهدة للمرتجعات: "لم يُستلم بعد" أو "تم التسليم" */}
-                  {detailData.type === 'return' && detailData.status === 'completed' && (() => {
-                    const items = detailData.items ?? []
-                    const pendingCount = items.filter((it: any) => it.shipment?.status === 'returned').length
-                    const receivedCount = items.length - pendingCount
-                    if (pendingCount > 0) {
+                  {/* شارة حالة استلام المرتجعات — محسوبة من حالة شحنات الإذن (نفس منطق القائمة) */}
+                  {(() => {
+                    const receipt = returnReceiptState(detailData)
+                    if (!receipt) return null
+                    const total = (detailData.items ?? []).length
+                    const received = (detailData.items ?? []).filter((it: any) => it.shipment?.status === 'received_returned').length
+                    if (receipt === 'pending') {
                       return (
                         <Badge variant="outline" className="text-[11px] bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                          لم يُستلم بعد · {pendingCount} شحنة{detailData.courier?.name ? ` — مع ${detailData.courier.name}` : ''}
+                          لم يُستلم بعد · {total} شحنة{detailData.courier?.name ? ` — مع ${detailData.courier.name}` : ''}
                         </Badge>
                       )
                     }
-                    if (receivedCount > 0) {
+                    if (receipt === 'partial') {
                       return (
-                        <Badge variant="outline" className="text-[11px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                          تم التسليم · {receivedCount} شحنة
+                        <Badge variant="outline" className="text-[11px] bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                          استلام جزئي · {received}/{total} شحنة
                         </Badge>
                       )
                     }
-                    return null
+                    return (
+                      <Badge variant="outline" className="text-[11px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                        تم التسليم · {total} شحنة
+                      </Badge>
+                    )
                   })()}
                 </DialogTitle>
                 <DialogDescription>{detailData.typeLabelEn}</DialogDescription>
@@ -1325,7 +1394,7 @@ export function VouchersModule() {
                         else if (b.action) transition(detailData.id, b.action)
                       }}
                     >
-                      {actionLoading && b.action ? <Loader2 className="size-3.5 animate-spin mr-1" /> : null}
+                      {actionLoading && b.action ? <Loader2 className="size-3.5 animate-spin mr-1" /> : (b.icon ?? null)}
                       {b.label}
                     </Button>
                   ))}

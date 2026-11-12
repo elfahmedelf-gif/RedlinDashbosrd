@@ -196,13 +196,31 @@ async function main() {
   const v8 = await req('GET', `/api/vouchers/${r8.id}`, undefined, admin.token)
   log('S8: سند مكتمل مرتبط بقيد محاسبي مرحّل', v8.data?.status === 'completed' && !!v8.data?.journalEntryId, `entryNo=${v8.data?.journalEntryNo ?? '—'}`)
 
-  // ---------- S9: تسوية COD (قبض + صرف تلقائي) ----------
+  // ---------- S9: تسوية COD (قبض + صرف تلقائي) — تتطلب شحنة مسلّمة ----------
   console.log('\n—— S9: تسوية COD لشحنة C ——')
+  // التسوية المالية تتطلب التسليم الفعلي (آلة الحالات): new → received → out_for_delivery → delivered
+  await must('S9: استلام C بالمخزن', 'POST', `/api/shipments/${shC.id}/status`, { status: 'received', notes: 'TEST-E2E' }, admin.token)
+  await must('S9: C قيد التوصيل', 'POST', `/api/shipments/${shC.id}/status`, { status: 'out_for_delivery', notes: 'TEST-E2E' }, admin.token)
+  await must('S9: تسليم C للعميل', 'POST', `/api/shipments/${shC.id}/status`, { status: 'delivered', notes: 'TEST-E2E' }, admin.token)
+  const cBefore = await getShipment(admin.token, shC.id)
+  log('S9: الشحنة أصبحت "delivered"', cBefore?.status === 'delivered', `status=${cBefore?.status}`)
   const r9 = await must('S9: تسوية COD', 'POST', `/api/shipments/${shC.id}/settle-cod`, {}, admin.token)
   const codOk = !!r9?.receiptVoucherNo && !!r9?.paymentVoucherNo
   log('S9: أُنشئ سند قبض وسند صرف تلقائيًا مع قيدين', codOk, `قبض=${r9?.receiptVoucherNo ?? '—'} صرف=${r9?.paymentVoucherNo ?? '—'}`)
   const c9 = await getShipment(admin.token, shC.id)
   log('S9: الشحنة أصبحت "collected"', c9?.collectionStatus === 'collected', `collection=${c9?.collectionStatus}`)
+
+  // ---------- S9b: آلة الحالات الصارمة ----------
+  console.log('\n—— S9b: منع الانتقال العشوائي بين الحالات ——')
+  const shM = await mkShipment('M', 300, 0)
+  await mustFail('S9b: new → delivered مباشرة مرفوضة', 409, 'POST', `/api/shipments/${shM.id}/status`, { status: 'delivered' }, admin.token)
+  await mustFail('S9b: new → حالة وهمية مرفوضة', 400, 'POST', `/api/shipments/${shM.id}/status`, { status: 'flying_status' }, admin.token)
+  await mustFail('S9b: تسوية COD لشحنة غير مسلّمة مرفوضة', 409, 'POST', `/api/shipments/${shM.id}/settle-cod`, {}, admin.token)
+  const sM1 = await must('S9b: received مسموحة', 'POST', `/api/shipments/${shM.id}/status`, { status: 'received' }, admin.token)
+  void sM1
+  const mM = await getShipment(admin.token, shM.id)
+  const hasHistory = (mM?.statusHistory ?? []).some((h: any) => h.status === 'received')
+  log('S9b: سجل حالات الشحنة وثّق الانتقال', hasHistory, `سجل ${(mM?.statusHistory ?? []).length} خطوة`)
 
   // ---------- S10: تسوية COD مرتين → يجب أن تفشل ----------
   console.log('\n—— S10: منع تسوية COD مرتين ——')
@@ -366,6 +384,78 @@ async function main() {
   const oV7 = await req('GET', `/api/vouchers/${r7.id}`, undefined, ops.token)
   const o7Ok = oV7.data?.amount === 500
   log('S20: محمود يرى مبلغ سند القبض', o7Ok, `amount=${oV7.data?.amount}`)
+
+  // ---------- S21: التكامل المالي التلقائي — قيد تسليم الشحنة ----------
+  console.log('\n—— S21: قيد تسليم الشحنة يُنشأ تلقائيًا عند التسليم ——')
+  const shJ = await mkShipment('J', 800, 500)
+  const jeAccounts = await must('S21: جلب شجرة الحسابات', 'GET', '/api/accounts', undefined, admin.token)
+  void jeAccounts
+  await must('S21: استلام J', 'POST', `/api/shipments/${shJ.id}/status`, { status: 'received' }, admin.token)
+  await must('S21: J قيد التوصيل', 'POST', `/api/shipments/${shJ.id}/status`, { status: 'out_for_delivery' }, admin.token)
+  await must('S21: تسليم J', 'POST', `/api/shipments/${shJ.id}/status`, { status: 'delivered' }, admin.token)
+  const jList2 = await req('GET', '/api/journal', undefined, admin.token)
+  const jeItems = asItems(jList2.data)
+  const deliveryEntry = jeItems.find((j: any) => j.sourceType === 'shipment_delivery' && j.lines?.some((l: any) => l.shipmentId === shJ.id))
+  log('S21: قيد تسليم مرحّل مرتبط بالشحنة J', !!deliveryEntry && deliveryEntry.status === 'posted', `entryNo=${deliveryEntry?.entryNo ?? '—'}`)
+  if (deliveryEntry) {
+    const sumD = deliveryEntry.lines.reduce((s: number, l: any) => s + (l.debit || 0), 0)
+    const sumC = deliveryEntry.lines.reduce((s: number, l: any) => s + (l.credit || 0), 0)
+    log('S21: قيد التسليم متوازن مزدوج (800+500)', Math.abs(sumD - sumC) < 0.01 && Math.abs(sumD - 1300) < 0.01, `مدين ${sumD} / دائن ${sumC}`)
+  }
+  // منع الترحيل المزدوج: تسليم نفس الشحنة مرة أخرى (عبر مرتجع ثم تسليم) لا يكرر القيد
+  const tbAfterDelivery = await trialBalance(admin.token)
+  log('S21: ميزان المراجعة متوازن بعد قيود التسليم', tbAfterDelivery.balanced, `مدين ${tbAfterDelivery.td} / دائن ${tbAfterDelivery.tc}`)
+
+  // ---------- S22: إلغاء سند مالي مكتمل = قيد عكسي + رد تحصيل ----------
+  console.log('\n—— S22: مسار التصحيح — إلغاء سند مكتمل بعكس القيد ——')
+  const r22 = await must('S22: إنشاء سند قبض 250 للعميل', 'POST', '/api/vouchers',
+    { type: 'collection', sourceBranchId: brA.id, partyId: customer.id, employeeId: admin.userId, amount: 250, accountName: 'الصندوق' }, ops.token)
+  await fullLifecycle(ops.token, fin.token, r22.id, 'S22')
+  const v22 = await req('GET', `/api/vouchers/${r22.id}`, undefined, admin.token)
+  const entry22Id = v22.data?.journalEntryId
+  log('S22: السند المكتمل مرتبط بقيد', !!entry22Id, `entryId=${entry22Id ?? '—'}`)
+  const c22 = await must('S22: إلغاء السند المكتمل (قيد عكسي)', 'POST', `/api/vouchers/${r22.id}/transition`, { action: 'cancel', notes: 'تصحيح TEST-E2E' }, admin.token)
+  void c22
+  const v22b = await req('GET', `/api/vouchers/${r22.id}`, undefined, admin.token)
+  log('S22: السند أصبح ملغيًا وفُك ربط القيد', v22b.data?.status === 'cancelled' && !v22b.data?.journalEntryId, `status=${v22b.data?.status} je=${v22b.data?.journalEntryId ?? '—'}`)
+  if (entry22Id) {
+    const e22 = jeItems.find((j: any) => j.id === entry22Id) ?? (await req('GET', '/api/journal', undefined, admin.token)).data
+    const revList = (await req('GET', '/api/journal', undefined, admin.token)).data
+    const reversed = asItems(revList).some((j: any) => j.reversalOfId === entry22Id)
+    log('S22: وُجد قيد عكسي مرتبط بالقيد الأصلي', reversed, `original=${e22?.entryNo ?? entry22Id}`)
+  }
+  const tb22 = await trialBalance(admin.token)
+  log('S22: ميزان المراجعة ما زال متوازنًا بعد العكس', tb22.balanced, `مدين ${tb22.td} / دائن ${tb22.tc}`)
+
+  // ---------- S23: كشف حساب الطرف برصيد تراكمي ----------
+  console.log('\n—— S23: كشف حساب تفصيلي للطرف (Running Balance) ——')
+  const st = await req('GET', `/api/parties/${customer.id}/statement`, undefined, admin.token)
+  log('S23: كشف الحساب يعمل (HTTP 200)', st.status === 200, `حركات ${asItems(st.data).length}`)
+  const stItems = asItems(st.data)
+  let rbOk = true
+  let prev = st.data?.opening ?? 0
+  for (const it of stItems) {
+    prev = Math.round((prev + (it.debit || 0) - (it.credit || 0)) * 100) / 100
+    if (Math.abs(prev - it.balance) > 0.011) { rbOk = false; break }
+  }
+  log('S23: الرصيد التراكمي صحيح في كل حركة', rbOk && stItems.length > 0, `افتتاحي ${st.data?.opening} ختامي ${st.data?.totals?.closing}`)
+  log('S23: كشف الحساب يعرض قيود سند القبض (S7)', stItems.some((i: any) => i.sourceType === 'op_voucher'), `إجمالي مدين ${st.data?.totals?.totalDebit}`)
+
+  // ---------- S24: محرك التسعير التلقائي ----------
+  console.log('\n—— S24: جلب السعر تلقائيًا من جدول النولون ——')
+  const freightList = await req('GET', '/api/freight', undefined, admin.token)
+  const freightItems = asItems(freightList.data)
+  const firstFreight = freightItems[0]
+  if (firstFreight) {
+    const destName = firstFreight.regionAr ?? firstFreight.routeName
+    const quote = await req('GET', `/api/freight/quote?destination=${encodeURIComponent(destName)}`, undefined, admin.token)
+    log('S24: نقطة التسعير تطابق الوجهة', quote.status === 200 && quote.data?.matched === true, `سعر=${quote.data?.price?.sellPrice ?? '—'}`)
+    const vQuote = await req('GET', `/api/freight/quote?destination=${encodeURIComponent(destName)}`, undefined, viewer.token)
+    log('S24: viewer لا يرى الأسعار في نقطة التسعير', vQuote.data?.price?.sellPrice == null && vQuote.data?.price?.cost == null, `sell=${vQuote.data?.price?.sellPrice}`)
+    const vFreight = await req('GET', '/api/freight', undefined, viewer.token)
+    const vRow = asItems(vFreight.data)[0]
+    log('S24: viewer لا يرى تكلفة النولون في القائمة', vRow?.cost == null && vRow?.sellPrice == null, `cost=${vRow?.cost}`)
+  }
 
   // ---------- الملخص ----------
   const total = passCount + failCount

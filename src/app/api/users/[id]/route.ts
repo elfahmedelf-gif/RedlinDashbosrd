@@ -28,15 +28,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     for (const k of ['name', 'email', 'phone', 'branchId'] as const) if (b[k] !== undefined) data[k] = b[k]
     if (b.active !== undefined) data.active = !!b.active
     await db.user.update({ where: { id }, data })
-    if (b.roleId !== undefined) {
-      await db.userRole.deleteMany({ where: { userId: id } })
-      if (b.roleId) await db.userRole.create({ data: { userId: id, roleId: b.roleId } })
-    } else if (Array.isArray(b.roleIds)) {
-      // دعم إسناد عدة أدوار للمستخدم الواحد (دمج الصلاحيات)
-      await db.userRole.deleteMany({ where: { userId: id } })
-      for (const rid of b.roleIds) {
-        if (rid) await db.userRole.create({ data: { userId: id, roleId: rid } })
-      }
+    // إعادة إسناد الأدوار داخل معاملة واحدة (كان الحذف والإنشاء منفصلين —
+    // فشل منتصفًا يترك مستخدمًا بلا صلاحيات)
+    if (b.roleId !== undefined || Array.isArray(b.roleIds)) {
+      await db.$transaction(async (tx) => {
+        await tx.userRole.deleteMany({ where: { userId: id } })
+        if (b.roleId) {
+          if (!(await tx.role.findUnique({ where: { id: b.roleId } }))) throw new ApiError(400, 'الدور المحدد غير موجود')
+          await tx.userRole.create({ data: { userId: id, roleId: b.roleId } })
+        } else if (Array.isArray(b.roleIds)) {
+          for (const rid of b.roleIds) {
+            if (!rid) continue
+            if (!(await tx.role.findUnique({ where: { id: rid } }))) throw new ApiError(400, 'أحد الأدوار المحددة غير موجود')
+            await tx.userRole.create({ data: { userId: id, roleId: rid } })
+          }
+        }
+      })
     }
     await logAudit(db, { action: 'update', entity: 'user', entityId: id, notes: `تعديل مستخدم: ${usr.username}${b.password ? ' — تغيير كلمة المرور' : ''}`, user: { userId: user.userId, username: user.username } })
     return { ok: true }

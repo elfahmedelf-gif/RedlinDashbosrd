@@ -115,7 +115,8 @@ export async function listShipments(q: URLSearchParams, user?: { permissions: st
       [s.shipmentNo, s.billNo, s.recipientName, s.destination, s.destinationEn, s.routeCode, s.deliveryPhones]
         .some((f) => String(f ?? '').toLowerCase().includes(search)))
   }
-  const links = await voucherLinksForShipments(rows.slice(0, 60))
+  // روابط الإذن↔شحنة لكل الصفوف المفلترة (كانت للصفين الـ60 الأول فقط)
+  const links = await voucherLinksForShipments(rows)
   const items = rows.map((s) => enrichShipment(s, links, canPrices))
   const page = Math.max(1, parseInt(q.get('page') || '1', 10))
   const pageSize = Math.min(500, Math.max(1, parseInt(q.get('pageSize') || '20', 10)))
@@ -156,10 +157,13 @@ export async function listParties(q: URLSearchParams, user?: { permissions: stri
   let rows = await db.party.findMany({ where, include: { branch: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } })
   if (search) rows = rows.filter((x) => String(x.name ?? '').toLowerCase().includes(search))
   const ids = rows.map((r) => r.id)
-  const [asCustomer, asContractor] = await Promise.all([
+  const [asCustomer, asContractor, ledgerRows] = await Promise.all([
     db.shipment.groupBy({ by: ['customerId'], where: { customerId: { in: ids } }, _count: { _all: true }, _sum: { freightTotal: true, totalSuppliers: true, customerPay: true } }),
     db.shipment.groupBy({ by: ['contractorId'], where: { contractorId: { in: ids } }, _count: { _all: true }, _sum: { freightTotal: true, totalSuppliers: true, customerPay: true } }),
+    // الرصيد الحيّ من دفتر الأستاذ الفعلي (القيود المرحّلة المرتبطة بالطرف)
+    db.journalLine.groupBy({ by: ['partyId'], where: { partyId: { in: ids }, entry: { status: 'posted' } }, _sum: { debit: true, credit: true } }),
   ])
+  const ledgerMap = new Map(ledgerRows.map((l) => [l.partyId!, round2((l._sum.debit ?? 0) - (l._sum.credit ?? 0))]))
   const agg = new Map<string, { shipments: number; freightTotal: number; totalSuppliers: number; customerPay: number }>()
   for (const g of asCustomer) {
     if (!g.customerId) continue
@@ -175,11 +179,16 @@ export async function listParties(q: URLSearchParams, user?: { permissions: stri
   }
   const items = rows.map((p) => {
     const a = agg.get(p.id) ?? { shipments: 0, freightTotal: 0, totalSuppliers: 0, customerPay: 0 }
+    // الرصيد الحالي = الرصيد الافتتاحي (سالب إذا كان دائن) + مدين − دائن من القيود المرحّلة
+    const openingSign = p.openingBalanceType === 'credit' ? -1 : 1
+    const ledger = ledgerMap.get(p.id) ?? 0
+    const currentBalance = round2(openingSign * Number(p.openingBalance ?? 0) + ledger)
     return {
       ...p,
       branch: ref(p.branch),
       _count: { shipments: a.shipments },
       _sum: { freightTotal: round2(a.freightTotal), totalSuppliers: round2(a.totalSuppliers), customerPay: round2(a.customerPay) },
+      currentBalance,
     }
   })
   const stripped = stripParties(items, canPrices)
@@ -195,7 +204,7 @@ export async function listJournal(q: URLSearchParams) {
     where: status ? { status } : undefined,
     include: {
       branch: { select: { id: true, name: true } },
-      lines: { include: { account: true, party: { select: { id: true, name: true } } } },
+      lines: { include: { account: true, party: { select: { id: true, name: true } }, shipment: { select: { shipmentNo: true } } } },
     },
     orderBy: { date: 'desc' },
   })
@@ -223,6 +232,9 @@ export async function listJournal(q: URLSearchParams) {
       description: l.description,
       partyId: l.partyId,
       party: ref(l.party),
+      // ربط سطر القيد بالشحنة (للتتبع من القيد إلى الشحنة والعكس)
+      shipmentId: l.shipmentId ?? null,
+      shipmentNo: l.shipment?.shipmentNo ?? null,
     })),
     createdAt: e.createdAt,
     updatedAt: e.updatedAt,
@@ -470,8 +482,9 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
   if (type === 'shipments' || type === 'freight-margin') {
     const rows = await db.shipment.findMany({ where: dateWhere('date', from, to), include: SHIPMENT_INCLUDE, orderBy: { date: 'desc' } })
     const items = rows.map((s) => enrichShipment(s, undefined, canPrices)).map((s: any) => {
+      // هامش موحّد في كل النظام: نولون البيع − تكلفة المقاول
       const sell = s.salePrice ?? s.freightTotal ?? 0
-      return { ...s, sell, margin: sell - (s.freightCost ?? 0) }
+      return { ...s, sell, margin: round2(sell - (s.totalSuppliers ?? 0)) }
     })
     return { items: type === 'shipments' ? items.map(({ sell, margin, ...rest }: any) => rest) : items }
   }
@@ -571,6 +584,15 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
     if (!accountId) throw new ApiError(400, 'حدد الحساب (accountId)')
     const acc = await db.account.findUnique({ where: { id: accountId } })
     if (!acc) throw new ApiError(404, 'الحساب غير موجود')
+    // الرصيد الافتتاحي = مجموع (مدين − دائن) للقيود المرحّلة السابقة على بداية الفترة
+    let opening = 0
+    if (from) {
+      const beforeLines = await db.journalLine.findMany({
+        where: { accountId, entry: { status: 'posted', date: { lt: new Date(from + 'T00:00:00') } } },
+        select: { debit: true, credit: true },
+      })
+      opening = round2(beforeLines.reduce((s, l) => s + (l.debit || 0) - (l.credit || 0), 0))
+    }
     const where: Prisma.JournalLineWhereInput = { accountId, entry: { status: 'posted' } }
     const range = dateRange(from, to)
     if (range) where.entry = { status: 'posted', date: range }
@@ -579,7 +601,7 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
       include: { entry: true, party: { select: { id: true, name: true } } },
       orderBy: { entry: { date: 'asc' } },
     })
-    let running = 0
+    let running = opening
     const items = lines.map((l) => {
       running = round2(running + (l.debit || 0) - (l.credit || 0))
       return {
@@ -588,7 +610,7 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
         debit: l.debit, credit: l.credit, balance: running,
       }
     })
-    return { account: { id: acc.id, code: acc.code, name: acc.name }, items }
+    return { account: { id: acc.id, code: acc.code, name: acc.name }, opening, items }
   }
 
   if (type === 'inventory-movements') {
@@ -626,18 +648,23 @@ function dateRange(from: string | null, to: string | null) {
 // ---------------------------------------------------------------------------
 // Dashboard stats — محسوبة من قاعدة البيانات
 // ---------------------------------------------------------------------------
-export async function dashboardStats(user?: { permissions: string[] } | null) {
+export async function dashboardStats(q: URLSearchParams | null, user?: { permissions: string[] } | null) {
   const canPrices = canSeePrices(user)
-  const [agg, statusGroup, dailyRows, contractorRows, destRows, codRows] = await Promise.all([
+  const from = q?.get('from') ?? null
+  const to = q?.get('to') ?? null
+  const dateFilter = dateWhere('date', from, to)
+  const [agg, statusGroup, dailyRows, contractorRows, destRows, codRows, pendingGroup] = await Promise.all([
     db.shipment.aggregate({
+      where: dateFilter,
       _count: { _all: true },
       _sum: { policyQty: true, freightTotal: true, customerPay: true, totalSuppliers: true, salePrice: true, aging: true, overnight: true, returns: true, transfer: true, other: true, drop: true, ton15: true, ton3: true, m6: true },
     }),
-    db.shipment.groupBy({ by: ['status'], _count: { _all: true } }),
-    db.shipment.findMany({ select: { date: true, freightTotal: true, totalSuppliers: true, customerPay: true }, orderBy: { date: 'asc' } }),
-    db.shipment.groupBy({ by: ['contractorId'], where: { contractorId: { not: null } }, _count: { _all: true }, _sum: { freightTotal: true, totalSuppliers: true } }),
-    db.shipment.groupBy({ by: ['destination'], where: { destination: { not: null } }, _count: { _all: true }, _sum: { freightTotal: true, totalSuppliers: true } }),
-    db.shipment.groupBy({ by: ['routeCode'], where: { routeCode: { not: null } }, _count: { _all: true }, _sum: { freightTotal: true } }),
+    db.shipment.groupBy({ by: ['status'], where: dateFilter, _count: { _all: true } }),
+    db.shipment.findMany({ where: dateFilter, select: { date: true, freightTotal: true, totalSuppliers: true, customerPay: true }, orderBy: { date: 'asc' } }),
+    db.shipment.groupBy({ by: ['contractorId'], where: { contractorId: { not: null }, ...dateFilter }, _count: { _all: true }, _sum: { freightTotal: true, totalSuppliers: true } }),
+    db.shipment.groupBy({ by: ['destination'], where: { destination: { not: null }, ...dateFilter }, _count: { _all: true }, _sum: { freightTotal: true, totalSuppliers: true } }),
+    db.shipment.groupBy({ by: ['routeCode'], where: { routeCode: { not: null }, ...dateFilter }, _count: { _all: true }, _sum: { freightTotal: true } }),
+    db.shipment.groupBy({ by: ['collectionStatus'], where: dateFilter, _count: { _all: true } }),
   ])
   const sum = agg._sum
   const statusCounts: Record<string, number> = {}
@@ -660,6 +687,10 @@ export async function dashboardStats(user?: { permissions: string[] } | null) {
   const dates = dailyRows.map((s) => s.date).filter(Boolean) as Date[]
   const totalFreight = sum.freightTotal ?? 0
   const totalSale = sum.salePrice ?? 0
+  const collectionCounts: Record<string, number> = {}
+  for (const g of pendingGroup) collectionCounts[g.collectionStatus] = g._count._all
+  // صافي هامش النولون — صيغة موحّدة في كل النظام: نولون البيع − تكلفة المقاول
+  // المتأخرة = مؤجلة + فشل تسليم (أرقام حقيقية من قاعدة البيانات)
   return stripDashboardStats({
     summary: {
       totalShipments: agg._count._all,
@@ -668,7 +699,7 @@ export async function dashboardStats(user?: { permissions: string[] } | null) {
       totalCustomerPay: round2(sum.customerPay ?? 0),
       totalSuppliers: round2(sum.totalSuppliers ?? 0),
       totalSale: round2(totalSale),
-      netFreightMargin: round2(totalSale - totalFreight),
+      netFreightMargin: round2(totalFreight - (sum.totalSuppliers ?? 0)),
       totalAging: round2(sum.aging ?? 0),
       totalOvernight: round2(sum.overnight ?? 0),
       totalReturns: round2(sum.returns ?? 0),
@@ -681,7 +712,8 @@ export async function dashboardStats(user?: { permissions: string[] } | null) {
       inTransit: (statusCounts.in_transit ?? 0) + (statusCounts.loaded ?? 0),
       delivered: statusCounts.delivered ?? 0,
       returned: statusCounts.returned ?? 0,
-      delayed: 0,
+      delayed: (statusCounts.postponed ?? 0) + (statusCounts.failed ?? 0),
+      codUncollected: (collectionCounts.uncollected ?? 0) + (collectionCounts.partial ?? 0),
       statusCounts,
     },
     daily,

@@ -9,7 +9,8 @@ import { ApiError, round2 } from './http'
 import { logAudit, nextSeq } from './audit'
 import { matchPermission } from '../permissions'
 import { ACTIVE_VOUCHER_STATUSES, TRANSITIONS, VOUCHER_CATEGORIES, VOUCHER_STATES, VOUCHER_TYPES, voucherActionLabel, voucherTypeDef } from '../voucher-catalog'
-import { ACC, accountByCode, createJournal } from './accounting'
+import { ACC, accountByCode, createJournal, reverseJournal } from './accounting'
+import { postShipmentDeliveryJournal, postShipmentReturnReversal } from './shipment-accounting'
 import type { SessionUser } from '../permissions'
 
 type Tx = Prisma.TransactionClient
@@ -37,6 +38,28 @@ function typeMeta(code: string) {
     requiresShipments: tdef?.requiresShipments ?? false,
     preStatuses: tdef?.preStatuses ?? null,
     postStatus: tdef?.postStatus ?? null,
+  }
+}
+
+/** التحقق من وجود الأطراف/الفروع/الحسابات المشار إليها (منع مفاتيح أجنبية مكسورة) */
+async function assertVoucherRefs(
+  tx: Tx,
+  refs: { partyId?: string | null; courierId?: string | null; employeeId?: string | null; destBranchId?: string | null; cashAccountId?: string | null },
+) {
+  if (refs.partyId && !(await tx.party.findUnique({ where: { id: refs.partyId } }))) {
+    throw new ApiError(400, 'الطرف (العميل/المورد) المحدد غير موجود')
+  }
+  if (refs.courierId && !(await tx.party.findUnique({ where: { id: refs.courierId } }))) {
+    throw new ApiError(400, 'المندوب المحدد غير موجود')
+  }
+  if (refs.employeeId && !(await tx.user.findUnique({ where: { id: refs.employeeId } }))) {
+    throw new ApiError(400, 'الموظف المسؤول المحدد غير موجود')
+  }
+  if (refs.destBranchId && !(await tx.branch.findUnique({ where: { id: refs.destBranchId } }))) {
+    throw new ApiError(400, 'الفرع المستلم المحدد غير موجود')
+  }
+  if (refs.cashAccountId && !(await tx.account.findUnique({ where: { id: refs.cashAccountId } }))) {
+    throw new ApiError(400, 'الحساب النقدي (الخزينة) المحدد غير موجود')
   }
 }
 
@@ -188,7 +211,9 @@ async function postFinancialVoucherJournal(tx: Tx, voucherId: string, user: Sess
     ? await tx.account.findUnique({ where: { id: v.cashAccountId } })
     : await accountByCode(tx, ACC.CASH)
   if (!cashAcc) throw new ApiError(400, 'خزينة/حساب نقدي غير صحيح')
-  const partyLine = { partyId: v.partyId ?? null }
+  // ربط سطر القيد بالطرف: العميل/المورد مباشرة، أو المندوب في تسوية العهدة
+  // (حتى تظهر حركة المندوب في كشف حسابه) — إصلاح: تسوية المندوب كانت بلا طرف
+  const partyLine = { partyId: v.partyId ?? v.courierId ?? null }
   const u = { userId: user.userId, username: user.username }
   const firstShipmentId = v.items?.[0]?.shipmentId ?? null
 
@@ -298,6 +323,7 @@ export async function createVoucher(user: SessionUser, body: any) {
       if (tdef.preStatuses && !tdef.preStatuses.includes(s.status)) {
         throw new ApiError(409, `الشحنة ${s.shipmentNo} حالتها "${s.status}" لا تصلح لهذا الإذن — المطلوب: ${tdef.preStatuses.join(' أو ')}`)
       }
+      await assertVoucherRefs(tx, { partyId: body.partyId, courierId: body.courierId, employeeId: body.employeeId, destBranchId: body.destBranchId, cashAccountId: body.cashAccountId })
       // منع التعارض: نفس الشحنة في إذن نشط آخر من نفس النوع = تكرار العملية
       const clash = await tx.opVoucherItem.findFirst({
         where: { shipmentId: sid, voucher: { type, status: { in: ACTIVE_VOUCHER_STATUSES } } },
@@ -375,10 +401,13 @@ export async function removeVoucherItem(user: SessionUser, voucherId: string, it
   return db.$transaction(async (tx) => {
     const v = await loadVoucher(tx, voucherId)
     if (v.status !== 'draft') throw new ApiError(409, 'لا يمكن حذف شحنات إلا من إذن مسودة')
-    const item = await tx.opVoucherItem.findUnique({ where: { id: itemId } })
+    const item = await tx.opVoucherItem.findUnique({ where: { id: itemId }, include: { shipment: { select: { shipmentNo: true } } } })
     if (!item || item.voucherId !== v.id) throw new ApiError(404, 'الشحنة غير موجودة في هذا الإذن')
     await tx.opVoucherItem.delete({ where: { id: itemId } })
     await recomputeTotalValue(tx, v.id)
+    // إثبات الحذف في سجل الإذن وسجل التدقيق (كان الحذف بلا أثر)
+    await tx.opVoucherAction.create({ data: { voucherId: v.id, userId: user.userId, userName: user.username, action: 'remove_item', notes: `إزالة شحنة ${item.shipment?.shipmentNo ?? ''}` } })
+    await logAudit(tx, { action: 'update', entity: 'voucher', entityId: v.id, notes: `إزالة شحنة ${item.shipment?.shipmentNo ?? ''} من الإذن ${v.voucherNo}`, user: { userId: user.userId, username: user.username } })
     return { ok: true, itemCount: (v.items?.length ?? 1) - 1 }
   })
 }
@@ -400,6 +429,7 @@ export async function patchVoucher(user: SessionUser, voucherId: string, body: a
     const v = await loadVoucher(tx, voucherId)
     if (v.status !== 'draft' && v.status !== 'rejected') throw new ApiError(409, 'لا يمكن تعديل إذن بهذه الحالة')
     if (body.type && body.type !== v.type) throw new ApiError(400, 'لا يمكن تغيير نوع الإذن بعد الإنشاء')
+    await assertVoucherRefs(tx, { partyId: body.partyId, courierId: body.courierId, employeeId: body.employeeId, destBranchId: body.destBranchId, cashAccountId: body.cashAccountId })
     const tdef = voucherTypeDef(v.type)
     const data: any = { updatedAt: new Date() }
     if (tdef?.isFinancial && body.amount != null) data.amount = round2(Number(body.amount) || 0)
@@ -465,6 +495,32 @@ export async function transitionVoucher(user: SessionUser, voucherId: string, bo
       await assertShipmentsForType(tx, v, 'execute')
     }
 
+    // إلغاء سند مالي مكتمل = قيد عكسي (مسار التصحيح الرسمي) — للأذونات المالية فقط
+    if (v.status === 'completed' && action === 'cancel') {
+      if (!tdef?.isFinancial) {
+        throw new ApiError(409, 'لا يمكن إلغاء إذن تشغيلي مكتمل — الحالات التشغيلية نهائية، استخدم إذنًا عكسيًا')
+      }
+      // قيد عكسي للقيد المرتبط (إن وُجد) + فك الربط + رد التحصيل عن الشحنات المرتبطة
+      if (v.journalEntryId) {
+        await reverseJournal(tx, v.journalEntryId, { userId: user.userId, username: user.username }, `إلغاء السند ${v.voucherNo}`)
+        await tx.opVoucher.update({ where: { id: v.id }, data: { journalEntryId: null } })
+      }
+      if ((v.type === 'collection' || v.type === 'courier_settlement') && v.items?.length) {
+        for (const it of v.items) {
+          const s = await tx.shipment.findUnique({ where: { id: it.shipmentId } })
+          if (!s || s.collectionStatus !== 'collected') continue
+          await tx.shipment.update({
+            where: { id: s.id },
+            data: {
+              collectionStatus: 'uncollected',
+              updatedAt: new Date(),
+              statusHistory: { create: { fromStatus: s.status, toStatus: s.status, userName: user.username, notes: `رد تحصيل — إلغاء السند ${v.voucherNo}` } },
+            },
+          })
+        }
+      }
+    }
+
     // عند الإكمال: إعادة التحقق ثم تطبيق الأثر التشغيلي/المالي
     if (action === 'complete') {
       assertCompleteData(v)
@@ -472,7 +528,7 @@ export async function transitionVoucher(user: SessionUser, voucherId: string, bo
 
       if (tdef?.postStatus && v.items?.length) {
         for (const it of v.items) {
-          const s = await tx.shipment.findUnique({ where: { id: it.shipmentId } })
+          const s = await tx.shipment.findUnique({ where: { id: it.shipmentId }, include: { customer: { select: { id: true, name: true } }, contractor: { select: { id: true, name: true } } } })
           if (!s) continue
           await tx.shipment.update({
             where: { id: s.id },
@@ -481,13 +537,17 @@ export async function transitionVoucher(user: SessionUser, voucherId: string, bo
               updatedAt: new Date(),
               // إذن التحويل ينقل عهدة الشحنة للفرع المستلم
               ...(v.type === 'branch_transfer' && v.destBranchId ? { branchId: v.destBranchId } : {}),
-              // إذن التسليم يثبت التحصيل وفق قواعد النظام الحالية
-              ...(v.type === 'delivery' ? { collectionStatus: 'collected' as const } : {}),
+              // ملاحظة: إذن التسليم لا يثبت التحصيل — التحصيل يثبت بسند قبض/تسوية COD فقط
               statusHistory: {
                 create: { fromStatus: s.status, toStatus: tdef.postStatus, userName: user.username, notes: `${tdef.label} ${v.voucherNo} — اكتمل` },
               },
             },
           })
+          // التكامل المالي التلقائي: عند التسليم يُثبت النولون على العميل ومستحقات المقاول
+          // (قيد مزدوج مرتبط بالشحنة — مرة واحدة فقط لكل شحنة)
+          if (tdef.postStatus === 'delivered') {
+            await postShipmentDeliveryJournal(tx, s, { userId: user.userId, username: user.username })
+          }
         }
       }
       // تحصيل/تسوية عهدة مع شحنات مرتبطة → تسجيل التحصيل ومنع التكرار
@@ -523,6 +583,10 @@ export async function settleShipmentCOD(user: SessionUser, shipmentId: string, b
   return db.$transaction(async (tx) => {
     const s = await tx.shipment.findUnique({ where: { id: shipmentId } })
     if (!s) throw new ApiError(404, 'الشحنة غير موجودة')
+    // التسوية المالية تتم فقط بعد التسليم الفعلي للعميل (الشحنة مع المندوب = عهدة بضاعة وليست نقدية)
+    if (s.status !== 'delivered') {
+      throw new ApiError(409, `لا يمكن تسوية COD إلا للشحنات المسلّمة — الحالة الحالية "${s.status}" (سلّم الشحنة أولًا)`)
+    }
     if (s.collectionStatus === 'collected') {
       throw new ApiError(409, `الشحنة ${s.shipmentNo} تمت تسويتها مسبقًا — لا يمكن تسوية نفس الشحنة مرتين`)
     }
@@ -537,7 +601,8 @@ export async function settleShipmentCOD(user: SessionUser, shipmentId: string, b
 
     // 1) سند قبض من العميل
     const customerAmount = round2(Number(body.customerAmount ?? s.freightTotal ?? 0))
-    if (s.customerId && customerAmount > 0) {
+    if (customerAmount <= 0) throw new ApiError(400, 'مبلغ التحصيل من العميل يجب أن يكون أكبر من صفر — لا يمكن تسوية بمبلغ صفر وإثبات التحصيل')
+    if (s.customerId) {
       const voucherNo = await nextVoucherNo(tx, 'collection')
       const v1 = await tx.opVoucher.create({
         data: {
@@ -565,6 +630,7 @@ export async function settleShipmentCOD(user: SessionUser, shipmentId: string, b
 
     // 2) سند صرف للمقاول
     const contractorAmount = round2(Number(body.contractorAmount ?? s.totalSuppliers ?? s.freightCost ?? 0))
+    if (contractorAmount < 0) throw new ApiError(400, 'مبلغ الصرف للمقاول لا يمكن أن يكون سالبًا')
     if (s.contractorId && contractorAmount > 0) {
       const voucherNo = await nextVoucherNo(tx, 'cash_disbursement')
       const v2 = await tx.opVoucher.create({
@@ -626,10 +692,10 @@ export async function markReturnReceived(user: SessionUser, returnVoucherId: str
     if (rv.status !== 'completed') throw new ApiError(409, 'لا يمكن التسليم إلا بعد إكمال إذن المرتجع')
     if (!rv.items?.length) throw new ApiError(400, 'لا توجد شحنات مرتجعة في هذا الإذن')
 
-    const results: { shipmentId: string; shipmentNo: string | null; receivingVoucherNo: string | null; ok: boolean; reason?: string }[] = []
+    const results: { shipmentId: string; shipmentNo: string | null; receivingVoucherNo: string | null; ok: boolean; reason?: string; reversalEntryNo?: string | null }[] = []
 
     for (const it of rv.items) {
-      const s = await tx.shipment.findUnique({ where: { id: it.shipmentId } })
+      const s = await tx.shipment.findUnique({ where: { id: it.shipmentId }, include: { customer: { select: { id: true, name: true } }, contractor: { select: { id: true, name: true } } } })
       if (!s) {
         results.push({ shipmentId: it.shipmentId, shipmentNo: null, receivingVoucherNo: null, ok: false, reason: 'الشحنة غير موجودة' })
         continue
@@ -655,7 +721,7 @@ export async function markReturnReceived(user: SessionUser, returnVoucherId: str
           sourceBranchId: rv.sourceBranchId ?? s.branchId ?? null,
           employeeId: rv.employeeId ?? null,
           courierId: rv.courierId ?? null,
-          totalValue: 0,
+          totalValue: round2(Number(s.freightTotal ?? 0)),
           notes: `تسليم مرتجع تلقائي من ${rv.voucherNo} — ${body.notes ?? 'تم التسليم'}`,
           userId: user.userId, userName: user.username,
           items: { create: { shipmentId: s.id, notes: `تسليم من إذن ${rv.voucherNo}`, addedBy: user.username } },
@@ -668,7 +734,9 @@ export async function markReturnReceived(user: SessionUser, returnVoucherId: str
           ] },
         },
       })
-      // تحديث حالة الشحنة إلى "received_returned"
+      // تحديث حالة الشحنة إلى "received_returned" + التكامل المالي:
+      // عكس النولون المستحق على العميل صافيًا بعد رسوم المرتجع (حسب سياسة التسعير)
+      // — وإلا كان رصيد العميل يبقى مدينًا على بضاعة لم تُسلّم
       await tx.shipment.update({
         where: { id: s.id },
         data: {
@@ -679,7 +747,8 @@ export async function markReturnReceived(user: SessionUser, returnVoucherId: str
           },
         },
       })
-      results.push({ shipmentId: s.id, shipmentNo: s.shipmentNo, receivingVoucherNo: v.voucherNo, ok: true })
+      const reversal = await postShipmentReturnReversal(tx, s, { userId: user.userId, username: user.username })
+      results.push({ shipmentId: s.id, shipmentNo: s.shipmentNo, receivingVoucherNo: v.voucherNo, ok: true, reversalEntryNo: reversal?.entryNo ?? null })
     }
 
     // تسجيل فعل "mark_received" على إذن المرتجع الأصلي + تدقيق

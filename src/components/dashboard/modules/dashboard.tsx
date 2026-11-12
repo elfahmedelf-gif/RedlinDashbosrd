@@ -74,6 +74,7 @@ interface StatsResponse {
     totalReturns: number; totalTransfer: number; totalOther: number; totalDrop: number;
     ton15Total: number; ton3Total: number; m6Total: number;
     inTransit: number; delivered: number; returned: number; delayed: number;
+    codUncollected: number;
     statusCounts: Record<string, number>
   }
   daily: { date: string; count: number; freight: number; suppliers: number; customerPay: number }[]
@@ -222,6 +223,15 @@ export function DashboardModule({
     { name: '6 م', value: s.m6Total, color: PIE_COLORS[2] },
   ].filter((u) => u.value > 0)
 
+  // شحنات اليوم — الدلاء اليومية مفتاحها ثواني epoch (منطق الخادم:
+  // Math.floor(shipmentDate/1000) لكل شحنة). نجمع الدلاء التي تقع بعد
+  // منتصف الليل المحلي لليوم، فتطابق "شحنات اليوم" فعلًا لا آخر يوم في القاعدة.
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+  const todayStartSec = Math.floor(todayStart.getTime() / 1000)
+  const todayShipments = (data.daily ?? []).reduce(
+    (acc, d) => (Number(d.date) >= todayStartSec ? acc + d.count : acc), 0,
+  )
+
   return (
     <div className="space-y-4">
       {/* شريط فلترة التاريخ للموبايل */}
@@ -237,7 +247,7 @@ export function DashboardModule({
             <Kpi title="تكلفة النولون" value={fmtNum(s.totalSuppliers)} unit="ج.م" icon={Banknote} tone="purple"
               subtitle="تكلفة المقاولين والموردين" />
             <Kpi title="صافي هامش النولون" value={fmtNum(s.netFreightMargin)} unit="ج.م" icon={s.netFreightMargin >= 0 ? TrendingUp : TrendingDown} tone="green"
-              subtitle={s.netFreightMargin >= 0 ? 'ربح' : 'خسارة'} />
+              subtitle={`${s.netFreightMargin >= 0 ? 'ربح' : 'خسارة'} — إيرادات النولون − تكلفة الموردين`} />
           </>
         ) : (
           <>
@@ -249,13 +259,19 @@ export function DashboardModule({
       </div>
 
       {/* === بطاقات الحالات === */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 stagger">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 stagger">
         <StatCard label="قيد التنفيذ" value={s.inTransit} icon={Truck} tone="indigo" />
         <StatCard label="مسلّمة" value={s.delivered} icon={Package} tone="emerald" />
         <StatCard label="مرتجعة" value={s.returned} icon={Undo2} tone="rose" />
         <StatCard label="متأخرة" value={s.delayed} icon={Clock} tone="amber" />
+        <StatCard label="COD غير محصّل" value={s.codUncollected} icon={Wallet} tone="orange" />
         <StatCard label="إجمالي الوحدات" value={s.totalUnits} icon={Boxes} tone="teal" />
-        <StatCard label="شحنات اليوم" value={data.daily[data.daily.length - 1]?.count ?? 0} icon={CalendarDays} tone="primary" />
+        <StatCard
+          label={todayShipments > 0 ? 'شحنات اليوم' : 'لا شحنات اليوم'}
+          value={todayShipments}
+          icon={CalendarDays}
+          tone="primary"
+        />
       </div>
 
       {/* === مؤشرات مالية مصغّرة (فقط لمن يملك صلاحية الأسعار) === */}
@@ -492,7 +508,7 @@ function ContractorPerformance({ contractors, canPrices }: { contractors: any[];
               const max = contractors[0]?.count || 1
               const pct = (c.count / max) * 100
               return (
-                <div key={c.name} className="flex items-center gap-3">
+                <div key={`${c.name}-${i}`} className="flex items-center gap-3">
                   <Badge variant="outline" className="tnum shrink-0 w-6 justify-center">{i + 1}</Badge>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -584,7 +600,7 @@ function DashboardSkeleton() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">{[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">{[0, 1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">{[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Skeleton className="h-72 rounded-xl lg:col-span-2" />

@@ -12,8 +12,10 @@ import { DataTablePagination } from '../data-table-pagination'
 import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
 import { exportToCSV } from '@/lib/export'
 import { fmtNum } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { useCanPrices } from '../auth-provider'
+import { PartyStatementDialog } from '../party-statement'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import type { ModuleKey } from '../sidebar'
 
@@ -24,6 +26,8 @@ interface Party {
   address: string | null; city: string | null; region: string | null;
   taxNumber: string | null; paymentTerms: string | null; creditLimit: number | null;
   openingBalance: number; openingBalanceType: string | null;
+  /** الرصيد الحالي من دفتر الأستاذ (افتتاحي + مدين − دائن) — يُصفَّر للخادم لغير أهلية الأسعار */
+  currentBalance: number;
   branchId: string | null; branch: { id: string; name: string } | null;
   notes: string | null; active: boolean;
   _count: { shipments: number }
@@ -37,6 +41,9 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
   const canPrices = useCanPrices()
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Party | null>(null)
+  // نافذة كشف حساب الطرف
+  const [stmtOpen, setStmtOpen] = React.useState(false)
+  const [stmtParty, setStmtParty] = React.useState<Party | null>(null)
   // Client-side pagination for the card grid
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(10)
@@ -60,6 +67,7 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
 
   const onEdit = (p: Party) => { setEditing(p); setOpen(true) }
   const onAdd = () => { setEditing(null); setOpen(true) }
+  const onStatement = (p: Party) => { setStmtParty(p); setStmtOpen(true) }
 
   const handleDelete = async (id: string) => {
     const ok = await confirmDelete({
@@ -91,7 +99,8 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
   ]
 
   const submit = async (vals: any) => {
-    const payload = { ...vals, [`is${type.charAt(0).toUpperCase() + type.slice(1)}`]: true, userName: 'admin' }
+    // اسم المستخدم يُستخرج من الجلسة على الخادم — لا حاجة لإرساله في الحمولة
+    const payload = { ...vals, [`is${type.charAt(0).toUpperCase() + type.slice(1)}`]: true }
     if (editing) {
       // For edit, use PATCH
       await apiPatch(`/api/parties/${editing.id}`, payload)
@@ -154,6 +163,10 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
                     {p.code && <div className="text-[11px] text-muted-foreground tnum mt-0.5">كود: {p.code}</div>}
                   </div>
                   <div className="flex gap-1 print:hidden">
+                    {/* كشف حساب — مستند مالي بالكامل فلا يُعرض لغير أهلية الأسعار */}
+                    {canPrices && (
+                      <Button variant="ghost" size="sm" title="كشف حساب" aria-label="كشف حساب" onClick={() => onStatement(p)}><FileText className="size-4" /></Button>
+                    )}
                     <Button variant="ghost" size="sm" onClick={() => onEdit(p)}><Pencil className="size-4" /></Button>
                     <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDelete(p.id)}><Trash2 className="size-4" /></Button>
                   </div>
@@ -163,17 +176,25 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
                   {p.city && <div className="flex items-center gap-1.5"><MapPin className="size-3" /> {p.city}{p.region ? ` - ${p.region}` : ''}</div>}
                   {p.branch && <div className="flex items-center gap-1.5"><FileText className="size-3" /> {p.branch.name}</div>}
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className={cn('mt-3 grid gap-2 text-xs', canPrices ? 'grid-cols-3' : 'grid-cols-2')}>
                   <div className="bg-secondary/60 rounded-lg p-2">
                     <div className="text-muted-foreground">الشحنات</div>
                     <div className="font-bold tnum">{fmtNum(p._count.shipments)}</div>
                   </div>
-                  {/* إجمالي التعامل — يُعرض فقط لمن يملك صلاحية الأسعار */}
+                  {/* الإجمالي والرصيد — يُعرضان فقط لمن يملك صلاحية الأسعار */}
                   {canPrices ? (
-                    <div className="bg-primary/10 rounded-lg p-2">
-                      <div className="text-muted-foreground">إجمالي التعامل</div>
-                      <div className="font-bold tnum text-primary">{fmtNum(p._sum.totalSuppliers)} ج.م</div>
-                    </div>
+                    <>
+                      <div className="bg-primary/10 rounded-lg p-2">
+                        <div className="text-muted-foreground">إجمالي التعامل</div>
+                        <div className="font-bold tnum text-primary">{fmtNum(p._sum.totalSuppliers)} ج.م</div>
+                      </div>
+                      <div className="bg-secondary/60 rounded-lg p-2">
+                        <div className="text-muted-foreground">الرصيد الحالي</div>
+                        <div className={cn('font-bold tnum', p.currentBalance < 0 ? 'text-rose-600 dark:text-rose-400' : p.currentBalance > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground')}>
+                          {fmtNum(p.currentBalance)} ج.م
+                        </div>
+                      </div>
+                    </>
                   ) : (
                     <div className="bg-secondary/60 rounded-lg p-2">
                       <div className="text-muted-foreground">الرمز</div>
@@ -215,6 +236,14 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
         fields={fields}
         initial={editing ?? {}}
         onSubmit={submit}
+      />
+
+      {/* كشف حساب الطرف — يفتح من زر البطاقة */}
+      <PartyStatementDialog
+        partyId={stmtParty?.id ?? null}
+        partyName={stmtParty?.name}
+        open={stmtOpen}
+        onOpenChange={setStmtOpen}
       />
     </div>
   )

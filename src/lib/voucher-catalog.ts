@@ -81,12 +81,15 @@ export const TRANSITIONS: Record<string, { action: string; to: string; perm: str
     { action: 'complete', to: 'completed', perm: 'vouchers.execute' },
     { action: 'cancel', to: 'cancelled', perm: 'vouchers.cancel' },
   ],
-  completed: [],
+  /** مكتمل: قابل للإلغاء فقط للأذونات المالية (قيد عكسي) — يُفرض على الخادم */
+  completed: [
+    { action: 'cancel', to: 'cancelled', perm: 'vouchers.approve' },
+  ],
   cancelled: [],
 }
 
 export function voucherActionLabel(action: string): string {
-  const map: Record<string, string> = { submit: 'رفع', approve: 'اعتماد', reject: 'رفض', execute: 'تنفيذ', complete: 'إكمال', cancel: 'إلغاء', resubmit: 'إعادة', edit: 'تعديل', create: 'إنشاء' }
+  const map: Record<string, string> = { submit: 'رفع', approve: 'اعتماد', reject: 'رفض', execute: 'تنفيذ', complete: 'إكمال', cancel: 'إلغاء', resubmit: 'إعادة', edit: 'تعديل', create: 'إنشاء', add_item: 'إضافة شحنة', remove_item: 'إزالة شحنة', mark_received: 'تسليم مرتجع' }
   return map[action] ?? action
 }
 

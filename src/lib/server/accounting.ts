@@ -5,7 +5,6 @@
 import type { Prisma } from '@prisma/client'
 import { ApiError, round2 } from './http'
 import { logAudit, nextSeq } from './audit'
-import { parsePerms } from './passwords'
 import { matchPermission } from '../permissions'
 
 type Tx = Prisma.TransactionClient
@@ -157,7 +156,9 @@ export async function postJournal(tx: Tx, id: string, user: JUser) {
   return updated
 }
 
-/** قيد عكسي Reversal — ينعكس المدين/الدائن ويُرحّل تلقائيًا (مرتبط بالأصل) */
+/** قيد عكسي Reversal — ينعكس المدين/الدائن ويُرحّل تلقائيًا (مرتبط بالأصل)
+ *  + يصحح الربط: إذا كان القيد الأصلي مرتبطًا بسند مالي (OpVoucher) يُفك الربط
+ *  ويُسجل فعل "journal_reversed" على السند (كان العكس يترك السند يظهر كمحصّل) */
 export async function reverseJournal(tx: Tx, id: string, user: JUser, reason?: string) {
   const e = await tx.journalEntry.findUnique({ where: { id }, include: { lines: true } })
   if (!e) throw new ApiError(404, 'القيد غير موجود')
@@ -184,7 +185,19 @@ export async function reverseJournal(tx: Tx, id: string, user: JUser, reason?: s
     })),
   })
   await tx.journalEntry.update({ where: { id: reversal.id }, data: { reversalOfId: id } })
-  await logAudit(tx, { action: 'reverse', entity: 'journal_entry', entityId: id, notes: `عكس القيد ${e.entryNo} بالقيد ${reversal.entryNo}`, user })
+
+  // تصحيح الربط مع الأذونات التشغيلية (sourceType=op_voucher)
+  if (e.sourceType === 'op_voucher' && e.sourceId) {
+    const voucher = await tx.opVoucher.findUnique({ where: { id: e.sourceId } })
+    if (voucher && voucher.journalEntryId === id) {
+      await tx.opVoucher.update({ where: { id: voucher.id }, data: { journalEntryId: null } })
+      await tx.opVoucherAction.create({
+        data: { voucherId: voucher.id, userId: user.userId, userName: user.username, action: 'journal_reversed', notes: `عكس القيد ${e.entryNo} بالقيد ${reversal.entryNo}${reason ? ` — ${reason}` : ''}` },
+      })
+    }
+  }
+
+  await logAudit(tx, { action: 'reverse', entity: 'journal_entry', entityId: id, notes: `عكس القيد ${e.entryNo} بالقيد ${reversal.entryNo}${reason ? ` — ${reason}` : ''}`, user })
   return reversal
 }
 
@@ -205,7 +218,6 @@ export function assertJournalPerm(user: { permissions: string[] }, action: 'crea
   if (!matchPermission(user.permissions, key)) {
     throw new ApiError(403, `غير مصرح — هذه العملية تتطلب صلاحية "${key}"`)
   }
-  void parsePerms
 }
 
 /** أرصدة الحسابات من القيود المرحّلة فقط (تُستخدم للتقارير والأشجار) */
