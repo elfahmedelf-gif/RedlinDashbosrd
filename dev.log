@@ -26612,3 +26612,4 @@ Import trace:
  GET /api/lookups?category=load_type 200 in 11ms (compile: 1760µs, render: 9ms)
  GET /api/lookups?category=shipment_status 200 in 9ms (compile: 4ms, render: 5ms)
  GET /api/shipments?page=1&pageSize=10 200 in 28ms (compile: 1441µs, render: 27ms)
+ GET /api/shipments?page=1&pageSize=10 200 in 35ms (compile: 3ms, render: 32ms)
