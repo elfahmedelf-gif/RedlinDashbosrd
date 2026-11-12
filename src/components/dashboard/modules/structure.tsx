@@ -55,7 +55,7 @@ export function BranchesModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 print:hidden">
         <div className="text-sm text-muted-foreground tnum">{data?.items.length ?? 0} فرع</div>
         <Button onClick={onAdd} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">فرع جديد</span><span className="sm:hidden">جديد</span></Button>
       </div>
@@ -76,7 +76,7 @@ export function BranchesModule() {
                       {b.code && <div className="text-[11px] text-muted-foreground tnum">{b.code}</div>}
                     </div>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 print:hidden">
                     <Button variant="ghost" size="sm" onClick={() => onEdit(b)}><Pencil className="size-4" /></Button>
                     <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(b.id)}><Trash2 className="size-4" /></Button>
                   </div>
@@ -142,7 +142,7 @@ export function WarehousesModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 print:hidden">
         <div className="text-sm text-muted-foreground tnum">{data?.items.length ?? 0} مخزن</div>
         <Button onClick={onAdd} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">مخزن جديد</span><span className="sm:hidden">جديد</span></Button>
       </div>
@@ -160,7 +160,7 @@ export function WarehousesModule() {
                     <div className="font-semibold text-sm truncate">{w.name}</div>
                     <div className="text-[11px] text-muted-foreground">{w.branch?.name || '-'}</div>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 print:hidden">
                     <Button variant="ghost" size="sm" onClick={() => onEdit(w)}><Pencil className="size-4" /></Button>
                     <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(w.id)}><Trash2 className="size-4" /></Button>
                   </div>

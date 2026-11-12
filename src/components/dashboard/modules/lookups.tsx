@@ -122,7 +122,7 @@ export function LookupsModule() {
   return (
     <div className="space-y-4">
       {/* Header banner */}
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden print:hidden">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <div className="flex items-center justify-center size-11 rounded-xl bg-primary/10 text-primary shrink-0">
@@ -142,7 +142,7 @@ export function LookupsModule() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 print:hidden">
         {/* Categories list (left) — horizontal scroll on mobile, vertical on desktop */}
         <Card className="lg:col-span-1 h-fit overflow-hidden">
           <CardHeader className="pb-2 hidden lg:block">

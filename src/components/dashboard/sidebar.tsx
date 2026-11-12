@@ -198,7 +198,7 @@ export function Sidebar({ active, onChange, counts, permissions, user, onLogout 
   return (
     <aside
       className={cn(
-        'hidden md:flex shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground sticky top-0 h-screen z-30 transition-[width] duration-300 ease-out',
+        'sidebar-print-hide hidden md:flex shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground sticky top-0 h-screen z-30 transition-[width] duration-300 ease-out print:hidden',
         collapsed ? 'w-[68px]' : 'w-56 lg:w-60',
       )}
     >
@@ -410,7 +410,7 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
 
   return (
     <>
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border glass supports-[backdrop-filter]:bg-card/85 backdrop-blur-xl">
+      <nav className="mobile-nav-print-hide md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border glass supports-[backdrop-filter]:bg-card/85 backdrop-blur-xl print:hidden">
         <div className="grid grid-cols-5 gap-0.5 p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
           {primary.map((k) => {
             const m = MODULES.find((x) => x.key === k)!
@@ -455,7 +455,7 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
       </nav>
 
       {open && (
-        <div className="md:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm anim-fade-in" onClick={() => setOpen(false)}>
+        <div className="mobile-nav-overlay md:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm anim-fade-in print:hidden" onClick={() => setOpen(false)}>
           <div
             className="absolute bottom-4 left-4 right-4 max-h-[75vh] overflow-y-auto rounded-2xl border border-border glass shadow-2xl p-3 anim-slide-in"
             onClick={(e) => e.stopPropagation()}
@@ -501,7 +501,7 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
 // Replaces the separate desktop DashboardHeader on mobile (which is hidden on small screens).
 export function MobileHeader({ title, subtitle, icon: Icon }: { title: string; subtitle: string; icon?: LucideIcon }) {
   return (
-    <header className="md:hidden sticky top-0 z-30 flex items-center gap-2 px-3 h-14 border-b border-border glass supports-[backdrop-filter]:bg-card/90 backdrop-blur-xl">
+    <header className="mobile-header-print-hide md:hidden sticky top-0 z-30 flex items-center gap-2 px-3 h-14 border-b border-border glass supports-[backdrop-filter]:bg-card/90 backdrop-blur-xl print:hidden">
       <div className="flex items-center justify-center size-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-md shrink-0">
         {Icon ? <Icon className="size-5" /> : <Truck className="size-5" />}
       </div>

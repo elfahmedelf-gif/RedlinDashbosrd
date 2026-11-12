@@ -117,7 +117,7 @@ export function UsersModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
         <div className="flex items-center gap-2 flex-wrap">
           <UserCircle className="size-5 text-muted-foreground" />
           <Badge variant="secondary" className="tnum">{fmtNum(users.length)} مستخدم</Badge>
@@ -173,7 +173,7 @@ export function UsersModule() {
                     <span className="text-[10px] text-muted-foreground tnum mr-auto">آخر دخول: {fmtDateTime(u.lastLoginAt)}</span>
                   )}
                 </div>
-                <div className="flex gap-1 pt-1 border-t border-border/60">
+                <div className="flex gap-1 pt-1 border-t border-border/60 print:hidden">
                   <Button variant="ghost" size="sm" className="flex-1" onClick={() => { setEditing(u); setOpen(true) }}>
                     <Pencil className="size-3.5" /> تعديل
                   </Button>
@@ -378,7 +378,7 @@ export function RolesModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
         <div className="flex items-center gap-2 flex-wrap">
           <Shield className="size-5 text-muted-foreground" />
           <Badge variant="secondary" className="tnum">{fmtNum(roles.length)} دور</Badge>
@@ -411,7 +411,7 @@ export function RolesModule() {
                         <div className="text-[11px] text-muted-foreground tnum" dir="ltr">@{r.name}</div>
                       </div>
                     </div>
-                    <div className="flex gap-1 shrink-0">
+                    <div className="flex gap-1 shrink-0 print:hidden">
                       <Button variant="ghost" size="sm" onClick={() => openEdit(r)} className={cn(isAdmin && 'opacity-40')} aria-label="تعديل الدور">
                         <Pencil className="size-3.5" />
                       </Button>
@@ -534,7 +534,7 @@ export function SettingsModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-2"><SettingsIcon className="size-5 text-muted-foreground" /><span className="text-sm text-muted-foreground">إعدادات النظام</span></div>
         <Button onClick={save} disabled={saving || isLoading} size="sm"><Save className="size-4" /> {saving ? 'جاري الحفظ...' : 'حفظ'}</Button>
       </div>
@@ -606,7 +606,7 @@ export function AuditModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
         <div className="flex items-center gap-2">
           <History className="size-5 text-muted-foreground" />
           <span className="text-sm text-muted-foreground tnum">{fmtNum(data?.total ?? 0)} عملية</span>
@@ -623,10 +623,10 @@ export function AuditModule() {
           </Select>
         </div>
       </div>
-      <Card><CardContent className="p-0">
+      <Card className="print:hidden"><CardContent className="p-0">
         <DataTable rows={data?.items ?? []} columns={cols} loading={isLoading} getRowKey={(a: any) => a.id} minW={800} searchFn={() => true} />
       </CardContent></Card>
-      <div className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950/30 rounded-lg p-3 border border-amber-200 dark:border-amber-900">
+      <div className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950/30 rounded-lg p-3 border border-amber-200 dark:border-amber-900 print:hidden">
         🔒 سجل التدقيق غير قابل للتعديل أو الحذف — يُحفظ تلقائيًا مع كل عملية (إضافة/تعديل/حذف/دخول/خروج) مع اسم المستخدم المنفذ.
       </div>
     </div>

@@ -87,13 +87,19 @@ export function DataTable<T>({
   const primaryCol = columns.find((c) => c.primary) ?? columns[0]
   // Secondary columns for cards = all columns except the primary, not hidden in cards
   const cardColumns = columns.filter((c) => c !== primaryCol && !c.hideInCard)
+  // Print columns = all columns except the actions column (we don't want action buttons in print)
+  const printColumns = columns.filter((c) => {
+    const k = c.key.toLowerCase()
+    const h = c.header
+    return k !== 'actions' && k !== 'action' && h !== 'إجراءات' && h !== 'إجراء'
+  })
 
   const emptyContent = q ? `لا نتائج للبحث "${q}"` : emptyText
 
   return (
     <div className="space-y-2">
       {searchFn && (
-        <div className="relative w-full sm:max-w-md">
+        <div className="relative w-full sm:max-w-md print:hidden">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={searchPlaceholder} className="pr-9 bg-card" />
           {q && (
@@ -106,7 +112,7 @@ export function DataTable<T>({
 
       {/* Loading state */}
       {loading ? (
-        <div className="rounded-2xl border border-border bg-card elev-sm p-3 space-y-2">
+        <div className="rounded-2xl border border-border bg-card elev-sm p-3 space-y-2 print:hidden">
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-14" />)}
         </div>
       ) : filtered.length === 0 ? (
@@ -115,8 +121,41 @@ export function DataTable<T>({
         </div>
       ) : (
         <>
+          {/* ===== Print-only: full filtered list in a clean A4 table ===== */}
+          <div className="hidden print:block">
+            <table className="w-full text-xs">
+              <thead>
+                <tr>
+                  {printColumns.map((c) => (
+                    <th
+                      key={c.key}
+                      className={cn('px-2 py-1.5 font-bold text-slate-900 text-right', alignClass(c.align))}
+                    >
+                      {c.header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row, i) => (
+                  <tr key={getRowKey(row, i)} className="print-avoid-break">
+                    {printColumns.map((c) => (
+                      <td key={c.key} className={cn('px-2 py-1.5 text-right align-top', alignClass(c.align))}>
+                        {c.render(row, i)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="text-[10px] text-slate-500 mt-1 text-left">
+              إجمالي السجلات: {filtered.length}
+            </div>
+          </div>
+
+          {/* ===== Screen-only views (hidden in print) ===== */}
           {/* Mobile: card view */}
-          <div className="sm:hidden space-y-2">
+          <div className="sm:hidden space-y-2 print:hidden">
             {pageRows.map((row, i) => {
               const idx = (safePage - 1) * pageSize + i
               const key = getRowKey(row, idx)
@@ -174,7 +213,7 @@ export function DataTable<T>({
           </div>
 
           {/* Desktop: table view */}
-          <div className="hidden sm:block rounded-2xl border border-border overflow-hidden bg-card elev-sm">
+          <div className="hidden sm:block rounded-2xl border border-border overflow-hidden bg-card elev-sm print:hidden">
             <div className="w-full overflow-x-auto max-h-[600px] overflow-y-auto">
               <table className="w-full table-fixed text-sm text-right" style={{ minWidth: minW }}>
                 <thead className="bg-muted/50 text-xs text-muted-foreground sticky top-0 z-10 backdrop-blur-sm">
@@ -225,7 +264,7 @@ export function DataTable<T>({
           </div>
 
           {/* Mobile: pagination bar below the cards */}
-          <div className="sm:hidden rounded-2xl border border-border bg-card elev-sm overflow-hidden">
+          <div className="sm:hidden rounded-2xl border border-border bg-card elev-sm overflow-hidden print:hidden">
             <DataTablePagination
               currentPage={safePage}
               totalPages={totalPages}

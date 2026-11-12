@@ -171,7 +171,7 @@ export function PendingReturnsModule() {
   return (
     <div className="space-y-4">
       {/* شريط الأدوات العلوي */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
         <div className="flex items-center gap-2">
           <Badge variant="outline" className={cn('text-[12px] tnum', total > 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300')}>
             {total} مرتجع معلق

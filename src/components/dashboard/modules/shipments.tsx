@@ -186,7 +186,7 @@ export function ShipmentsModule() {
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-2">
+      <div className="flex flex-col sm:flex-row gap-2 print:hidden">
         <div className="relative flex-1 min-w-0">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground shrink-0" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="بحث برقم الشحنة/العميل/الوجهة/الهاتف..." className="pr-9 min-w-0" />
@@ -207,7 +207,7 @@ export function ShipmentsModule() {
 
       {/* Bulk selection action bar */}
       {selectedIds.size > 0 && (
-        <Card className="border-primary/40 bg-primary/5">
+        <Card className="border-primary/40 bg-primary/5 print:hidden">
           <CardContent className="p-3 flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium tnum">{selectedIds.size} شحنة محددة</span>
             <Button variant="ghost" size="sm" onClick={clearSelection} className="text-muted-foreground"><X className="size-3.5" /> إلغاء التحديد</Button>
@@ -223,7 +223,7 @@ export function ShipmentsModule() {
       )}
 
       {showFilters && (
-        <Card>
+        <Card className="print:hidden">
           <CardContent className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1) }}>
               <SelectTrigger><SelectValue placeholder="الحالة" /></SelectTrigger>
@@ -258,11 +258,11 @@ export function ShipmentsModule() {
         </Card>
       )}
 
-      <div className="text-xs text-muted-foreground tnum">إجمالي النتائج: <b className="text-foreground">{fmtNum(data?.total ?? 0)}</b></div>
+      <div className="text-xs text-muted-foreground tnum print:hidden">إجمالي النتائج: <b className="text-foreground">{fmtNum(data?.total ?? 0)}</b></div>
 
       {/* Mobile: card view */}
       {data && data.items.length > 0 && (
-        <div className="sm:hidden space-y-2">
+        <div className="sm:hidden space-y-2 print:hidden">
           {data.items.map((s) => {
             const size = s.loadType === '1.5TON' ? '1.5ط' : s.loadType === '3TON' ? '3ط' : s.loadType === '6M' ? '6م' : '-'
             const sizeTone = s.loadType === '1.5TON' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
@@ -334,12 +334,12 @@ export function ShipmentsModule() {
       )}
 
       {/* Desktop: table view */}
-      <Card className="overflow-hidden hidden sm:block">
+      <Card className="overflow-hidden hidden sm:block print:hidden">
         <div className="w-full overflow-x-auto">
           <table className="w-full table-fixed text-sm text-right" style={{ minWidth: 1320 }}>
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <th className="font-medium px-2 py-3 text-center w-12">
+                <th className="font-medium px-2 py-3 text-center w-12 print:hidden">
                   <button onClick={toggleAll} aria-label="تحديد الكل" className={cn('inline-flex items-center justify-center size-5 rounded-md border-2', allOnPageSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-slate-300 dark:border-slate-600')}>
                     {allOnPageSelected && <CheckSquare className="size-3.5" />}
                   </button>
@@ -355,7 +355,7 @@ export function ShipmentsModule() {
                 {canPrices && <th className="font-medium px-4 py-3 text-left w-24">نولون العميل</th>}
                 {canPrices && <th className="font-medium px-4 py-3 text-left w-24">نولون المقاول</th>}
                 {canPrices && <th className="font-medium px-4 py-3 text-left w-24">هامش الربح</th>}
-                <th className="font-medium px-4 py-3 text-center w-20">إجراءات</th>
+                <th className="font-medium px-4 py-3 text-center w-20 print:hidden">إجراءات</th>
               </tr>
             </thead>
             <tbody>
@@ -372,7 +372,7 @@ export function ShipmentsModule() {
                   const isSel = selectedIds.has(s.id)
                   return (
                     <tr key={s.id} className={cn('border-t border-border hover:bg-muted/40', i % 2 ? 'bg-card' : 'bg-muted/15', isSel && 'bg-primary/10')}>
-                      <td className="px-2 py-3 align-middle text-center">
+                      <td className="px-2 py-3 align-middle text-center print:hidden">
                         <button
                           onClick={(e) => { e.stopPropagation(); toggleOne(s.id) }}
                           aria-label="تحديد"
@@ -418,7 +418,7 @@ export function ShipmentsModule() {
                           <span className="num-ltr">{fmtNum(margin)}</span>
                         </td>
                       )}
-                      <td className="px-4 py-3 align-middle text-center whitespace-nowrap">
+                      <td className="px-4 py-3 align-middle text-center whitespace-nowrap print:hidden">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -452,15 +452,17 @@ export function ShipmentsModule() {
 
       {/* Pagination — unified server-side pagination bar */}
       {data && (
-        <DataTablePagination
-          currentPage={data.page}
-          totalPages={data.totalPages}
-          totalItems={data.total}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
-          itemLabel="شحنة"
-        />
+        <div className="print:hidden">
+          <DataTablePagination
+            currentPage={data.page}
+            totalPages={data.totalPages}
+            totalItems={data.total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
+            itemLabel="شحنة"
+          />
+        </div>
       )}
 
       {/* Add dialog */}
@@ -733,7 +735,7 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between print:hidden">
         <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-4" /> رجوع للقائمة</Button>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => setWaybillOpen(true)}><Printer className="size-4" /> طباعة بوليصة</Button>

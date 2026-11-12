@@ -80,7 +80,7 @@ export function AccountsModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 print:hidden">
         <div className="flex items-center gap-2 min-w-0">
           <BookOpen className="size-5 text-muted-foreground shrink-0" />
           <span className="text-sm text-muted-foreground tnum">{data?.items.length ?? 0} حساب</span>
@@ -181,7 +181,7 @@ export function JournalModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <FileText className="size-5 text-muted-foreground shrink-0" />
           <span className="text-sm text-muted-foreground tnum shrink-0">{data?.items.length ?? 0} قيد</span>
@@ -433,7 +433,7 @@ export function VouchersModule() {
         </Card>
       </div>
 
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <Landmark className="size-5 text-muted-foreground shrink-0" />
           <span className="text-sm text-muted-foreground tnum shrink-0">{items.length} سند معروض</span>
@@ -459,7 +459,7 @@ export function VouchersModule() {
 
       {/* Quick COD settlement panel — show shipments ready to settle */}
       {has('shipments.settle') && (
-        <Card>
+        <Card className="print:hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2"><Landmark className="size-4" /> تسوية سريعة للشحنات (COD)</CardTitle>
             <CardDescription>شحنات لم تُسوَّ بعد ولها عميل ومقاول — يصدر النظام سند قبض من العميل وسند صرف للمقاول دفعة واحدة.</CardDescription>

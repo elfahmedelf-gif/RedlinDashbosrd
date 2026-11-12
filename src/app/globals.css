@@ -183,6 +183,106 @@
   .truncate-id { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @media print { .no-print { display: none !important; } .print-block { display: block !important; } }
 
+  /* =========================================================================
+     ===== Global A4 Formal Print System (التقارير الرسمية القابلة للطباعة) ===
+     يُفعّل تلقائيًا عند Ctrl+P — يُخفي كل عناصر الواجهة التفاعلية ويفرض
+     عرض A4 كامل بخلفية بيضاء وأسود ناصع، مع تكرار رؤوس الجداول وتفادي
+     تقطيع الصفوف. لا يؤثر على حوارات بوليصة الشحن/السند أدناه (تستخدم :has).
+     ========================================================================= */
+  @media print {
+    /* --- 1. مقاس الورقة --- */
+    @page { size: A4 portrait; margin: 12mm 15mm; }
+    @page landscape { size: A4 landscape; margin: 10mm 12mm; }
+    .print-landscape { page: landscape; }
+
+    /* --- 2. فرض خلفية بيضاء + أسود ناصع + الحفاظ على ألوان الشارات --- */
+    html, body {
+      background: white !important;
+      color: black !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    /* --- 3. إيقاف كل الأنيميشن + ضمان ظهور المحتوى --- */
+    .anim-fade-in, .anim-slide-in, .anim-count-up, .anim-zoom-in, .stagger > * {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+
+    /* --- 4. فرد الحاوية الرئيسية لعرض A4 كامل وإلغاء تخطيط السايدبار --- */
+    .min-h-screen { display: block !important; }
+    /* الـ row الذي يحوي السايدبار + main — يُفرَض block ليأخذ main عرض كامل */
+    .dashboard-layout-row,
+    .dashboard-layout-row > main,
+    .flex-1 {
+      display: block !important;
+      width: 100% !important;
+      max-width: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      min-height: 0 !important;
+      height: auto !important;
+      flex: none !important;
+    }
+    /* الحاوية الداخلية ذات max-width — تُفرَض بعرض كامل */
+    .max-w-\[1600px\] {
+      width: 100% !important;
+      max-width: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+    /* الـ main له padding للموبايل (pb-20) — يُلغى في الطباعة */
+    main { padding-bottom: 0 !important; }
+
+    /* --- 4b. إخفاء صريح للهيدر/السايدبار/الناف بار بأولوية قصوى --- */
+    /* هذه القاعدة تتفوق على أي .flex أو .md:flex لأنها أكثر تحديدًا (element+class) */
+    aside.sidebar-print-hide,
+    header.mobile-header-print-hide,
+    header.desktop-header-print-hide,
+    nav.mobile-nav-print-hide,
+    .mobile-nav-overlay { display: none !important; }
+
+    /* --- 5. القواعد الذهبية للجداول الورقية --- */
+    table { border-collapse: collapse !important; width: 100% !important; }
+    thead { display: table-header-group !important; }
+    tfoot { display: table-footer-group !important; }
+    tr, .print-avoid-break {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+    th, td { border: 1px solid #cbd5e1 !important; }
+    thead th { background: #f1f5f9 !important; color: #0f172a !important; }
+
+    /* --- 6. إزالة الظلال والزوايا المبالغة ل مظهر ورقي نظيف --- */
+    .elev-xs, .elev-sm, .elev-md, .elev-lg, .elev-primary,
+    .shadow-sm, .shadow, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl {
+      box-shadow: none !important;
+    }
+
+    /* --- 7. عناصر التقرير الرسمية (تظهر فقط في الطباعة) --- */
+    .print-only { display: block !important; }
+    .print\:hidden { display: none !important; }
+    .print\:block { display: block !important; }
+
+    /* --- 8. (تم دمجها في القاعدة 4b أعلاه) --- */
+
+    /* --- 8b. إخفاء عناصر Next.js runtime/devtools في الطباعة --- */
+    nextjs-portal, [data-nextjs-dialog], [data-nextjs-toast-container],
+    [data-nextjs-toast-region], [data-nextjs-devtools-button],
+    .nextjs-dev-tools-button, [class*="nextjs-portal"] { display: none !important; }
+
+    /* --- 9. إلغاء limit-clamp على truncate لعرض النصوص كاملة في الطباعة --- */
+    .truncate-1, .truncate-2, .truncate-3 {
+      display: block !important;
+      -webkit-line-clamp: unset !important;
+      -webkit-box-orient: unset !important;
+      overflow: visible !important;
+      white-space: normal !important;
+    }
+    .truncate { overflow: visible !important; text-overflow: clip !important; white-space: normal !important; }
+  }
+
   /* ===== Waybill (بوليصة شحن) print styles ===== */
   @media print {
     /* Hide everything by default when printing a waybill */
@@ -201,8 +301,6 @@
     body:has(.waybill-dialog) [data-slot="dialog-header"],
     body:has(.waybill-dialog) .print\:hidden,
     body:has(.waybill-dialog) [data-slot="dialog-close"] { display: none !important; }
-    /* A4 page size */
-    @page { size: A4 portrait; margin: 10mm; }
   }
 
   /* ===== Voucher (إذن قبض/صرف) print styles ===== */
@@ -220,7 +318,6 @@
     body:has(.voucher-dialog) [data-slot="dialog-header"],
     body:has(.voucher-dialog) .print\:hidden,
     body:has(.voucher-dialog) [data-slot="dialog-close"] { display: none !important; }
-    @page { size: A5 portrait; margin: 8mm; }
   }
 }
 

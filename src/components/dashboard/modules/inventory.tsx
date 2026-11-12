@@ -73,7 +73,7 @@ export function InventoryModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
         <div className="flex items-center gap-2">
           <div className="text-sm text-muted-foreground tnum">{data?.items.length ?? 0} صنف</div>
           <Button variant={lowOnly ? 'default' : 'outline'} size="sm" onClick={() => setLowOnly((v) => !v)}>
@@ -105,7 +105,7 @@ export function InventoryModule() {
                       {it.code && <div className="text-[11px] text-muted-foreground tnum">{it.code}</div>}
                     </div>
                   </div>
-                  <div className="flex gap-0.5">
+                  <div className="flex gap-0.5 print:hidden">
                     <Button variant="ghost" size="sm" onClick={() => { setEditing(it); setOpen(true) }}><Pencil className="size-3.5" /></Button>
                     <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(it.id)}><Trash2 className="size-3.5" /></Button>
                   </div>
@@ -195,7 +195,7 @@ export function MovementsModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 print:hidden">
         <div className="text-sm text-muted-foreground tnum">{data?.items.length ?? 0} حركة</div>
         <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">حركة جديدة</span><span className="sm:hidden">حركة</span></Button>
       </div>
@@ -351,7 +351,7 @@ export function FreightModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 print:hidden">
         <div className="text-sm text-muted-foreground tnum">{data?.items.length ?? 0} سعر</div>
         <div className="flex gap-2 shrink-0">
           <Button variant="outline" onClick={exportFreight} size="sm" disabled={!data?.items?.length}>

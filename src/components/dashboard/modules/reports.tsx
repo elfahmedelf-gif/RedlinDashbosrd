@@ -103,7 +103,7 @@ export function ReportsModule() {
     const activeReport = REPORTS.find((r) => r.type === active)
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => setActive(null)}>← رجوع للتقارير</Button>
             <h3 className="text-base font-semibold">{activeReport?.title}</h3>
@@ -115,6 +115,12 @@ export function ReportsModule() {
             <Button variant="outline" size="sm" onClick={exportCSV}><FileSpreadsheet className="size-4" /> CSV</Button>
             <Button variant="outline" size="sm" onClick={exportXls}><FileSpreadsheet className="size-4" /> Excel</Button>
           </div>
+        </div>
+
+        {/* عنوان التقرير في الطباعة (يظهر فقط عند الطباعة) */}
+        <div className="hidden print:block text-center mb-2">
+          <h2 className="text-lg font-bold">{activeReport?.title}</h2>
+          {(from || to) && <div className="text-xs text-slate-600 mt-1">من {from || 'البداية'} إلى {to || 'اليوم'}</div>}
         </div>
 
         {/* عرض مخصص لتقرير المرتجعات لم تُستلم — مع بطاقة مسؤولية السائقين */}

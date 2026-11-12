@@ -28,6 +28,7 @@ import { ReportsModule } from '@/components/dashboard/modules/reports'
 import { ImportModule } from '@/components/dashboard/modules/import-wizard'
 import { UsersModule, RolesModule, SettingsModule, AuditModule } from '@/components/dashboard/modules/system'
 import { LookupsModule } from '@/components/dashboard/modules/lookups'
+import { PrintHeader, PrintFooter } from '@/components/dashboard/print-layout'
 import { fetcher } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -121,7 +122,7 @@ function DashboardHeader({
   }
 
   return (
-    <header className="hidden md:flex sticky top-0 z-20 h-auto min-h-16 px-4 sm:px-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 dark:supports-[backdrop-filter]:bg-slate-900/85 border-b border-slate-250 dark:border-slate-800 flex-wrap items-center justify-between gap-2 py-2">
+    <header className="desktop-header-print-hide hidden md:flex sticky top-0 z-20 h-auto min-h-16 px-4 sm:px-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 dark:supports-[backdrop-filter]:bg-slate-900/85 border-b border-slate-250 dark:border-slate-800 flex-wrap items-center justify-between gap-2 py-2 print:hidden">
       {/* يمين: شارة المجموعة (breadcrumb) + الأيقونة + العنوان + الوصف */}
       <div className="flex items-center gap-3 min-w-0">
         {ActiveIcon && (
@@ -242,11 +243,17 @@ function DashboardShell() {
         subtitle={TAB_LABELS[tab].subtitle}
         icon={activeMod?.icon}
       />
-      <div className="flex flex-1 min-h-0">
+      <div className="dashboard-layout-row flex flex-1 min-h-0">
         <Sidebar active={tab} onChange={setTab} counts={counts} permissions={user?.permissions} user={user} onLogout={logout} />
         <main className="flex-1 min-w-0 flex flex-col pb-20 md:pb-0">
           <DashboardHeader tab={tab} from={from} to={to} setFrom={setFrom} setTo={setTo} />
-          <div className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 w-full mx-auto max-w-[1600px]">
+          <div className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 w-full mx-auto max-w-[1600px] print:p-0">
+            {/* ترويسة التقرير الرسمية — تظهر فقط أثناء الطباعة */}
+            <PrintHeader
+              title={TAB_LABELS[tab].title}
+              subtitle={TAB_LABELS[tab].subtitle}
+              user={user?.name}
+            />
             <div key={tab} className="anim-fade-in">
               {tab === 'overview' && <DashboardModule from={from || undefined} to={to || undefined} setFrom={setFrom} setTo={setTo} />}
               {tab === 'shipments' && <ShipmentsModule />}
@@ -270,6 +277,8 @@ function DashboardShell() {
               {tab === 'settings' && <SettingsModule />}
               {tab === 'audit' && <AuditModule />}
             </div>
+            {/* تذييل التقرير — خانات التوقيع، تظهر فقط في الطباعة */}
+            <PrintFooter />
           </div>
         </main>
       </div>

@@ -171,7 +171,7 @@ export function ImportModule() {
               })()}
             </CardContent>
           </Card>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between print:hidden">
             <Button variant="outline" onClick={() => setStep('idle')}>رجوع</Button>
             <Button onClick={toMapping}>التالي: تعيين الأعمدة <ArrowRight className="size-4 rotate-180" /></Button>
           </div>
@@ -227,7 +227,7 @@ export function ImportModule() {
               </div>
             </CardContent>
           </Card>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between print:hidden">
             <Button variant="outline" onClick={() => setStep('preview')}>رجوع</Button>
             <Button onClick={doCommit} disabled={!branchId || !warehouseId}><Check className="size-4" /> اعتماد الاستيراد</Button>
           </div>
@@ -262,7 +262,7 @@ export function ImportModule() {
       )}
 
       {/* Import logs */}
-      <Card>
+      <Card className="print:hidden">
         <CardHeader className="pb-2"><CardTitle className="text-base">سجل الاستيرادات</CardTitle><CardDescription>عمليات الاستيراد السابقة</CardDescription></CardHeader>
         <CardContent className="p-0">
           {logsData ? (

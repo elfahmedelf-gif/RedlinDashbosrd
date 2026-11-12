@@ -124,7 +124,7 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 print:hidden">
         <div className="text-sm text-muted-foreground tnum">
           {totalParties} {title}
         </div>
@@ -153,7 +153,7 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
                     <div className="font-semibold text-sm leading-tight line-clamp-2">{p.name}</div>
                     {p.code && <div className="text-[11px] text-muted-foreground tnum mt-0.5">كود: {p.code}</div>}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 print:hidden">
                     <Button variant="ghost" size="sm" onClick={() => onEdit(p)}><Pencil className="size-4" /></Button>
                     <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDelete(p.id)}><Trash2 className="size-4" /></Button>
                   </div>
@@ -193,7 +193,7 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
             ))}
           </div>
           {/* Unified pagination bar below the cards grid */}
-          <div className="rounded-2xl border border-border bg-card elev-sm overflow-hidden">
+          <div className="rounded-2xl border border-border bg-card elev-sm overflow-hidden print:hidden">
             <DataTablePagination
               currentPage={safePage}
               totalPages={totalPages}

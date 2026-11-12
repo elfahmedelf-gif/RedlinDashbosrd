@@ -775,7 +775,7 @@ export function VouchersModule() {
       </div>
 
       {/* ==== By-category distribution ==== */}
-      <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+      <div className="flex items-center gap-1.5 flex-wrap text-[11px] print:hidden">
         <span className="text-muted-foreground ml-1">التوزيع حسب الفئة:</span>
         {VOUCHER_CATEGORIES.map((cat) => (
           <Badge key={cat.key} variant="outline" className={cn('text-[10px]', cat.color)}>
@@ -785,7 +785,7 @@ export function VouchersModule() {
       </div>
 
       {/* ==== Filter bar ==== */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center justify-between gap-3 flex-wrap print:hidden">
         {/* Counter + filters on ONE line — scrolls horizontally when narrow (never wraps) */}
         <div className="flex items-center gap-3 min-w-0 flex-1 flex-nowrap overflow-x-auto">
           {/* Counter — own bordered pill, clearly separated */}
