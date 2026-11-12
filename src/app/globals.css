@@ -262,8 +262,8 @@
 
     /* --- 7. عناصر التقرير الرسمية (تظهر فقط في الطباعة) --- */
     .print-only { display: block !important; }
-    .print\:hidden { display: none !important; }
-    .print\:block { display: block !important; }
+    [class*="print:hidden"] { display: none !important; }
+    [class*="print:block"]:not(.modal-print-stage) { display: block !important; }
 
     /* --- 8. (تم دمجها في القاعدة 4b أعلاه) --- */
 
@@ -283,42 +283,79 @@
     .truncate { overflow: visible !important; text-overflow: clip !important; white-space: normal !important; }
   }
 
-  /* ===== Waybill (بوليصة شحن) print styles ===== */
+  /* ===== Modal Print Portal — unified for waybill + vouchers + operational vouchers =====
+     المشكلة الجذرية: الـ Dialog محصور في max-h-[95vh] overflow-y-auto فيُقص في الطباعة.
+     الحل: عند فتح أي نافذة طباعة، نضع كلاس على <body> يُخفي كامل التطبيق ويُظهر فقط
+     منطقة الطباعة (#xxx-print-area) كعنصر انسيابي ثابت بعرض/ارتفاع طبيعي.
+     نطبّق ذلك عبر JS (set body class) + CSS هنا.
+     ===================================================================================== */
   @media print {
-    /* Hide everything by default when printing a waybill */
-    body:has(.waybill-dialog) > * { display: none !important; }
-    /* Show only the dialog portal + waybill printable area */
-    body:has(.waybill-dialog) [data-radix-popper-wrapper],
-    body:has(.waybill-dialog) [data-slot="dialog-overlay"],
-    body:has(.waybill-dialog) [data-slot="dialog-content"] { display: revert !important; }
-    body:has(.waybill-dialog) [data-slot="dialog-overlay"] { background: white !important; position: static !important; inset: auto !important; }
-    body:has(.waybill-dialog) [data-slot="dialog-content"] {
-      position: static !important; transform: none !important; left: auto !important; top: auto !important;
-      width: 100% !important; max-width: 100% !important; border: 0 !important; box-shadow: none !important;
-      padding: 0 !important; margin: 0 !important; background: white !important;
+    /* عندما يكون body.printing-modal: أوقف كل أبناء body ما عدا منصة الطباعة */
+    body.printing-modal > *:not(.modal-print-stage) {
+      display: none !important;
     }
-    /* Hide the dialog header + actions when printing */
-    body:has(.waybill-dialog) [data-slot="dialog-header"],
-    body:has(.waybill-dialog) .print\:hidden,
-    body:has(.waybill-dialog) [data-slot="dialog-close"] { display: none !important; }
+    /* منصة الطباعة: ثابتة، بعرض كامل، بدون قيود */
+    body.printing-modal .modal-print-stage {
+      position: static !important;
+      top: auto !important;
+      left: auto !important;
+      inset: auto !important;
+      width: 100% !important;
+      max-width: none !important;
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      transform: none !important;
+      border: 0 !important;
+      box-shadow: none !important;
+      background: white !important;
+    }
+    /* داخل المنصة: حرر أي overflow/max-height موروث من الـ Dialog */
+    body.printing-modal .modal-print-stage *:not(.print-keep-inline) {
+      max-height: none !important;
+    }
+    body.printing-modal .modal-print-stage .print-scroll,
+    body.printing-modal .modal-print-stage [class*="overflow-y-auto"],
+    body.printing-modal .modal-print-stage [class*="max-h-"] {
+      overflow: visible !important;
+      max-height: none !important;
+    }
+    /* محتوى الطباعة نفسه: انسيابي طبيعي بعرض كامل */
+    body.printing-modal .modal-print-stage .printable-area {
+      position: static !important;
+      width: 100% !important;
+      max-width: none !important;
+      height: auto !important;
+      overflow: visible !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    /* إخفاء شريط أزرار التحكم داخل الـ Modal (print:hidden class) */
+    body.printing-modal [class*="print:hidden"],
+    body.printing-modal .print-hidden { display: none !important; }
+    /* إخفاء رأس الـ Dialog (DialogTitle) */
+    body.printing-modal [data-slot="dialog-header"] { display: none !important; }
+    /* إخفاء زر الإغلاق العائم */
+    body.printing-modal [data-slot="dialog-close"] { display: none !important; }
+    /* منع انقسام البوليصة/السند على صفحتين */
+    body.printing-modal .printable-area { page-break-inside: avoid; break-inside: avoid; }
+    /* ألوان الشارات محفوظة */
+    body.printing-modal { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background: white !important; }
+    /* صفحة A4 */
+    @page { size: A4 portrait; margin: 10mm; }
+    /* جداول البوليصة بحدود واضحة */
+    body.printing-modal .printable-area table { border-collapse: collapse; }
+    body.printing-modal .printable-area th, body.printing-modal .printable-area td { border: 1px solid #cbd5e1; }
+    body.printing-modal .printable-area thead th { background: #f1f5f9; color: #0f172a; }
   }
 
-  /* ===== Voucher (إذن قبض/صرف) print styles ===== */
-  @media print {
-    body:has(.voucher-dialog) > * { display: none !important; }
-    body:has(.voucher-dialog) [data-radix-popper-wrapper],
-    body:has(.voucher-dialog) [data-slot="dialog-overlay"],
-    body:has(.voucher-dialog) [data-slot="dialog-content"] { display: revert !important; }
-    body:has(.voucher-dialog) [data-slot="dialog-overlay"] { background: white !important; position: static !important; inset: auto !important; }
-    body:has(.voucher-dialog) [data-slot="dialog-content"] {
-      position: static !important; transform: none !important; left: auto !important; top: auto !important;
-      width: 100% !important; max-width: 100% !important; border: 0 !important; box-shadow: none !important;
-      padding: 0 !important; margin: 0 !important; background: white !important;
-    }
-    body:has(.voucher-dialog) [data-slot="dialog-header"],
-    body:has(.voucher-dialog) .print\:hidden,
-    body:has(.voucher-dialog) [data-slot="dialog-close"] { display: none !important; }
-  }
+  /* ===== Waybill (بوليصة شحن) — القديم، يُحذف ويُستبدل بـ Print Portal أعلاه ===== */
+  /* (تم استبداله بنظام modal-print-stage الموحد) */
+
+  /* ===== Voucher (إذن قبض/صرف) — القديم، يُحذف ويُستبدل بـ Print Portal أعلاه ===== */
+  /* (تم استبداله بنظام modal-print-stage الموحد) */
 }
 
 @keyframes fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
