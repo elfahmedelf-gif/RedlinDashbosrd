@@ -260,9 +260,9 @@ export function ShipmentsModule() {
 
       <div className="text-xs text-muted-foreground tnum print:hidden">إجمالي النتائج: <b className="text-foreground">{fmtNum(data?.total ?? 0)}</b></div>
 
-      {/* Mobile: card view */}
+      {/* Mobile (< md): card view */}
       {data && data.items.length > 0 && (
-        <div className="sm:hidden space-y-2 print:hidden">
+        <div className="md:hidden space-y-2 print:hidden">
           {data.items.map((s) => {
             const size = s.loadType === '1.5TON' ? '1.5ط' : s.loadType === '3TON' ? '3ط' : s.loadType === '6M' ? '6م' : '-'
             const sizeTone = s.loadType === '1.5TON' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
@@ -327,14 +327,33 @@ export function ShipmentsModule() {
                     </div>
                   )}
                 </div>
+                {/* ذيل البطاقة: أزرار الإجراءات بحجم مناسب للمس */}
+                <div className="flex items-center gap-2 pt-2 border-t border-border/60">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 min-h-[40px]"
+                    onClick={() => setSelected(s.id)}
+                  >
+                    <PackageSearch className="size-4" /> عرض التفاصيل
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 min-h-[40px]"
+                    onClick={() => setWaybillShipment(s)}
+                  >
+                    <Printer className="size-4" /> بوليصة
+                  </Button>
+                </div>
               </div>
             )
           })}
         </div>
       )}
 
-      {/* Desktop: table view */}
-      <Card className="overflow-hidden hidden sm:block print:hidden">
+      {/* Desktop (md+): table view */}
+      <Card className="overflow-hidden hidden md:block print:hidden">
         <div className="w-full overflow-x-auto">
           <table className="w-full table-fixed text-sm text-right" style={{ minWidth: 1320 }}>
             <thead className="bg-muted/40 text-xs text-muted-foreground">
@@ -444,7 +463,7 @@ export function ShipmentsModule() {
 
       {/* Mobile empty state */}
       {data && data.items.length === 0 && !isLoading && (
-        <Card className="sm:hidden"><CardContent className="py-16 text-center text-muted-foreground">
+        <Card className="md:hidden"><CardContent className="py-16 text-center text-muted-foreground">
           <PackageSearch className="size-10 mx-auto mb-2 opacity-50" />
           لا توجد شحنات مطابقة
         </CardContent></Card>
@@ -477,7 +496,7 @@ export function ShipmentsModule() {
 
       {/* Bulk action dialogs */}
       <Dialog open={bulkActionOpen === 'status'} onOpenChange={(v) => !v && setBulkActionOpen(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>تغيير الحالة دفعة ({selectedIds.size} شحنة)</DialogTitle>
             <DialogDescription>سيتم تحديث حالة جميع الشحنات المحددة إلى الحالة الجديدة وإضافة سجل لكل شحنة.</DialogDescription>
@@ -499,7 +518,7 @@ export function ShipmentsModule() {
       </Dialog>
 
       <Dialog open={bulkActionOpen === 'assign'} onOpenChange={(v) => !v && setBulkActionOpen(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>إسناد شحنات لمقاول ({selectedIds.size} شحنة)</DialogTitle>
             <DialogDescription>سيتم تحديث المقاول المسؤول عن كل الشحنات المحددة. مفيد لتجميع شحنات رحلة واحدة.</DialogDescription>
@@ -909,7 +928,7 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
       {/* Status change dialog */}
       <Dialog open={statusOpen} onOpenChange={setStatusOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>تغيير حالة الشحنة</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             <Select value={newStatus} onValueChange={setNewStatus}>
@@ -929,7 +948,7 @@ function ShipmentDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
       {/* COD settlement dialog */}
       <Dialog open={codOpen} onOpenChange={setCodOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>تسوية الدفع عند الاستلام (COD)</DialogTitle>
             <DialogDescription>

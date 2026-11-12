@@ -85,14 +85,16 @@ export function DataTable<T>({
 
   // Find primary column (first one marked primary, else first column)
   const primaryCol = columns.find((c) => c.primary) ?? columns[0]
-  // Secondary columns for cards = all columns except the primary, not hidden in cards
-  const cardColumns = columns.filter((c) => c !== primaryCol && !c.hideInCard)
-  // Print columns = all columns except the actions column (we don't want action buttons in print)
-  const printColumns = columns.filter((c) => {
+  // اكتشاف عمود الإجراءات (يُستخرج من البطاقات إلى ذيل مستقل بأزرار كبيرة للمس)
+  const isActionCol = (c: { key: string; header: string }) => {
     const k = c.key.toLowerCase()
-    const h = c.header
-    return k !== 'actions' && k !== 'action' && h !== 'إجراءات' && h !== 'إجراء'
-  })
+    return k === 'actions' || k === 'action' || c.header === 'إجراءات' || c.header === 'إجراء'
+  }
+  // Secondary columns for cards = all columns except the primary + actions, not hidden in cards
+  const actionCol = columns.find(isActionCol)
+  const cardColumns = columns.filter((c) => c !== primaryCol && c !== actionCol && !c.hideInCard)
+  // Print columns = all columns except the actions column (we don't want action buttons in print)
+  const printColumns = columns.filter((c) => !isActionCol(c))
 
   const emptyContent = q ? `لا نتائج للبحث "${q}"` : emptyText
 
@@ -154,8 +156,8 @@ export function DataTable<T>({
           </div>
 
           {/* ===== Screen-only views (hidden in print) ===== */}
-          {/* Mobile: card view */}
-          <div className="sm:hidden space-y-2 print:hidden">
+          {/* Mobile (< md): بطاقات بيانات منظمة — رأس (رقم + حالة) + شبكة 2 أعمدة + ذيل إجراءات */}
+          <div className="md:hidden space-y-2 print:hidden">
             {pageRows.map((row, i) => {
               const idx = (safePage - 1) * pageSize + i
               const key = getRowKey(row, idx)
@@ -171,6 +173,7 @@ export function DataTable<T>({
                 )
               }
               // Default card layout: primary column shown as the title, others as label/value rows
+              // + action columns extracted to a touch-friendly footer (min-h-[40px])
               return (
                 <div
                   key={key}
@@ -180,7 +183,7 @@ export function DataTable<T>({
                     onRowClick && 'cursor-pointer hover:bg-muted/40 transition-colors active:scale-[0.99]',
                   )}
                 >
-                  {/* Title row: primary column + first 1-2 secondary columns inline */}
+                  {/* رأس البطاقة: الرقم الأساسي + آخر شارتين (الحالة/المبلغ عادة) */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="text-[10px] text-muted-foreground/70 mb-0.5">{primaryCol.header}</div>
@@ -188,7 +191,6 @@ export function DataTable<T>({
                         {primaryCol.render(row, idx)}
                       </div>
                     </div>
-                    {/* Show up to 2 inline secondary badges/values (typically the status/amount) */}
                     {cardColumns.slice(-2).map((c) => (
                       <div key={c.key} className="shrink-0 text-left">
                         <div className="text-[9px] text-muted-foreground/70 mb-0.5">{c.header}</div>
@@ -196,7 +198,7 @@ export function DataTable<T>({
                       </div>
                     ))}
                   </div>
-                  {/* Remaining columns as label/value grid */}
+                  {/* جسم البطاقة: شبكة نظيفة من عمودين */}
                   {cardColumns.length > 2 && (
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-1 border-t border-border/60 mt-1">
                       {cardColumns.slice(0, -2).map((c) => (
@@ -207,13 +209,25 @@ export function DataTable<T>({
                       ))}
                     </div>
                   )}
+                  {/* ذيل البطاقة: أزرار الإجراءات بحجم مناسب للمس */}
+                  {actionCol && (
+                    <div
+                      className="flex items-center gap-2 pt-2 border-t border-border/60"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className="text-[10px] text-muted-foreground/70 shrink-0">{actionCol.header}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap [&_button]:min-h-[40px] [&_button]:px-3">
+                        {actionCol.render(row, idx)}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
           </div>
 
-          {/* Desktop: table view */}
-          <div className="hidden sm:block rounded-2xl border border-border overflow-hidden bg-card elev-sm print:hidden">
+          {/* Desktop (md+): table view */}
+          <div className="hidden md:block rounded-2xl border border-border overflow-hidden bg-card elev-sm print:hidden">
             <div className="w-full overflow-x-auto max-h-[600px] overflow-y-auto">
               <table className="w-full table-fixed text-sm text-right" style={{ minWidth: minW }}>
                 <thead className="bg-muted/50 text-xs text-muted-foreground sticky top-0 z-10 backdrop-blur-sm">
@@ -264,7 +278,7 @@ export function DataTable<T>({
           </div>
 
           {/* Mobile: pagination bar below the cards */}
-          <div className="sm:hidden rounded-2xl border border-border bg-card elev-sm overflow-hidden print:hidden">
+          <div className="md:hidden rounded-2xl border border-border bg-card elev-sm overflow-hidden print:hidden">
             <DataTablePagination
               currentPage={safePage}
               totalPages={totalPages}

@@ -6,7 +6,7 @@ import {
   Warehouse as WarehouseIcon, Boxes, ArrowRightLeft, Receipt, BookOpen,
   FileText, Landmark, FileBarChart, Upload, UserCircle, Settings, History,
   ChevronRight, ChevronLeft, ChevronDown, PanelRightClose, PanelRightOpen,
-  LogOut, ListChecks, Shield, Undo2, type LucideIcon,
+  LogOut, ListChecks, Shield, Undo2, Menu, X, type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { matchPermission } from '@/lib/permissions'
@@ -110,12 +110,15 @@ interface SidebarProps {
   permissions?: string[] | null
   user?: SessionUser | null
   onLogout?: () => void
+  /** حالة الدرج المنزلق على الشاشات < lg */
+  mobileOpen?: boolean
+  onMobileClose?: () => void
 }
 
-export function Sidebar({ active, onChange, counts, permissions, user, onLogout }: SidebarProps) {
+export function Sidebar({ active, onChange, counts, permissions, user, onLogout, mobileOpen = false, onMobileClose }: SidebarProps) {
   const mods = React.useMemo(() => visibleModules(permissions), [permissions])
 
-  // Sidebar collapse state - persisted
+  // Sidebar collapse state - persisted (desktop only; mobile drawer is always expanded)
   const [collapsed, setCollapsed] = React.useState(false)
   React.useEffect(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('sidebar-collapsed') : null
@@ -144,19 +147,15 @@ export function Sidebar({ active, onChange, counts, permissions, user, onLogout 
     [active, mods],
   )
 
-  // Accordion-style expanded groups: only ONE group open at a time.
-  // Persisted in localStorage as a JSON array (always 0 or 1 item).
-  // Default: expand only the group containing the active module (or 'main' as fallback).
+  // Accordion-style expanded groups: only ONE group open at a time. Persisted.
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set())
   React.useEffect(() => {
     try {
       const saved = typeof window !== 'undefined' ? localStorage.getItem('sidebar-groups-expanded') : null
       if (saved) {
         const arr = JSON.parse(saved) as string[]
-        // Force accordion: keep only the first saved group
         setExpanded(new Set(arr.slice(0, 1)))
       } else {
-        // Default: open only the active group (or 'main')
         const initial = activeGroup || 'main'
         setExpanded(new Set([initial]))
       }
@@ -165,13 +164,10 @@ export function Sidebar({ active, onChange, counts, permissions, user, onLogout 
     }
   }, [])
 
-  // Auto-expand the active group on navigation — accordion style:
-  // collapse all others and keep only the active group open.
-  // (If the user already had multiple open, we replace them with just the active group.)
+  // Auto-expand the active group on navigation — accordion style.
   React.useEffect(() => {
     if (!activeGroup) return
     setExpanded((prev) => {
-      // If only the active group is open already, no change needed
       if (prev.size === 1 && prev.has(activeGroup)) return prev
       const next = new Set<string>([activeGroup])
       if (typeof window !== 'undefined') localStorage.setItem('sidebar-groups-expanded', JSON.stringify(Array.from(next)))
@@ -179,15 +175,8 @@ export function Sidebar({ active, onChange, counts, permissions, user, onLogout 
     })
   }, [activeGroup])
 
-  // Accordion behavior: when user clicks a group, only that group is open.
-  // - Clicking an already-open group closes it (and opens nothing else).
-  // - Clicking a closed group closes all others and opens just that one.
-  // - The "active group auto-expand" effect below still keeps the active group open on navigation,
-  //   but in accordion mode it collapses others first.
   const toggleGroup = React.useCallback((g: string) => {
     setExpanded((prev) => {
-      // If this group is currently open → close it. Result: empty set (accordion collapses all).
-      // If closed → open it and close everything else (accordion: only one open at a time).
       const next = new Set<string>()
       if (!prev.has(g)) next.add(g)
       if (typeof window !== 'undefined') localStorage.setItem('sidebar-groups-expanded', JSON.stringify(Array.from(next)))
@@ -195,128 +184,96 @@ export function Sidebar({ active, onChange, counts, permissions, user, onLogout 
     })
   }, [])
 
-  return (
-    <aside
-      className={cn(
-        'sidebar-print-hide hidden md:flex shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground sticky top-0 h-screen z-30 transition-[width] duration-300 ease-out print:hidden',
-        collapsed ? 'w-[68px]' : 'w-56 lg:w-60',
-      )}
-    >
-      {/* Header / brand */}
-      <div className={cn(
-        'flex items-center gap-2.5 border-b border-sidebar-border h-16 shrink-0',
-        collapsed ? 'justify-center px-2' : 'px-4',
-      )}>
-        <div className="relative flex items-center justify-center size-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-lg shrink-0">
-          <Truck className="size-5" />
-          <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-emerald-400 ring-2 ring-sidebar" />
-        </div>
-        {!collapsed && (
-          <div className="flex-1 min-w-0 anim-fade-in">
-            <h1 className="font-bold text-sm leading-tight truncate">شركة النقل والشحن</h1>
-            <p className="text-[10px] text-muted-foreground leading-tight truncate">نظام الإدارة المتكامل</p>
+  // اختيار وحدة — يغلق الدرج المنزلق تلقائيًا
+  const handleSelect = React.useCallback((k: ModuleKey) => {
+    onChange(k)
+    onMobileClose?.()
+  }, [onChange, onMobileClose])
+
+  // Escape يغلق الدرج + قفل تمرير الـ body عند الفتح
+  React.useEffect(() => {
+    if (!mobileOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onMobileClose?.() }
+    document.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [mobileOpen, onMobileClose])
+
+  // =========================================================================
+  // المحتوى المشترك (براند + تنقل + تذييل) — يُستخدم في السايدبار الثابت والدرج
+  // =========================================================================
+  const renderContent = (variant: 'desktop' | 'mobile') => {
+    const isMobile = variant === 'mobile'
+    const isCollapsed = !isMobile && collapsed
+    return (
+      <>
+        {/* Header / brand */}
+        <div className={cn(
+          'flex items-center gap-2.5 border-b border-sidebar-border h-16 shrink-0',
+          isCollapsed ? 'justify-center px-2' : 'px-4',
+        )}>
+          <div className="relative flex items-center justify-center size-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-lg shrink-0">
+            <Truck className="size-5" />
+            <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-emerald-400 ring-2 ring-sidebar" />
           </div>
-        )}
-        {!collapsed && (
+          {!isCollapsed && (
+            <div className="flex-1 min-w-0 anim-fade-in">
+              <h1 className="font-bold text-sm leading-tight truncate">شركة النقل والشحن</h1>
+              <p className="text-[10px] text-muted-foreground leading-tight truncate">نظام الإدارة المتكامل</p>
+            </div>
+          )}
+          {/* زر الطي — ديسكتوب فقط */}
+          {!isCollapsed && !isMobile && (
+            <button
+              onClick={toggle}
+              className="text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg size-7 flex items-center justify-center transition-colors shrink-0"
+              title="طي القائمة"
+            >
+              <PanelRightClose className="size-4" />
+            </button>
+          )}
+          {/* زر الإغلاق — الدرج فقط */}
+          {isMobile && onMobileClose && (
+            <button
+              onClick={onMobileClose}
+              className="text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg size-8 flex items-center justify-center transition-colors shrink-0"
+              title="إغلاق القائمة"
+              aria-label="إغلاق القائمة"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Expand button when collapsed (desktop only) */}
+        {isCollapsed && (
           <button
             onClick={toggle}
-            className="text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg size-7 flex items-center justify-center transition-colors shrink-0"
-            title="طي القائمة"
+            className="mx-auto mt-2 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg size-8 flex items-center justify-center transition-colors"
+            title="توسيع القائمة"
           >
-            <PanelRightClose className="size-4" />
+            <PanelRightOpen className="size-4" />
           </button>
         )}
-      </div>
 
-      {/* Expand button when collapsed */}
-      {collapsed && (
-        <button
-          onClick={toggle}
-          className="mx-auto mt-2 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg size-8 flex items-center justify-center transition-colors"
-          title="توسيع القائمة"
-        >
-          <PanelRightOpen className="size-4" />
-        </button>
-      )}
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 space-y-1 scrollbar-thin">
+          {groups.map(([groupKey, mods]) => {
+            const isExpanded = expanded.has(groupKey) || isMobile
+            const isActiveGroup = activeGroup === groupKey
+            const groupMeta = GROUP_META[groupKey]
+            const GIcon = groupMeta?.icon
+            const groupTotal = mods.reduce((acc, m) => acc + (counts[m.key] ?? 0), 0)
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 space-y-1 scrollbar-thin">
-        {groups.map(([groupKey, mods]) => {
-          const isExpanded = expanded.has(groupKey)
-          const isActiveGroup = activeGroup === groupKey
-          const groupMeta = GROUP_META[groupKey]
-          const GIcon = groupMeta?.icon
-          // group total count = sum of child counts
-          const groupTotal = mods.reduce((acc, m) => acc + (counts[m.key] ?? 0), 0)
-
-          if (collapsed) {
-            // Collapsed mode: show each module as an icon-only button (no grouping)
-            return (
-              <React.Fragment key={groupKey}>
-                <div className="mx-2 my-1.5 border-t border-sidebar-border/60" />
-                {mods.map((m) => {
-                  const isActive = active === m.key
-                  const Icon = m.icon
-                  const count = counts[m.key]
-                  return (
-                    <button
-                      key={m.key}
-                      onClick={() => onChange(m.key)}
-                      title={m.label}
-                      className={cn(
-                        'group relative w-full flex items-center justify-center rounded-xl py-2.5 transition-all duration-200',
-                        isActive ? 'nav-item-active shadow-md' : 'hover:bg-sidebar-accent text-sidebar-foreground/90',
-                      )}
-                    >
-                      {isActive && <span className="absolute right-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-l-full bg-primary-foreground/80" />}
-                      <Icon className={cn('size-5', isActive ? '' : 'text-muted-foreground group-hover:text-foreground')} />
-                      {typeof count === 'number' && count > 0 && (
-                        <span className="absolute top-1 right-1 size-2 rounded-full bg-primary ring-2 ring-sidebar" />
-                      )}
-                    </button>
-                  )
-                })}
-              </React.Fragment>
-            )
-          }
-
-          return (
-            <div key={groupKey}>
-              {/* Group header - clickable to toggle */}
-              <button
-                onClick={() => toggleGroup(groupKey)}
-                className={cn(
-                  'group w-full flex items-center gap-2 px-2.5 py-2 rounded-xl transition-all duration-200',
-                  isActiveGroup
-                    ? 'bg-sidebar-accent text-sidebar-foreground'
-                    : 'hover:bg-sidebar-accent/60 text-sidebar-foreground/85 hover:text-sidebar-foreground',
-                )}
-              >
-                {GIcon && (
-                  <GIcon className={cn('size-4 shrink-0', isActiveGroup ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-                )}
-                <span className="flex-1 text-right text-[12px] font-bold leading-tight truncate">{groupMeta?.label}</span>
-                {groupTotal > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full tnum font-semibold bg-secondary text-secondary-foreground shrink-0">
-                    {groupTotal.toLocaleString('en-US')}
-                  </span>
-                )}
-                <ChevronDown
-                  className={cn(
-                    'size-3.5 text-muted-foreground transition-transform duration-300 shrink-0',
-                    isExpanded && 'rotate-180',
-                  )}
-                />
-              </button>
-
-              {/* Modules list - collapsible */}
-              <div
-                className={cn(
-                  'overflow-hidden transition-all duration-300 ease-out',
-                  isExpanded ? 'max-h-[600px] opacity-100 mt-1' : 'max-h-0 opacity-0',
-                )}
-              >
-                <div className="space-y-0.5 pr-1.5 border-r-2 border-sidebar-border/40 mr-2 my-1">
+            if (isCollapsed) {
+              // Collapsed mode: icon-only buttons
+              return (
+                <React.Fragment key={groupKey}>
+                  <div className="mx-2 my-1.5 border-t border-sidebar-border/60" />
                   {mods.map((m) => {
                     const isActive = active === m.key
                     const Icon = m.icon
@@ -324,83 +281,178 @@ export function Sidebar({ active, onChange, counts, permissions, user, onLogout 
                     return (
                       <button
                         key={m.key}
-                        onClick={() => onChange(m.key)}
+                        onClick={() => handleSelect(m.key)}
+                        title={m.label}
                         className={cn(
-                          'group relative w-full flex items-center gap-2 rounded-lg text-sm transition-all duration-200 px-2.5 py-1.5',
-                          isActive
-                            ? 'nav-item-active shadow-sm'
-                            : 'hover:bg-sidebar-accent text-sidebar-foreground/85 hover:text-sidebar-foreground',
+                          'group relative w-full flex items-center justify-center rounded-xl py-2.5 transition-all duration-200',
+                          isActive ? 'nav-item-active shadow-md' : 'hover:bg-sidebar-accent text-sidebar-foreground/90',
                         )}
                       >
-                        {isActive && (
-                          <span className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-l-full bg-primary-foreground/80" />
-                        )}
-                        <Icon className={cn(
-                          'shrink-0 size-4',
-                          isActive ? '' : 'text-muted-foreground group-hover:text-foreground',
-                        )} />
-                        <span className="flex-1 text-right font-medium leading-tight text-[12px] truncate">{m.label}</span>
-                        {typeof count === 'number' && (
-                          <span className={cn(
-                            'text-[10px] px-1.5 py-0.5 rounded-full tnum font-semibold shrink-0',
-                            isActive
-                              ? 'bg-primary-foreground/20 text-primary-foreground'
-                              : 'bg-secondary/80 text-secondary-foreground',
-                          )}>
-                            {count.toLocaleString('en-US')}
-                          </span>
+                        {isActive && <span className="absolute right-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-l-full bg-primary-foreground/80" />}
+                        <Icon className={cn('size-5', isActive ? '' : 'text-muted-foreground group-hover:text-foreground')} />
+                        {typeof count === 'number' && count > 0 && (
+                          <span className="absolute top-1 right-1 size-2 rounded-full bg-primary ring-2 ring-sidebar" />
                         )}
                       </button>
                     )
                   })}
+                </React.Fragment>
+              )
+            }
+
+            return (
+              <div key={groupKey}>
+                {/* Group header */}
+                <button
+                  onClick={() => { if (!isMobile) toggleGroup(groupKey) }}
+                  className={cn(
+                    'group w-full flex items-center gap-2 px-2.5 py-2 rounded-xl transition-all duration-200',
+                    isActiveGroup
+                      ? 'bg-sidebar-accent text-sidebar-foreground'
+                      : 'hover:bg-sidebar-accent/60 text-sidebar-foreground/85 hover:text-sidebar-foreground',
+                  )}
+                >
+                  {GIcon && (
+                    <GIcon className={cn('size-4 shrink-0', isActiveGroup ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
+                  )}
+                  <span className="flex-1 text-right text-[12px] font-bold leading-tight truncate">{groupMeta?.label}</span>
+                  {groupTotal > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full tnum font-semibold bg-secondary text-secondary-foreground shrink-0">
+                      {groupTotal.toLocaleString('en-US')}
+                    </span>
+                  )}
+                  {!isMobile && (
+                    <ChevronDown
+                      className={cn(
+                        'size-3.5 text-muted-foreground transition-transform duration-300 shrink-0',
+                        isExpanded && 'rotate-180',
+                      )}
+                    />
+                  )}
+                </button>
+
+                {/* Modules list — على الموبايل كل المجموعات مفتوحة دائمًا */}
+                <div
+                  className={cn(
+                    'overflow-hidden transition-all duration-300 ease-out',
+                    isExpanded ? 'max-h-[900px] opacity-100 mt-1' : 'max-h-0 opacity-0',
+                  )}
+                >
+                  <div className="space-y-0.5 pr-1.5 border-r-2 border-sidebar-border/40 mr-2 my-1">
+                    {mods.map((m) => {
+                      const isActive = active === m.key
+                      const Icon = m.icon
+                      const count = counts[m.key]
+                      return (
+                        <button
+                          key={m.key}
+                          onClick={() => handleSelect(m.key)}
+                          className={cn(
+                            'group relative w-full flex items-center gap-2 rounded-lg text-sm transition-all duration-200 px-2.5 py-2',
+                            isActive
+                              ? 'nav-item-active shadow-sm'
+                              : 'hover:bg-sidebar-accent text-sidebar-foreground/85 hover:text-sidebar-foreground',
+                          )}
+                        >
+                          {isActive && (
+                            <span className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-l-full bg-primary-foreground/80" />
+                          )}
+                          <Icon className={cn(
+                            'shrink-0 size-4',
+                            isActive ? '' : 'text-muted-foreground group-hover:text-foreground',
+                          )} />
+                          <span className="flex-1 text-right font-medium leading-tight text-[12px] truncate">{m.label}</span>
+                          {typeof count === 'number' && (
+                            <span className={cn(
+                              'text-[10px] px-1.5 py-0.5 rounded-full tnum font-semibold shrink-0',
+                              isActive
+                                ? 'bg-primary-foreground/20 text-primary-foreground'
+                                : 'bg-secondary/80 text-secondary-foreground',
+                            )}>
+                              {count.toLocaleString('en-US')}
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })}
-      </nav>
+            )
+          })}
+        </nav>
 
-      {/* Footer: user info + logout */}
-      <div className={cn('border-t border-sidebar-border p-2 space-y-1', collapsed && 'flex flex-col items-center')}>
-        {!collapsed ? (
-          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-sidebar-accent transition-colors">
-            <div className="flex items-center justify-center size-7 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-[10px] font-bold shrink-0">
-              {(user?.name || 'م').charAt(0)}
+        {/* Footer: user info + logout */}
+        <div className={cn('border-t border-sidebar-border p-2 space-y-1', isCollapsed && 'flex flex-col items-center')}>
+          {!isCollapsed ? (
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-sidebar-accent transition-colors">
+              <div className="flex items-center justify-center size-7 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-[10px] font-bold shrink-0">
+                {(user?.name || 'م').charAt(0)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] font-semibold truncate">{user?.name || 'مستخدم'}</div>
+                <div className="text-[10px] text-muted-foreground truncate">{user?.roleLabel || user?.username || ''}</div>
+              </div>
+              <button
+                onClick={onLogout}
+                title="تسجيل الخروج"
+                aria-label="تسجيل الخروج"
+                className="size-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+              >
+                <LogOut className="size-3.5" />
+              </button>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[11px] font-semibold truncate">{user?.name || 'مستخدم'}</div>
-              <div className="text-[10px] text-muted-foreground truncate">{user?.roleLabel || user?.username || ''}</div>
-            </div>
+          ) : (
             <button
               onClick={onLogout}
               title="تسجيل الخروج"
               aria-label="تسجيل الخروج"
-              className="size-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+              className="size-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
             >
-              <LogOut className="size-3.5" />
+              <LogOut className="size-4" />
             </button>
-          </div>
-        ) : (
-          <button
-            onClick={onLogout}
-            title="تسجيل الخروج"
-            aria-label="تسجيل الخروج"
-            className="size-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-          >
-            <LogOut className="size-4" />
-          </button>
+          )}
+          {!isCollapsed && (
+            <div className="px-2.5 pt-1 text-[10px] text-muted-foreground/60 leading-relaxed truncate">
+              نظام إدارة شحن · إصدار 2.0
+            </div>
+          )}
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      {/* ===== السايدبار الثابت — lg: فأعلى ===== */}
+      <aside
+        className={cn(
+          'sidebar-print-hide hidden lg:flex shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground sticky top-0 h-screen z-30 transition-[width] duration-300 ease-out print:hidden',
+          collapsed ? 'w-[68px]' : 'w-56 xl:w-60',
         )}
-        {!collapsed && (
-          <div className="px-2.5 pt-1 text-[10px] text-muted-foreground/60 leading-relaxed truncate">
-            نظام إدارة شحن · إصدار 2.0
-          </div>
-        )}
-      </div>
-    </aside>
+      >
+        {renderContent('desktop')}
+      </aside>
+
+      {/* ===== الدرج المنزلق — أقل من lg (موبايل + تابلت) ===== */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="القائمة الجانبية">
+          {/* الخلفية المعتمة — الضغط خارجها يغلق */}
+          <div
+            className="mobile-nav-overlay absolute inset-0 bg-black/40 backdrop-blur-sm anim-fade-in print:hidden"
+            onClick={onMobileClose}
+          />
+          {/* اللوحة المنزلقة من اليمين (RTL) */}
+          <aside className="sidebar-print-hide absolute top-0 right-0 h-full w-72 max-w-[85vw] bg-sidebar border-l border-sidebar-border shadow-2xl flex flex-col anim-slide-in-right print:hidden">
+            {renderContent('mobile')}
+          </aside>
+        </div>
+      )}
+    </>
   )
 }
 
-// Mobile bottom nav (refined) — 4 primary modules + "More" button for the full menu
+// Mobile bottom nav — 4 primary modules + "More" (h-16 مريح للمس + safe-area)
 export function MobileNav({ active, onChange, permissions }: { active: ModuleKey; onChange: (k: ModuleKey) => void; permissions?: string[] | null }) {
   const [open, setOpen] = React.useState(false)
   const allowed = React.useMemo(() => visibleModules(permissions), [permissions])
@@ -408,10 +460,18 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
   const primary: ModuleKey[] = (['overview', 'shipments', 'customers', 'reports'] as ModuleKey[]).filter((k) => allowedKeys.has(k))
   const primaryHas = primary.includes(active)
 
+  // Escape يغلق شبكة الوحدات
+  React.useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open])
+
   return (
     <>
-      <nav className="mobile-nav-print-hide md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border glass supports-[backdrop-filter]:bg-card/85 backdrop-blur-xl print:hidden">
-        <div className="grid grid-cols-5 gap-0.5 p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
+      <nav className="mobile-nav-print-hide lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border glass supports-[backdrop-filter]:bg-card/85 backdrop-blur-xl print:hidden">
+        <div className="grid grid-cols-5 gap-0.5 h-16 p-1 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
           {primary.map((k) => {
             const m = MODULES.find((x) => x.key === k)!
             const Icon = m.icon
@@ -421,12 +481,12 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
                 key={k}
                 onClick={() => onChange(k)}
                 className={cn(
-                  'flex flex-col items-center gap-1 py-1.5 rounded-xl text-[10px] font-medium transition-all',
+                  'flex flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-medium transition-all min-h-[44px]',
                   isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
                 <span className={cn(
-                  'flex items-center justify-center size-9 rounded-xl transition-all',
+                  'flex items-center justify-center size-8 rounded-xl transition-all',
                   isActive && 'bg-primary/10 scale-105',
                 )}>
                   <Icon className="size-5" />
@@ -439,12 +499,12 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
           <button
             onClick={() => setOpen(true)}
             className={cn(
-              'flex flex-col items-center gap-1 py-1.5 rounded-xl text-[10px] font-medium transition-all',
+              'flex flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-medium transition-all min-h-[44px]',
               !primaryHas ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
             )}
           >
             <span className={cn(
-              'flex items-center justify-center size-9 rounded-xl transition-all',
+              'flex items-center justify-center size-8 rounded-xl transition-all',
               !primaryHas && 'bg-primary/10 scale-105',
             )}>
               <LayoutGrid className="size-5" />
@@ -455,14 +515,14 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
       </nav>
 
       {open && (
-        <div className="mobile-nav-overlay md:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm anim-fade-in print:hidden" onClick={() => setOpen(false)}>
+        <div className="mobile-nav-overlay lg:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm anim-fade-in print:hidden" onClick={() => setOpen(false)}>
           <div
             className="absolute bottom-4 left-4 right-4 max-h-[75vh] overflow-y-auto rounded-2xl border border-border glass shadow-2xl p-3 anim-slide-in"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3 px-2">
               <h3 className="font-bold text-sm">كل الوحدات</h3>
-              <button onClick={() => setOpen(false)} className="text-muted-foreground size-8 rounded-full hover:bg-secondary flex items-center justify-center">
+              <button onClick={() => setOpen(false)} className="text-muted-foreground size-8 rounded-full hover:bg-secondary flex items-center justify-center" aria-label="إغلاق">
                 <ChevronLeft className="size-4" />
               </button>
             </div>
@@ -478,7 +538,7 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
                         key={m.key}
                         onClick={() => { onChange(m.key); setOpen(false) }}
                         className={cn(
-                          'flex flex-col items-center gap-1.5 p-3 rounded-xl text-[11px] font-medium transition-all',
+                          'flex flex-col items-center gap-1.5 p-3 rounded-xl text-[11px] font-medium transition-all min-h-[64px] justify-center',
                           isActive ? 'nav-item-active' : 'hover:bg-secondary text-foreground',
                         )}
                       >
@@ -497,11 +557,21 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
   )
 }
 
-// Mobile top header (refined) — brand + current page title + dark mode + user menu
-// Replaces the separate desktop DashboardHeader on mobile (which is hidden on small screens).
-export function MobileHeader({ title, subtitle, icon: Icon }: { title: string; subtitle: string; icon?: LucideIcon }) {
+// Mobile top header — hamburger + page title + dark mode + user menu (< lg فقط)
+export function MobileHeader({ title, subtitle, icon: Icon, onMenuClick }: { title: string; subtitle: string; icon?: LucideIcon; onMenuClick?: () => void }) {
   return (
-    <header className="mobile-header-print-hide md:hidden sticky top-0 z-30 flex items-center gap-2 px-3 h-14 border-b border-border glass supports-[backdrop-filter]:bg-card/90 backdrop-blur-xl print:hidden">
+    <header className="mobile-header-print-hide lg:hidden sticky top-0 z-30 flex items-center gap-2 px-3 h-14 border-b border-border glass supports-[backdrop-filter]:bg-card/90 backdrop-blur-xl print:hidden">
+      {/* زر القائمة (Hamburger) — يفتح الدرج المنزلق */}
+      {onMenuClick && (
+        <button
+          onClick={onMenuClick}
+          className="flex items-center justify-center size-10 rounded-xl border border-border bg-card text-foreground hover:bg-accent transition-colors shrink-0"
+          title="فتح القائمة"
+          aria-label="فتح القائمة الجانبية"
+        >
+          <Menu className="size-5" />
+        </button>
+      )}
       <div className="flex items-center justify-center size-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-md shrink-0">
         {Icon ? <Icon className="size-5" /> : <Truck className="size-5" />}
       </div>
@@ -509,8 +579,10 @@ export function MobileHeader({ title, subtitle, icon: Icon }: { title: string; s
         <h1 className="font-bold text-sm leading-tight truncate">{title}</h1>
         <p className="text-[11px] text-muted-foreground leading-tight truncate">{subtitle}</p>
       </div>
-      <DarkModeToggle className="size-9" />
-      <UserMenu />
+      <DarkModeToggle className="size-9 shrink-0" />
+      <div className="shrink-0">
+        <UserMenu />
+      </div>
     </header>
   )
 }

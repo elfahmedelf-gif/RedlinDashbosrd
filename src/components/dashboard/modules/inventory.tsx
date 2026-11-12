@@ -202,7 +202,7 @@ export function MovementsModule() {
       <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(m: any) => m.id} minW={900} searchFn={(m, q) => (m.item?.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالصنف..." />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>تسجيل حركة مخزون</DialogTitle>
             <DialogDescription>الحركات تؤثر على الرصيد مباشرة. لا يسمح برصيد سالب (إلا بصلاحية).</DialogDescription>
@@ -363,7 +363,7 @@ export function FreightModule() {
       <DataTable rows={data?.items ?? []} columns={columns} loading={isLoading} getRowKey={(r: any) => r.id} minW={900} searchFn={(r, q) => (r.regionAr || '').toLowerCase().includes(q) || (r.regionEn || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالمنطقة..." />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing ? 'تعديل سعر' : 'إضافة سعر نولون'}</DialogTitle></DialogHeader>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
             <div><label className="text-xs font-medium">المنطقة (عربي)</label><Input value={v.regionAr} onChange={(e) => setV({ ...v, regionAr: e.target.value })} /></div>

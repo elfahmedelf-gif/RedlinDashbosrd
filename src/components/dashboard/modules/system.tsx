@@ -193,7 +193,7 @@ export function UsersModule() {
 
       {/* dialog إضافة/تعديل */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'تعديل مستخدم' : 'مستخدم جديد'}</DialogTitle>
             <DialogDescription>
@@ -447,7 +447,7 @@ export function RolesModule() {
 
       {/* dialog إضافة/تعديل دور */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? `تعديل دور: ${editing.label || editing.name}` : 'دور جديد'}</DialogTitle>
             <DialogDescription>حدد صلاحيات هذا الدور — تُطبق فورًا على جميع المستخدمين المرتبطين به.</DialogDescription>

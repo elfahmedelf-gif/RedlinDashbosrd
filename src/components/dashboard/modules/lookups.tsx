@@ -296,7 +296,7 @@ export function LookupsModule() {
 
       {/* Add / Edit dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'تعديل عنصر' : 'إضافة عنصر جديد'}</DialogTitle>
             <DialogDescription>

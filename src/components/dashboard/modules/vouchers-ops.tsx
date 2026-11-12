@@ -786,8 +786,8 @@ export function VouchersModule() {
 
       {/* ==== Filter bar ==== */}
       <div className="flex items-center justify-between gap-3 flex-wrap print:hidden">
-        {/* Counter + filters on ONE line — scrolls horizontally when narrow (never wraps) */}
-        <div className="flex items-center gap-3 min-w-0 flex-1 flex-nowrap overflow-x-auto">
+        {/* Counter + filters — تلتف على الموبايل، سطر واحد على الديسكتوب */}
+        <div className="flex items-center gap-3 min-w-0 flex-1 flex-wrap lg:flex-nowrap lg:overflow-x-auto">
           {/* Counter — own bordered pill, clearly separated */}
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted/40 border border-border shrink-0">
             <Landmark className="size-4 text-primary" />

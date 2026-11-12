@@ -227,7 +227,7 @@ export function DashboardModule({
       {/* شريط فلترة التاريخ للموبايل */}
       {mobileFilter}
       {/* === المؤشرات الرئيسية (KPIs) === */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3 stagger">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger">
         <Kpi title="إجمالي الشحنات" value={fmtNum(s.totalShipments)} icon={Package} tone="primary"
           subtitle={`من ${shortDate(data.dateRange.from)} إلى ${shortDate(data.dateRange.to)}`} />
         {canPrices ? (
