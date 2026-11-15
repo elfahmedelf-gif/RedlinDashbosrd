@@ -414,7 +414,7 @@ export function ShipmentsModule() {
       )}
 
       {/* Desktop (md+): table view */}
-      <Card className="overflow-hidden hidden md:block print:hidden">
+      <Card className="gap-0 overflow-hidden py-0 hidden md:block print:hidden">
         <div className="w-full overflow-x-auto">
           <table className="w-full table-fixed text-sm text-right" style={{ minWidth: 1320 }}>
             <thead className="bg-muted/40 text-xs text-muted-foreground">
@@ -520,6 +520,18 @@ export function ShipmentsModule() {
             </tbody>
           </table>
         </div>
+        {/* Pagination — flush footer of the table card (server-side) */}
+        {data && (
+          <DataTablePagination
+            currentPage={data.page}
+            totalPages={data.totalPages}
+            totalItems={data.total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
+            itemLabel="شحنة"
+          />
+        )}
       </Card>
 
       {/* Mobile empty state */}
@@ -530,9 +542,9 @@ export function ShipmentsModule() {
         </CardContent></Card>
       )}
 
-      {/* Pagination — unified server-side pagination bar */}
-      {data && (
-        <div className="print:hidden">
+      {/* Mobile: pagination bar below the cards */}
+      {data && data.items.length > 0 && (
+        <div className="md:hidden rounded-2xl border border-border bg-card elev-sm overflow-hidden print:hidden">
           <DataTablePagination
             currentPage={data.page}
             totalPages={data.totalPages}
@@ -541,6 +553,7 @@ export function ShipmentsModule() {
             onPageChange={setPage}
             onPageSizeChange={(n) => { setPageSize(n); setPage(1) }}
             itemLabel="شحنة"
+            className="border-t-0"
           />
         </div>
       )}

@@ -104,7 +104,7 @@ export function DataTablePagination({
           aria-label="الصفحة السابقة"
         >
           <ChevronRight className="size-3.5" />
-          <span className="hidden xs:inline sm:inline">السابق</span>
+          <span className="hidden sm:inline">السابق</span>
         </Button>
 
         {pageList.map((p, i) =>
@@ -143,7 +143,7 @@ export function DataTablePagination({
           onClick={() => onPageChange(currentPage + 1)}
           aria-label="الصفحة التالية"
         >
-          <span className="hidden xs:inline sm:inline">التالي</span>
+          <span className="hidden sm:inline">التالي</span>
           <ChevronLeft className="size-3.5" />
         </Button>
       </div>
