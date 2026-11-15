@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { Plus, Pencil, Trash2, ArrowLeft, Phone, MapPin, FileText, FileSpreadsheet } from 'lucide-react'
+import { Plus, Pencil, Trash2, ArrowLeft, Phone, MapPin, FileText, FileSpreadsheet, Wallet } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { useCanPrices } from '../auth-provider'
 import { PartyStatementDialog } from '../party-statement'
+import { PartyFinancialProfile } from '../party-financial-profile'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import type { ModuleKey } from '../sidebar'
 
@@ -44,6 +45,9 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
   // نافذة كشف حساب الطرف
   const [stmtOpen, setStmtOpen] = React.useState(false)
   const [stmtParty, setStmtParty] = React.useState<Party | null>(null)
+  // نافذة الملف المالي الشامل للطرف
+  const [profOpen, setProfOpen] = React.useState(false)
+  const [profParty, setProfParty] = React.useState<Party | null>(null)
   // Client-side pagination for the card grid
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(10)
@@ -68,6 +72,7 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
   const onEdit = (p: Party) => { setEditing(p); setOpen(true) }
   const onAdd = () => { setEditing(null); setOpen(true) }
   const onStatement = (p: Party) => { setStmtParty(p); setStmtOpen(true) }
+  const onProfile = (p: Party) => { setProfParty(p); setProfOpen(true) }
 
   const handleDelete = async (id: string) => {
     const ok = await confirmDelete({
@@ -163,7 +168,10 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
                     {p.code && <div className="text-[11px] text-muted-foreground tnum mt-0.5">كود: {p.code}</div>}
                   </div>
                   <div className="flex gap-1 print:hidden">
-                    {/* كشف حساب — مستند مالي بالكامل فلا يُعرض لغير أهلية الأسعار */}
+                    {/* الملف المالي الشامل + كشف الحساب — مستندات مالية بالكامل فلا تُعرض لغير أهلية الأسعار */}
+                    {canPrices && (
+                      <Button variant="ghost" size="sm" title="الملف المالي الشامل" aria-label="الملف المالي الشامل" onClick={() => onProfile(p)}><Wallet className="size-4" /></Button>
+                    )}
                     {canPrices && (
                       <Button variant="ghost" size="sm" title="كشف حساب" aria-label="كشف حساب" onClick={() => onStatement(p)}><FileText className="size-4" /></Button>
                     )}
@@ -244,6 +252,14 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
         partyName={stmtParty?.name}
         open={stmtOpen}
         onOpenChange={setStmtOpen}
+      />
+
+      {/* الملف المالي الشامل للطرف — يفتح من زر البطاقة */}
+      <PartyFinancialProfile
+        partyId={profParty?.id ?? null}
+        partyName={profParty?.name}
+        open={profOpen}
+        onOpenChange={setProfOpen}
       />
     </div>
   )

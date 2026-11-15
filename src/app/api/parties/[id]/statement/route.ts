@@ -9,6 +9,9 @@ export const dynamic = 'force-dynamic'
  * كشف حساب تفصيلي للطرف (عميل/مقاول/مورد) — كل الحركات الفعلية مرتبة زمنيًا
  * مع رصيد تراكمي (Running Balance) بعد كل حركة:
  *   الرصيد الافتتاحي (سالب إذا كان دائن) + Σ(مدين − دائن) من القيود المرحّلة
+ * الحركات تُعرض على حسابات التحكم الفرعية للطرف فقط (العملاء 1103 / الموردون 2101 /
+ * مقاولو النقل 2102 / عهد المندوبين 2104) — سطور الإيراد/المصروف/النقدية المقابلة
+ * ليست حركات على حساب الطرف ولا تدخل الرصيد.
  * يتضمن: قيود تسليم الشحنات، سندات القبض/الصرف، تسويات المندوبين، القيود اليدوية.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +29,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     })
     if (!party) throw new ApiError(404, 'الطرف غير موجود')
 
+    // حسابات التحكم الفرعية للطرف — الحركات عليها فقط (انظر توثيق الرصيد أعلاه)
+    const controlAccounts = await db.account.findMany({ where: { code: { in: ['1103', '2101', '2102', '2104'] } }, select: { id: true } })
+    const controlIds = controlAccounts.map((a) => a.id)
+
     // الرصيد الافتتاحي: دائن = الطرف دفع مقدمًا (سالب)، مدين = الطرف مدين لنا
     const sign = party.openingBalanceType === 'credit' ? -1 : 1
     let opening = round2(sign * Number(party.openingBalance ?? 0))
@@ -33,13 +40,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     // الرصيد قبل بداية الفترة (من القيود المرحّلة السابقة على المدى)
     if (from) {
       const beforeLines = await db.journalLine.findMany({
-        where: { partyId: id, entry: { status: 'posted', date: { lt: new Date(from + 'T00:00:00') } } },
+        where: { partyId: id, accountId: { in: controlIds }, entry: { status: 'posted', date: { lt: new Date(from + 'T00:00:00') } } },
         select: { debit: true, credit: true },
       })
       opening = round2(opening + beforeLines.reduce((s, l) => s + (l.debit || 0) - (l.credit || 0), 0))
     }
 
-    const lineWhere: any = { partyId: id, entry: { status: 'posted' } }
+    const lineWhere: any = { partyId: id, accountId: { in: controlIds }, entry: { status: 'posted' } }
     const dateRange: any = {}
     if (from) dateRange.gte = new Date(from + 'T00:00:00')
     if (to) dateRange.lte = new Date(to + 'T23:59:59')

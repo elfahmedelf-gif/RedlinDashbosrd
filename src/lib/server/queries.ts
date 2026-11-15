@@ -157,13 +157,25 @@ export async function listParties(q: URLSearchParams, user?: { permissions: stri
   let rows = await db.party.findMany({ where, include: { branch: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } })
   if (search) rows = rows.filter((x) => String(x.name ?? '').toLowerCase().includes(search))
   const ids = rows.map((r) => r.id)
-  const [asCustomer, asContractor, ledgerRows] = await Promise.all([
+  // حسابات التحكم الفرعية للأطراف — الرصيد يتكوّن منها فقط:
+  //   1103 العملاء + 2104 عهد المندوبين (طبيعية مدينة): صافي = مدين − دائن
+  //   2101 الموردون + 2102 مقاولو النقل (طبيعية دائنة): صافي = دائن − مدين
+  // سطور الإيراد/المصروف/النقدية المقابلة لا تدخل الرصيد (وإلا تلغى المديونية رياضيًا)
+  const controlAccounts = await db.account.findMany({ where: { code: { in: ['1103', '2101', '2102', '2104'] } }, select: { id: true, code: true } })
+  const controlSign = new Map(controlAccounts.map((a) => [a.id, a.code === '1103' || a.code === '2104' ? 1 : -1]))
+  const controlIds = controlAccounts.map((a) => a.id)
+  const [asCustomer, asContractor, controlRows] = await Promise.all([
     db.shipment.groupBy({ by: ['customerId'], where: { customerId: { in: ids } }, _count: { _all: true }, _sum: { freightTotal: true, totalSuppliers: true, customerPay: true } }),
     db.shipment.groupBy({ by: ['contractorId'], where: { contractorId: { in: ids } }, _count: { _all: true }, _sum: { freightTotal: true, totalSuppliers: true, customerPay: true } }),
-    // الرصيد الحيّ من دفتر الأستاذ الفعلي (القيود المرحّلة المرتبطة بالطرف)
-    db.journalLine.groupBy({ by: ['partyId'], where: { partyId: { in: ids }, entry: { status: 'posted' } }, _sum: { debit: true, credit: true } }),
+    // الرصيد الحيّ من دفتر الأستاذ الفعلي — سطور حسابات التحكم المرحّلة فقط
+    db.journalLine.groupBy({ by: ['partyId', 'accountId'], where: { partyId: { in: ids }, entry: { status: 'posted' }, accountId: { in: controlIds } }, _sum: { debit: true, credit: true } }),
   ])
-  const ledgerMap = new Map(ledgerRows.map((l) => [l.partyId!, round2((l._sum.debit ?? 0) - (l._sum.credit ?? 0))]))
+  const ledgerMap = new Map<string, number>()
+  for (const g of controlRows) {
+    if (!g.partyId) continue
+    const signed = ((g._sum.debit ?? 0) - (g._sum.credit ?? 0)) * (controlSign.get(g.accountId) ?? 1)
+    ledgerMap.set(g.partyId, round2((ledgerMap.get(g.partyId) ?? 0) + signed))
+  }
   const agg = new Map<string, { shipments: number; freightTotal: number; totalSuppliers: number; customerPay: number }>()
   for (const g of asCustomer) {
     if (!g.customerId) continue
