@@ -24,7 +24,8 @@ import { Input } from '@/components/ui/input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { fetcher, apiPost } from '@/lib/api'
+import { fetcher } from '@/lib/api'
+import { apiPostSync as apiPost } from '@/lib/sync'
 import { fmtNum, fmtDateTime } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '../auth-provider'

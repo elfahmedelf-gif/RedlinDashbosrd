@@ -41,7 +41,7 @@ export function enrichExtraCost(ec: Prisma.ExtraCostGetPayload<{ include: typeof
 /** ترحيل قيد الاعتماد — مرة واحدة لكل بند (يُستدعى داخل معاملة المتصل) */
 export async function postExtraCostJournal(
   tx: Tx,
-  ec: { id: string; ref: string; type: string; amount: number; notes: string | null; contractorId: string; shipmentId: string | null; date: Date; contractor?: { name?: string | null } | null; shipment?: { shipmentNo?: string | null; deliveryNumber?: string | null } | null },
+  ec: { id: string; ref: string; type: string; amount: number; notes: string | null; contractorId: string; shipmentId: string | null; date: Date; journalEntryId?: string | null; contractor?: { name?: string | null } | null; shipment?: { shipmentNo?: string | null; deliveryNumber?: string | null } | null },
   user: JUser,
 ): Promise<{ id: string; entryNo: string }> {
   if (ec.journalEntryId) {
@@ -50,9 +50,13 @@ export async function postExtraCostJournal(
   }
   const dup = await tx.journalEntry.findFirst({
     where: { sourceType: EXTRA_COST_SOURCE, sourceId: ec.id, status: 'posted', reversalOfId: null },
-    select: { entryNo: true },
+    select: { id: true, entryNo: true },
   })
-  if (dup) throw new ApiError(409, `يوجد قيد مرحّل بالفعل لهذا البند (${dup.entryNo})`)
+  if (dup) {
+    // القيد السابق المعكوس بقيد عكسي = أثره ألغي — يجوز إعادة الإثبات (تصحيح بعد الاعتماد)
+    const reversed = await tx.journalEntry.findUnique({ where: { reversalOfId: dup.id }, select: { id: true } })
+    if (!reversed) throw new ApiError(409, `يوجد قيد مرحّل بالفعل لهذا البند (${dup.entryNo})`)
+  }
 
   const amount = round2(Number(ec.amount))
   if (amount <= 0) throw new ApiError(400, 'مبلغ البند يجب أن يكون أكبر من صفر')
@@ -74,6 +78,7 @@ export async function postExtraCostJournal(
     ],
     user,
     preventDuplicateSource: true,
+    allowIfReversed: true, // إعادة الإثبات بعد تصحيح بند معتمد (عكس ثم قيد جديد) مسموحة
   })
   await tx.extraCost.update({ where: { id: ec.id }, data: { journalEntryId: entry.id } })
   return { id: entry.id, entryNo: entry.entryNo }
@@ -215,41 +220,98 @@ export async function createExtraCost(user: { userId: string; username: string; 
   }
 }
 
-/** تعديل بند — مسموح فقط وهو «بانتظار الاعتماد» (المعتمد محاسبيًا ولا يُعدل) */
+/**
+ * تعديل بند إضافي — متزامن محاسبيًا:
+ *   • المعلق (pending): تعديل حر للحقول
+ *   • المعتمد (approved): تعديل المبلغ/النوع/المقاول/الشحنة/التاريخ يُعكس قيده تلقائيًا
+ *     ثم يعاد إثباته بالبيانات الجديدة (الدفتر يبقى دقيقًا 100% في كل الشاشات)
+ *   • المرفوض (rejected): لا يُعدّل — يُحذف ويُعاد تسجيله
+ */
 export async function updateExtraCost(user: { userId: string; username: string }, id: string, body: any) {
   const result = await db.$transaction(async (tx) => {
     const ec = await tx.extraCost.findUnique({ where: { id }, include: EC_INCLUDE })
     if (!ec) throw new ApiError(404, 'البند الإضافي غير موجود')
-    if (ec.approvalStatus !== 'pending') {
-      throw new ApiError(409, `لا يمكن تعديل بند ${ec.approvalStatus === 'approved' ? 'معتمد ومُرحّل محاسبيًا' : 'مرفوض'} — المعتمد يُصحح بعكس القيد والرفض، والمرفوض يُحذف ويُعاد تسجيله`)
+    if (ec.approvalStatus === 'rejected') {
+      throw new ApiError(409, 'البند مرفوض — لا يُعدّل؛ احذفه وأعد تسجيله من جديد')
     }
 
+    const approved = ec.approvalStatus === 'approved'
     const data: any = {}
+    const notes: string[] = []
+
     if (body.amount !== undefined) {
       const amount = round2(num(body.amount) ?? 0)
       if (amount <= 0) throw new ApiError(400, 'أدخل مبلغًا صحيحًا أكبر من صفر')
-      data.amount = amount
+      if (round2(ec.amount) !== amount) { data.amount = amount; notes.push(`المبلغ: ${ec.amount} ← ${amount}`) }
     }
-    if (body.notes !== undefined) data.notes = body.notes ? String(body.notes).slice(0, 500) : null
-    if (body.date !== undefined && body.date) data.date = new Date(body.date)
+    if (body.type !== undefined && body.type !== ec.type) {
+      if (!isKnownExtraCostType(String(body.type))) throw new ApiError(400, 'نوع بند غير معروف')
+      data.type = String(body.type)
+      notes.push(`النوع: ${extraCostTypeLabel(ec.type)} ← ${extraCostTypeLabel(String(body.type))}`)
+    }
+    if (body.notes !== undefined) {
+      const v = body.notes ? String(body.notes).slice(0, 500) : null
+      if (v !== ec.notes) { data.notes = v; notes.push('تعديل الملاحظات') }
+    }
+    if (body.date !== undefined && body.date) {
+      const d = new Date(body.date)
+      if (!isNaN(d.getTime()) && d.toISOString().slice(0, 10) !== ec.date.toISOString().slice(0, 10)) { data.date = d; notes.push('تعديل التاريخ') }
+    }
+    if (body.contractorId !== undefined && String(body.contractorId) !== ec.contractorId) {
+      const p = await tx.party.findUnique({ where: { id: String(body.contractorId) }, select: { id: true, name: true, isContractor: true } })
+      if (!p) throw new ApiError(400, 'المقاول الجديد غير موجود')
+      if (!p.isContractor) throw new ApiError(400, `«${p.name}» غير مسجل كمقاول`)
+      data.contractorId = p.id
+      notes.push(`المقاول: ${ec.contractor.name} ← ${p.name}`)
+    }
     if (body.shipmentId !== undefined) {
-      const contractorId = body.contractorId ?? ec.contractorId
-      await resolveShipment(tx, body.shipmentId || null, contractorId)
-      data.shipmentId = body.shipmentId || null
+      const shipmentId = body.shipmentId ? String(body.shipmentId) : null
+      if (shipmentId !== ec.shipmentId) {
+        await resolveShipment(tx, shipmentId, data.contractorId ?? ec.contractorId)
+        data.shipmentId = shipmentId
+        notes.push('تغيير الشحنة المرتبطة')
+      }
     }
+
     if (!Object.keys(data).length) throw new ApiError(400, 'لا توجد حقول صالحة للتعديل')
 
+    // المزامنة المحاسبية للبنود المعتمدة: عكس القيد قبل التعديل ثم إعادة إثباته بالبيانات الجديدة
+    let reversalNo: string | null = null
+    if (approved) {
+      const financialChanged = data.amount !== undefined || data.type !== undefined || data.contractorId !== undefined || data.shipmentId !== undefined || data.date !== undefined
+      if (financialChanged && ec.journalEntryId) {
+        const je = await tx.journalEntry.findUnique({ where: { id: ec.journalEntryId } })
+        const jeActive = je && je.status === 'posted' && !(await tx.journalEntry.findUnique({ where: { reversalOfId: je.id }, select: { id: true } }))
+        if (jeActive) {
+          const reversal = await reverseJournal(tx, je.id, user, `تصحيح البند ${ec.ref} (${extraCostTypeLabel(ec.type)}) بعد الاعتماد`)
+          reversalNo = reversal.entryNo
+          data.journalEntryId = null // يُعاد ربطه بالقيد الجديد عند إعادة الإثبات
+        }
+      }
+    }
+
     const updated = await tx.extraCost.update({ where: { id }, data, include: EC_INCLUDE })
+
+    // إعادة إثبات القيد بالبيانات الجديدة للبنود المعتمدة
+    let repostNo: string | null = null
+    if (reversalNo) {
+      const fresh = await tx.extraCost.findUnique({ where: { id }, include: { contractor: { select: { name: true } }, shipment: { select: { shipmentNo: true, deliveryNumber: true } } } })
+      if (fresh) {
+        const posted = await postExtraCostJournal(tx, fresh, { userId: user.userId, username: user.username })
+        repostNo = posted.entryNo
+      }
+    }
+
     await logAudit(tx, {
       action: 'update', entity: 'extra_cost', entityId: id,
-      notes: `تعديل البند ${ec.ref} (${extraCostTypeLabel(ec.type)})`,
+      notes: `تعديل البند ${ec.ref} (${extraCostTypeLabel(ec.type)})${approved ? ' — بند معتمد' : ''} — ${notes.join('، ')}${reversalNo ? ` — عكس القيد ${reversalNo}` : ''}${repostNo ? ` — إعادة إثبات بالقيد ${repostNo}` : ''}`,
       user: { userId: user.userId, username: user.username },
-      before: { amount: ec.amount, notes: ec.notes, shipmentId: ec.shipmentId, date: ec.date },
-      after: data,
+      before: { amount: ec.amount, type: ec.type, notes: ec.notes, shipmentId: ec.shipmentId, contractorId: ec.contractorId, date: ec.date, approvalStatus: ec.approvalStatus },
+      after: { ...data, reversalNo, repostNo },
     })
-    return updated
+    return { ref: ec.ref, reversalNo, repostNo }
   })
-  return { id: result.id, ref: result.ref }
+  return result
 }
 
 /** اعتماد بند (مبيت/مرتجعات) — يُرحّل القيد المزدوج ويُضيف لمستحقات المقاول */

@@ -31,13 +31,23 @@ interface ShipmentFinancials {
   contractor?: { id: string; name: string } | null
 }
 
-/** هل للشحنة قيد تسليم مرحّل؟ */
-export async function hasDeliveryJournal(tx: Tx, shipmentId: string): Promise<boolean> {
+/**
+ * القيد النشط لتسليم الشحنة — مرحّل ولم يُعكس (وجود قيد عكسي مرتبط يعني أنه ألغي أثره).
+ * دلالة «نشط» تسمح بإعادة الترحيل بعد التصحيح (عكس ثم إعادة إثبات) دون تعارض.
+ */
+export async function getActiveDeliveryJournal(tx: Tx, shipmentId: string) {
   const found = await tx.journalEntry.findFirst({
     where: { sourceType: SHIPMENT_DELIVERY_SOURCE, sourceId: shipmentId, status: 'posted', reversalOfId: null },
     select: { id: true, entryNo: true },
   })
-  return !!found
+  if (!found) return null
+  const reversed = await tx.journalEntry.findUnique({ where: { reversalOfId: found.id }, select: { id: true } })
+  return reversed ? null : found
+}
+
+/** هل للشحنة قيد تسليم «نشط» (غير معكوس)؟ */
+export async function hasDeliveryJournal(tx: Tx, shipmentId: string): Promise<boolean> {
+  return !!(await getActiveDeliveryJournal(tx, shipmentId))
 }
 
 /**
@@ -57,7 +67,7 @@ export async function postShipmentDeliveryJournal(
   // منع الترحيل المزدوج لنفس الشحنة
   if (await hasDeliveryJournal(tx, shipment.id)) return null
 
-  const lines = []
+  const lines: { accountId: string; debit: number; credit: number; description?: string; partyId?: string | null; shipmentId?: string | null }[] = []
   if (freight > 0 && shipment.customerId) {
     const ar = await accountByCode(tx, ACC.AR)
     const revenue = await accountByCode(tx, '4101') // إيراد الشحن
@@ -90,6 +100,7 @@ export async function postShipmentDeliveryJournal(
     lines,
     user,
     preventDuplicateSource: true,
+    allowIfReversed: true, // إعادة الترحيل بعد التصحيح (قيد عكسي) مسموحة
   })
   return { id: entry.id, entryNo: entry.entryNo }
 }

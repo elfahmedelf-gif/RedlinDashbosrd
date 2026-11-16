@@ -11,6 +11,7 @@ import * as React from 'react'
 import useSWR from 'swr'
 import { Calendar, X, ChevronLeft } from 'lucide-react'
 import { Sidebar, MobileNav, MobileHeader, type ModuleKey, MODULES, MODULE_PERMISSIONS, visibleModules, GROUP_LABELS } from '@/components/dashboard/sidebar'
+import { OverdueReceiptsBadge } from '@/components/dashboard/overdue-badge'
 import { DarkModeToggle } from '@/components/dashboard/dark-mode-toggle'
 import { UserMenu } from '@/components/dashboard/user-menu'
 import { AuthProvider, useAuth } from '@/components/dashboard/auth-provider'
@@ -33,6 +34,7 @@ import { UsersModule, RolesModule, SettingsModule, AuditModule } from '@/compone
 import { LookupsModule } from '@/components/dashboard/modules/lookups'
 import { PrintHeader, PrintFooter } from '@/components/dashboard/print-layout'
 import { fetcher } from '@/lib/api'
+import { bus, BUS_EVENTS, setIntent } from '@/lib/bus'
 import { cn } from '@/lib/utils'
 
 // ----------------------------------------------------------------------------
@@ -98,12 +100,16 @@ function DashboardHeader({
   to,
   setFrom,
   setTo,
+  overdueCount,
+  onOverdueClick,
 }: {
   tab: ModuleKey
   from: string
   to: string
   setFrom: (v: string) => void
   setTo: (v: string) => void
+  overdueCount: number
+  onOverdueClick: () => void
 }) {
   const activeMod = MODULES.find((m) => m.key === tab)
   const ActiveIcon = activeMod?.icon
@@ -154,8 +160,9 @@ function DashboardHeader({
         </div>
       </div>
 
-      {/* يسار: نطاق التاريخ (overview فقط) + ثيم + مستخدم */}
+      {/* يسار: شارة الأذونات المتأخرة + نطاق التاريخ (overview فقط) + ثيم + مستخدم */}
       <div className="flex items-center gap-2 shrink-0">
+        <OverdueReceiptsBadge count={overdueCount} onNavigate={onOverdueClick} />
         {tab === 'overview' && (
           <div className="hidden sm:flex items-center gap-1.5">
             {/* أزرار البريسيت السريعة */}
@@ -235,11 +242,19 @@ function DashboardShell() {
   }, [user, tab, has])
 
   // طلب موحّد لكل العدّادات (استبدل 13 طلب SWR منفصل)
-  const { data: countsData } = useSWR<Partial<Record<ModuleKey, number>>>('/api/counts', fetcher, {
+  const { data: countsData } = useSWR<Partial<Record<ModuleKey, number> & { receiptsOverdue?: number }>>('/api/counts', fetcher, {
     refreshInterval: 60000, // تحديث كل دقيقة بدل 30 ثانية لخفض الحمل
     revalidateOnFocus: false,
   })
-  const counts: Partial<Record<ModuleKey, number>> = countsData ?? {}
+  const counts: Partial<Record<ModuleKey, number> & { receiptsOverdue?: number }> = countsData ?? {}
+
+  // شارة الأذونات المتأخرة — تنقل مباشر لتبويب الأذونات بعرض «الأذونات المتأخرة»
+  const openOverdueReceipts = React.useCallback(() => {
+    // تسجيل النية قبل تبديل التبويب (تُستهلك عند تركيب وحدة الأذونات) + بث للوحدة المفتوحة حاليًا
+    setIntent(BUS_EVENTS.OPEN_OVERDUE_RECEIPTS)
+    setTab('receipts')
+    bus.emit(BUS_EVENTS.OPEN_OVERDUE_RECEIPTS)
+  }, [])
 
   // الوحدة النشطة حاليًا — تُمرّر للهيدر والموبايل-هيدر
   const activeMod = MODULES.find((m) => m.key === tab)
@@ -251,6 +266,8 @@ function DashboardShell() {
         subtitle={TAB_LABELS[tab].subtitle}
         icon={activeMod?.icon}
         onMenuClick={() => setNavOpen(true)}
+        overdueCount={Number(counts['receiptsOverdue'] ?? 0)}
+        onOverdueClick={openOverdueReceipts}
       />
       <div className="dashboard-layout-row flex flex-1 min-h-0">
         <Sidebar
@@ -264,7 +281,15 @@ function DashboardShell() {
           onMobileClose={() => setNavOpen(false)}
         />
         <main className="flex-1 min-w-0 flex flex-col pb-20 lg:pb-0">
-          <DashboardHeader tab={tab} from={from} to={to} setFrom={setFrom} setTo={setTo} />
+          <DashboardHeader
+            tab={tab}
+            from={from}
+            to={to}
+            setFrom={setFrom}
+            setTo={setTo}
+            overdueCount={Number(counts['receiptsOverdue'] ?? 0)}
+            onOverdueClick={openOverdueReceipts}
+          />
           <div className="flex-1 p-3 sm:p-4 md:p-6 xl:p-8 w-full mx-auto max-w-[1600px] print:p-0">
             {/* ترويسة التقرير الرسمية — تظهر فقط أثناء الطباعة */}
             <PrintHeader

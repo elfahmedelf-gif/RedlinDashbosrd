@@ -2,14 +2,15 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { FileBarChart, FileSpreadsheet, Printer, Truck, Banknote, Users, Boxes, BookOpen, MapPin, Undo2, AlertCircle, Layers, CalendarDays } from 'lucide-react'
+import { FileBarChart, FileSpreadsheet, Printer, Truck, Banknote, Users, Boxes, BookOpen, MapPin, Undo2, AlertCircle, Layers, CalendarDays, Sheet } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { DataTable } from '../data-table'
-import { fetcher, apiPost } from '@/lib/api'
+import { fetcher, getToken } from '@/lib/api'
+import { apiPostSync as apiPost } from '@/lib/sync'
 import { exportToCSV, exportToExcel } from '@/lib/export'
 import { fmtNum, fmtDate, fmtDateTime, ACCOUNT_TYPE, SHIPMENT_STATUS, MOVEMENT_TYPE } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -511,6 +512,30 @@ function ContractorMonthlyReport() {
     toast({ title: `تم تصدير ${rows.length} حركة` })
   }
 
+  // تصدير Excel منسّق (.xlsx) — نفس بيانات التقرير عبر واجهة التصدير المخصصة
+  const exportXlsx = async () => {
+    if (!data || !generated) return
+    try {
+      const res = await fetch(`/api/reports/contractor-monthly/export?contractorId=${generated.c}&year=${generated.m.split('-')[0]}&month=${Number(generated.m.split('-')[1])}`, { headers: { 'x-session-token': getToken() } })
+      if (!res.ok) {
+        const j = await res.json().catch(() => null)
+        throw new Error(j?.error ?? 'فشل التصدير')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `التقرير الشهري - ${data.contractor.name} - ${month}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      toast({ title: 'تم تصدير ملف Excel بنجاح' })
+    } catch (e: any) {
+      toast({ title: 'تعذر تصدير Excel', description: e?.message ?? '', variant: 'destructive' })
+    }
+  }
+
   // ── محتوى الطباعة A4 ──
   const printContent = data ? (
     <div className="p-6">
@@ -604,6 +629,7 @@ function ContractorMonthlyReport() {
           {data && items.length > 0 && (
             <>
               <Button variant="outline" onClick={printModal}><Printer className="size-4" /> طباعة</Button>
+              <Button variant="outline" onClick={exportXlsx} disabled={!items.length}><Sheet className="size-4" /> Excel</Button>
               <Button variant="outline" onClick={exportCSV}><FileSpreadsheet className="size-4" /> CSV</Button>
             </>
           )}

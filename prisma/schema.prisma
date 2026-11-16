@@ -434,6 +434,18 @@ model User {
   roles  UserRole[]
   employeeVouchers OpVoucher[] @relation("OpVoucherEmployee")
   createdVouchers  OpVoucher[] @relation("OpVoucherCreator")
+  sessions UserSession[]
+}
+
+/** جلسات الدخول المخزنة في قاعدة البيانات — تعمل عبر كل نسخ الوحدة في بيئة التطوير
+ *  (كل مسار يحمل نسخته الخاصة من الذاكرة) وتصمد أمام إعادة التشغيل/التحديث الساخن */
+model UserSession {
+  token   String   @id
+  userId  String
+  at      DateTime @updatedAt
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Role {

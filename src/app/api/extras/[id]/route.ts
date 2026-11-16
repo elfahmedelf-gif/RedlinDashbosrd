@@ -5,7 +5,7 @@ import { deleteExtraCost, updateExtraCost } from '@/lib/server/extras'
 
 export const dynamic = 'force-dynamic'
 
-/** تعديل بند إضافي — مسموح فقط وهو «بانتظار الاعتماد» (المعتمد محاسبيًا ولا يُعدل) */
+/** تعديل بند إضافي — المعلق تعديل حر، والمعتمد يُعكس قيده ويُعاد إثباته تلقائيًا بالبيانات الجديدة */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()

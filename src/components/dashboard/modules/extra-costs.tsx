@@ -25,7 +25,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Kpi } from '../ui-cards'
 import { DataTable } from '../data-table'
-import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
+import { fetcher } from '@/lib/api'
+import { apiPostSync as apiPost, apiPatchSync as apiPatch, apiDeleteSync as apiDelete } from '@/lib/sync'
 import { exportToCSV } from '@/lib/export'
 import { fmtNum, fmtDate } from '@/lib/format'
 import { EXTRA_COST_TYPES, EXTRA_COST_STATUSES, extraCostTypeLabel, extraCostTypeDef, extraCostStatusDef } from '@/lib/extra-cost-catalog'
@@ -173,8 +174,15 @@ export function ExtraCostsModule() {
         notes: fNotes.trim() || null,
       }
       if (editing) {
-        await apiPatch(`/api/extras/${editing.id}`, body)
-        toast({ title: 'تم تعديل البند', description: `${editing.ref} — ${extraCostTypeLabel(fType)}` })
+        const res: any = await apiPatch(`/api/extras/${editing.id}`, body)
+        const syncNote = [
+          res?.reversalNo ? `عكس القيد ${res.reversalNo}` : '',
+          res?.repostNo ? `إعادة إثبات بالقيد ${res.repostNo}` : '',
+        ].filter(Boolean).join(' — ')
+        toast({
+          title: 'تم تعديل البند',
+          description: `${editing.ref} — ${extraCostTypeLabel(fType)}${syncNote ? ` — ${syncNote}` : ' (بلا أثر محاسبي)'}`,
+        })
       } else {
         const res: any = await apiPost('/api/extras', body)
         toast({
@@ -236,7 +244,7 @@ export function ExtraCostsModule() {
     const ok = await confirmDialog({
       title: 'حذف البند الإضافي',
       message: `حذف البند ${ec.ref} (${extraCostTypeLabel(ec.type)} — ${fmtNum(ec.amount ?? 0)} ج.م)؟`,
-      variant: 'destructive',
+      variant: 'danger',
       confirmText: 'حذف',
     })
     if (!ok) return
@@ -391,8 +399,8 @@ export function ExtraCostsModule() {
                       <XCircle className="size-3.5" /> رفض
                     </Button>
                   )}
-                  {isPending && canManage && (
-                    <Button size="sm" variant="outline" onClick={() => openEdit(x)} disabled={busy} className="h-8 w-8 p-0" aria-label="تعديل">
+                  {(isPending || isApproved) && canManage && (
+                    <Button size="sm" variant="outline" onClick={() => openEdit(x)} disabled={busy} className="h-8 w-8 p-0" aria-label="تعديل" title={isApproved ? 'تعديل بند معتمد — يُعكس القيد ويُعاد إثباته تلقائيًا' : 'تعديل'}>
                       <Pencil className="size-3.5" />
                     </Button>
                   )}
@@ -416,14 +424,16 @@ export function ExtraCostsModule() {
             <DialogTitle>{editing ? `تعديل البند ${editing.ref}` : 'تسجيل بند إضافي على حساب مقاول'}</DialogTitle>
             <DialogDescription>
               {editing
-                ? 'التعديل متاح للبنود «بانتظار الاعتماد» فقط — المعتمد مُرحّل محاسبيًا ولا يُعدل.'
+                ? editing.approvalStatus === 'approved'
+                  ? 'البند معتمد ومُرحّل — أي تعديل على المبلغ/النوع/المقاول/الشحنة يُعكس قيده ويُعاد إثباته بالبيانات الجديدة تلقائيًا.'
+                  : 'التعديل متاح — البند ما زال «بانتظار الاعتماد».'
                 : 'اختر المقاول والنوع والمبلغ — ويمكن ربط البند بشحنة محددة برقم الديليفري.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3.5">
             <div className="space-y-1.5">
               <Label className="text-xs">المقاول *</Label>
-              <Select value={fContractor} onValueChange={(v) => { setFContractor(v); setFShipment('none') }} disabled={!!editing}>
+              <Select value={fContractor} onValueChange={(v) => { setFContractor(v); setFShipment('none') }} disabled={!!editing && editing.approvalStatus !== 'approved'}>
                 <SelectTrigger className="w-full" aria-label="المقاول"><SelectValue placeholder="اختر المقاول..." /></SelectTrigger>
                 <SelectContent>
                   {contractors.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}{c.code ? ` — ${c.code}` : ''}</SelectItem>)}

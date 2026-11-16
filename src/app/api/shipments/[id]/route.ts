@@ -4,7 +4,8 @@ import { ensureSeeded } from '@/lib/server/seed'
 import { logAudit } from '@/lib/server/audit'
 import { db } from '@/lib/db'
 import { getShipment } from '@/lib/server/queries'
-import { hasDeliveryJournal } from '@/lib/server/shipment-accounting'
+import { getActiveDeliveryJournal, postShipmentDeliveryJournal } from '@/lib/server/shipment-accounting'
+import { reverseJournal } from '@/lib/server/accounting'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,14 +41,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (b.warehouseId && !(await tx.warehouse.findUnique({ where: { id: b.warehouseId } }))) throw new ApiError(400, 'المخزن المحدد غير موجود')
 
       const moneyTouched = MONEY_FIELDS.some((k) => b[k] !== undefined)
+      const contractorChanged = b.contractorId !== undefined && b.contractorId !== s.contractorId
 
-      // حماية الأثر المالي: لا تعديل مبالغ على شحنة محصّلة أو لها قيد تسليم مرحّل
-      if (moneyTouched) {
-        if (s.collectionStatus === 'collected') {
-          throw new ApiError(409, 'لا يمكن تعديل مبالغ شحنة تم تحصيلها — استخدم قيدًا عكسيًا أو إذن تصحيح وفق سياسة النظام')
-        }
-        if (await hasDeliveryJournal(tx, id)) {
-          throw new ApiError(409, 'لا يمكن تعديل مبالغ شحنة مُرحّل قيدها المحاسبي (تم تسليمها) — استخدم قيدًا عكسيًا')
+      // حماية الأثر المالي: الشحنات المحصّلة لا تُعدّل مبالغها أبدًا
+      if (moneyTouched && s.collectionStatus === 'collected') {
+        throw new ApiError(409, 'لا يمكن تعديل مبالغ شحنة تم تحصيلها — استخدم قيدًا عكسيًا أو إذن تصحيح وفق سياسة النظام')
+      }
+
+      // المزامنة المحاسبية المتتالية: تغيير المقاول أو المبالغ على شحنة مُرحّلة
+      // → عكس القيد النشط ثم إعادة إثباته بالبيانات الجديدة (نقل مستحقات المقاول القديم ← الجديد على 2102)
+      let reversalNo: string | null = null
+      if (moneyTouched || contractorChanged) {
+        const activeJE = await getActiveDeliveryJournal(tx, id)
+        if (activeJE) {
+          const reversal = await reverseJournal(tx, activeJE.id, user, `تصحيح بيانات الشحنة ${s.shipmentNo ?? ''} قبل التعديل`)
+          reversalNo = reversal.entryNo
         }
       }
 
@@ -64,6 +72,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
       const updated = await tx.shipment.update({ where: { id }, data })
 
+      // إعادة إثبات القيد بالبيانات الجديدة بعد العكس (تزامن فوري لكل الشاشات المشتقة)
+      let repostNo: string | null = null
+      if (reversalNo) {
+        const fresh = await tx.shipment.findUnique({
+          where: { id },
+          include: { customer: { select: { id: true, name: true } }, contractor: { select: { id: true, name: true } } },
+        })
+        if (fresh) {
+          const posted = await postShipmentDeliveryJournal(tx, fresh, user)
+          repostNo = posted?.entryNo ?? null
+        }
+      }
+
       // تعديل البيانات المالية يُسجّل سطرًا في سجل حالات الشحنة (أثر مالي موثّق)
       if (moneyTouched) {
         await tx.shipmentStatusHistory.create({
@@ -78,10 +99,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
       await logAudit(tx, {
         action: 'update', entity: 'shipment', entityId: id,
-        notes: `تعديل الشحنة ${s.shipmentNo}`,
+        notes: `تعديل الشحنة ${s.shipmentNo}${reversalNo ? ` — عكس القيد ${reversalNo}` : ''}${repostNo ? ` — إعادة إثبات بالقيد ${repostNo}` : ''}${contractorChanged ? ' — نقل المستحقات بين المقاولين تلقائيًا' : ''}`,
         user: { userId: user.userId, username: user.username },
-        before: { freightTotal: s.freightTotal, freightCost: s.freightCost, totalSuppliers: s.totalSuppliers },
-        after: data,
+        before: { freightTotal: s.freightTotal, freightCost: s.freightCost, totalSuppliers: s.totalSuppliers, contractorId: s.contractorId },
+        after: { ...data, reversalNo, repostNo },
       })
       void updated
     })
@@ -99,8 +120,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       const s = await tx.shipment.findUnique({ where: { id } })
       if (!s) return
 
-      // منع الحذف المدمر: شحنة مرتبطة بأذونات نشطة أو مكتملة أو قيد مرحّل
-      // (الأذونات الملغاة/المرفوضة الميتة لا تمنع الحذف — تصحيح سابق كان يحجب الكل)
+      // منع الحذف المدمر: أذونات نشطة/مكتملة أو بنود إضافية معتمدة (قيودها مرحّلة)
       const blockingVoucher = await tx.opVoucherItem.findFirst({
         where: { shipmentId: id, voucher: { status: { in: ['draft', 'pending', 'approved', 'in_progress', 'completed'] } } },
         include: { voucher: { select: { voucherNo: true, status: true } } },
@@ -108,18 +128,35 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       if (blockingVoucher) {
         throw new ApiError(409, `لا يمكن حذف شحنة مرتبطة بإذن (${blockingVoucher.voucher.voucherNo} — ${blockingVoucher.voucher.status}) — عالجها وفق سياسة التصحيح أولًا`)
       }
-      const postedJournal = await tx.journalLine.findFirst({ where: { shipmentId: id, entry: { status: 'posted' } } })
-      if (postedJournal) {
-        throw new ApiError(409, 'لا يمكن حذف شحنة مرتبطة بقيود محاسبية مرحّلة — استخدم القيد العكسي أولًا')
+      const approvedExtras = await tx.extraCost.count({ where: { shipmentId: id, approvalStatus: 'approved' } })
+      if (approvedExtras > 0) {
+        throw new ApiError(409, `لا يمكن حذف الشحنة — عليها ${approvedExtras} بند إضافي معتمد ومُرحّل محاسبيًا — ارفض البنود أولًا (سيُعكس قيدها تلقائيًا) ثم احذف الشحنة`)
       }
       if (s.collectionStatus === 'collected') {
         throw new ApiError(409, 'لا يمكن حذف شحنة تم تحصيلها — عكس التحصيل أولًا')
       }
 
+      // عكس القيود النشطة المرتبطة بالشحنة تلقائيًا (قيد التسليم وغيره) — لا أرصدة يتيمة
+      const activeEntries = await tx.journalEntry.findMany({
+        where: { status: 'posted', reversalOfId: null, lines: { some: { shipmentId: id } } },
+        select: { id: true, entryNo: true },
+      })
+      const reversalNos: string[] = []
+      for (const je of activeEntries) {
+        const already = await tx.journalEntry.findUnique({ where: { reversalOfId: je.id }, select: { id: true } })
+        if (!already) {
+          const rev = await reverseJournal(tx, je.id, user, `حذف الشحنة ${s.shipmentNo ?? ''} — عكس القيد تلقائيًا`)
+          reversalNos.push(rev.entryNo)
+        }
+      }
+
+      // البنود المعلقة/المرفوضة المرتبطة تُحذف (بلا قيود)
+      await tx.extraCost.deleteMany({ where: { shipmentId: id, approvalStatus: { in: ['pending', 'rejected'] } } })
+
       await tx.shipment.delete({ where: { id } })
       await logAudit(tx, {
         action: 'delete', entity: 'shipment', entityId: id,
-        notes: `حذف شحنة ${s.shipmentNo}`,
+        notes: `حذف شحنة ${s.shipmentNo}${reversalNos.length ? ` — عكس القيود: ${reversalNos.join('، ')}` : ''}`,
         user: { userId: user.userId, username: user.username },
         before: { shipmentNo: s.shipmentNo, status: s.status },
       })

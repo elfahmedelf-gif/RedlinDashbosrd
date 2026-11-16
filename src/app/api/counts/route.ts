@@ -3,6 +3,7 @@ import { requireUser } from '@/lib/server/session'
 import { ensureSeeded } from '@/lib/server/seed'
 import { db } from '@/lib/db'
 import { report } from '@/lib/server/queries'
+import { RECEIPT_OVERDUE_DAYS, RECEIPT_EXCLUDED_STATUSES } from '@/lib/extra-cost-catalog'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,7 @@ export async function GET(req: Request) {
       branchesCount, warehousesCount, itemsCount, movementsCount,
       freightCount, accountsCount, journalCount, vouchersCount,
       usersCount, auditCount, lookupsCount, pendingReturns,
-      receiptsPending, extrasPending,
+      receiptsPending, extrasPending, receiptsOverdue,
     ] = await Promise.all([
       db.shipment.count(),
       db.party.count({ where: { isCustomer: true } }),
@@ -57,6 +58,21 @@ export async function GET(req: Request) {
       db.shipment.count({ where: { contractorId: { not: null }, isReceiptDelivered: false, status: { notIn: ['cancelled', 'written_off'] } } }),
       // البنود الإضافية بانتظار اعتماد الشركة (مبيت/مرتجعات)
       db.extraCost.count({ where: { approvalStatus: 'pending' } }),
+      // الأذونات المتأخرة — غير مسلمة عمرها أكثر من 3 أيام (نفس منطق قائمة الأذونات)
+      (async () => {
+        const cutoff = new Date(Date.now() - (RECEIPT_OVERDUE_DAYS + 1) * 86400000)
+        return db.shipment.count({
+          where: {
+            contractorId: { not: null },
+            isReceiptDelivered: false,
+            status: { notIn: [...RECEIPT_EXCLUDED_STATUSES] },
+            OR: [
+              { date: { lt: cutoff } },
+              { date: null, createdAt: { lt: cutoff } },
+            ],
+          },
+        })
+      })(),
     ])
 
     return {
@@ -64,6 +80,7 @@ export async function GET(req: Request) {
       shipments: shipmentsCount,
       'pending-returns': pendingReturns,
       receipts: receiptsPending,
+      receiptsOverdue,
       'extra-costs': extrasPending,
       customers: customersCount,
       contractors: contractorsCount,

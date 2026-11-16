@@ -33,6 +33,8 @@ export interface CreateJournalOpts {
   user: JUser
   /** منع تكرار الترحيل لنفس المصدر — يتحقق من قيد مرحّل سابق لنفس (sourceType, sourceId) */
   preventDuplicateSource?: boolean
+  /** مع preventDuplicateSource: اسمح بالترحيل إذا كان القيد السابق معكوسًا بقيد عكسي (سيناريو عكس ثم إعادة إثبات) */
+  allowIfReversed?: boolean
 }
 
 export const ACC = {
@@ -87,7 +89,13 @@ export async function createJournal(tx: Tx, opts: CreateJournalOpts) {
       where: { sourceType: opts.sourceType, sourceId: opts.sourceId, status: 'posted', reversalOfId: null },
       select: { id: true, entryNo: true },
     })
-    if (dup) throw new ApiError(409, `يوجد قيد مرحّل بالفعل لهذه العملية (${dup.entryNo}) — لا يمكن الترحيل مرتين`)
+    if (dup) {
+      // إذا كان القيد السابق معكوسًا بقيد عكسي مرتبط — أثره ألغي ويجوز إعادة الإثبات
+      const reversed = opts.allowIfReversed
+        ? await tx.journalEntry.findUnique({ where: { reversalOfId: dup.id }, select: { id: true } })
+        : null
+      if (!reversed) throw new ApiError(409, `يوجد قيد مرحّل بالفعل لهذه العملية (${dup.entryNo}) — لا يمكن الترحيل مرتين`)
+    }
   }
   const { clean, totalDebit, totalCredit } = await validateLines(tx, opts.lines)
   const n = await nextSeq(tx, 'journal')

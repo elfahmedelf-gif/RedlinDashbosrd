@@ -4,6 +4,8 @@
 // وحدة أذونات التسليم (الديليفري) — متابعة إذن كل نقلة لكل مقاول على حدة
 // - عدّادات اليوم: إجمالي شحنات اليوم / التي خرجت / المتبقية (لتاريخ محدد)
 // - تبويبات لكل مقاول (أذوناته الخاصة — لا قوائم مختلطة)
+// - CRUD كامل: إضافة إذن / تعديل / حذف — بمزامنة محاسبية لحظية على الخادم
+//   وتحديث تفاؤلي فوري في كل شاشات النظام (عدّادات + أرصدة + تقارير)
 // - علامة «تم تسليم الإذن» لكل شحنة (تحديث تفاؤلي) + عرض الأذونات المتأخرة
 // - البحث برقم الديليفري أولاً (المعرف الأساسي)
 // ============================================================================
@@ -12,7 +14,7 @@ import * as React from 'react'
 import useSWR from 'swr'
 import {
   ClipboardCheck, Package, PackageCheck, PackageX, AlarmClock, Search,
-  FileSpreadsheet, Printer, CircleCheck, Circle, RefreshCw,
+  FileSpreadsheet, Printer, CircleCheck, Circle, RefreshCw, Plus, Pencil, Trash2, Loader2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,14 +24,18 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Kpi } from '../ui-cards'
 import { DataTable } from '../data-table'
-import { fetcher, apiPost } from '@/lib/api'
+import { EntityFormDialog, type Field } from '../entity-dialog'
+import { fetcher } from '@/lib/api'
+import { apiPostSync, apiPatchSync, apiDeleteSync } from '@/lib/sync'
 import { exportToCSV } from '@/lib/export'
 import { fmtNum, fmtDate, SHIPMENT_STATUS } from '@/lib/format'
-import { shipmentStatusLabel } from '@/lib/shipment-catalog'
+import { shipmentStatusLabel, SHIPMENT_STATUSES, allowedShipmentTransitions } from '@/lib/shipment-catalog'
 import { RECEIPT_OVERDUE_DAYS } from '@/lib/extra-cost-catalog'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
 import { useToast } from '@/hooks/use-toast'
+import { useConfirm } from '@/components/ui/confirm-dialog'
+import { bus, BUS_EVENTS, consumeIntent } from '@/lib/bus'
 
 interface ReceiptItem {
   id: string
@@ -46,6 +52,10 @@ interface ReceiptItem {
   receiptDeliveredAt: string | null
   ageDays: number
   overdue: boolean
+  /** تظهر فقط لمن يملك صلاحية الأسعار (تعديل النولون من نافذة الإذن) */
+  freightCost?: number | null
+  freightTotal?: number | null
+  collected?: boolean
 }
 
 interface ContractorTab {
@@ -75,6 +85,13 @@ const VIEWS: { key: ViewKey; label: string; icon: React.ElementType; tone: strin
   { key: 'delivered', label: 'المسلّمة', icon: PackageCheck, tone: 'data-[on=true]:bg-emerald-50 data-[on=true]:text-emerald-700 data-[on=true]:border-emerald-300 dark:data-[on=true]:bg-emerald-950/40 dark:data-[on=true]:text-emerald-300' },
 ]
 
+/** حالات الإنشاء المتاحة عند إضافة إذن جديد (خرج مع المقاول افتراضيًا) */
+const CREATE_STATUSES = ['new', 'received', 'loaded', 'in_transit', 'assigned_courier', 'out_for_delivery', 'delivered'] as const
+
+function statusLabel(key: string) {
+  return SHIPMENT_STATUSES.find((s) => s.key === key)?.label ?? shipmentStatusLabel(key)
+}
+
 function statusBadge(status: string) {
   const def = SHIPMENT_STATUS[status]
   return (
@@ -87,7 +104,12 @@ function statusBadge(status: string) {
 export function ReceiptsModule() {
   const { has } = useAuth()
   const { toast } = useToast()
+  const { confirmDelete } = useConfirm()
   const canToggle = has('shipments.receipts')
+  const canAdd = has('shipments.create')
+  const canEdit = has('shipments.edit')
+  const canDelete = has('shipments.delete')
+  const canPrices = has('prices.view')
 
   const todayISO = React.useMemo(() => new Date().toISOString().slice(0, 10), [])
   const [date, setDate] = React.useState(todayISO)
@@ -95,6 +117,20 @@ export function ReceiptsModule() {
   const [view, setView] = React.useState<ViewKey>('undelivered')
   const [search, setSearch] = React.useState('')
   const [busyId, setBusyId] = React.useState<string | null>(null)
+  const [formBusy, setFormBusy] = React.useState(false)
+
+  // شارة الهيدر: فتح عرض الأذونات المتأخرة مباشرة عند الضغط عليها
+  // (النية المعلقة عند تركيب الوحدة من الهيدر + البث الحي إذا كانت مفتوحة بالفعل)
+  React.useEffect(() => {
+    if (consumeIntent() === BUS_EVENTS.OPEN_OVERDUE_RECEIPTS) {
+      setView('overdue')
+      setContractorId('all')
+    }
+    return bus.on(BUS_EVENTS.OPEN_OVERDUE_RECEIPTS, () => {
+      setView('overdue')
+      setContractorId('all')
+    })
+  }, [])
 
   const qs = new URLSearchParams()
   if (contractorId !== 'all') qs.set('contractorId', contractorId)
@@ -107,6 +143,14 @@ export function ReceiptsModule() {
     keepPreviousData: true,
     refreshInterval: 45000,
   })
+
+  // قوائم المقاولين والعملاء لنوافذ الإضافة/التعديل
+  const { data: contractorsData } = useSWR<{ items: { id: string; name: string; code: string | null }[] }>(
+    canAdd || canEdit ? '/api/parties?type=contractor' : null, fetcher)
+  const { data: customersData } = useSWR<{ items: { id: string; name: string; code: string | null }[] }>(
+    canAdd || canEdit ? '/api/parties?type=customer' : null, fetcher)
+  const contractors = contractorsData?.items ?? []
+  const customers = customersData?.items ?? []
 
   const items = data?.items ?? []
   const kpis = data?.kpis
@@ -140,7 +184,7 @@ export function ReceiptsModule() {
       revalidate: true,
     }).catch(() => {})
     try {
-      await apiPost(`/api/shipments/${item.id}/receipt`, { delivered: next })
+      await apiPostSync(`/api/shipments/${item.id}/receipt`, { delivered: next })
       toast({ title: next ? 'تم تسجيل تسليم الإذن' : 'تم إرجاع العلامة', description: `الديليفري ${item.deliveryNumber ?? item.shipmentNo ?? ''} — ${item.contractor?.name ?? ''}` })
       mutate()
     } catch (e: any) {
@@ -148,6 +192,141 @@ export function ReceiptsModule() {
       mutate()
     } finally {
       setBusyId(null)
+    }
+  }
+
+  // ── نافذة الإضافة/التعديل ──
+  const [dialogOpen, setDialogOpen] = React.useState(false)
+  const [editing, setEditing] = React.useState<ReceiptItem | null>(null)
+
+  const openAdd = () => {
+    setEditing(null)
+    setDialogOpen(true)
+  }
+  const openEdit = (item: ReceiptItem) => {
+    setEditing(item)
+    setDialogOpen(true)
+  }
+
+  const dialogFields: Field[] = React.useMemo(() => {
+    const fields: Field[] = [
+      { name: 'deliveryNumber', label: 'رقم الديليفري', type: 'text', placeholder: editing?.deliveryNumber ?? 'يُولّد تلقائيًا إن تُرك فارغًا' },
+      {
+        name: 'contractorId', label: 'المقاول (مطلوب)', type: 'select', span: 1,
+        options: contractors.map((c) => ({ value: c.id, label: c.code ? `${c.name} — ${c.code}` : c.name })),
+        placeholder: 'اختر المقاول...',
+      },
+      {
+        name: 'customerId', label: 'العميل', type: 'select', span: 1,
+        options: customers.map((c) => ({ value: c.id, label: c.name })),
+        placeholder: 'اختر العميل...',
+      },
+      { name: 'destination', label: 'الوجهة', type: 'text', span: 1 },
+      { name: 'recipientName', label: 'المستلم', type: 'text', span: 1 },
+      { name: 'date', label: 'تاريخ النقلة', type: 'date', span: 1 },
+    ]
+    // الحالة: عند الإضافة قائمة مختارة، وعند التعديل انتقالات آلة الحالات الصارمة
+    if (editing) {
+      const allowed = allowedShipmentTransitions(editing.status)
+      if (allowed.length) {
+        fields.push({ name: 'status', label: 'الحالة (التسلسل القياسي)', type: 'select', options: allowed.map((k) => ({ value: k, label: statusLabel(k) })), span: 1, placeholder: statusLabel(editing.status) })
+      }
+    } else {
+      fields.push({ name: 'status', label: 'حالة النقلة', type: 'select', options: CREATE_STATUSES.map((k) => ({ value: k, label: statusLabel(k) })), span: 1, placeholder: 'محمّلة على المركبة' })
+    }
+    if (canPrices) {
+      fields.push({ name: 'freightCost', label: 'نولون المقاول (ج.م)', type: 'number', span: 1 })
+      fields.push({ name: 'freightTotal', label: 'نولون العميل (ج.م)', type: 'number', span: 1 })
+    }
+    return fields
+  }, [editing, contractors, customers, canPrices])
+
+  const initialForm = React.useMemo(() => {
+    if (!editing) return { date: todayISO, status: 'loaded' } as Record<string, any>
+    return {
+      deliveryNumber: editing.deliveryNumber ?? '',
+      contractorId: editing.contractor?.id ?? '',
+      customerId: editing.customer?.id ?? '',
+      destination: editing.destination ?? '',
+      recipientName: editing.recipientName ?? '',
+      date: editing.date ? String(editing.date).slice(0, 10) : todayISO,
+      status: '',
+      freightCost: editing.freightCost ?? '',
+      freightTotal: editing.freightTotal ?? '',
+    } as Record<string, any>
+  }, [editing, todayISO])
+
+  const submitForm = async (values: Record<string, any>) => {
+    if (!values.contractorId) throw new Error('اختيار المقاول مطلوب — لا يوجد إذن بدون مقاول')
+    const payload: Record<string, any> = { ...values }
+    // قيم فارغة = لا تغيير (التعديل لا يمسها) أو افتراضي الخادم (الإنشاء)
+    if (!payload.deliveryNumber) delete payload.deliveryNumber
+    if (!payload.status) delete payload.status
+    if (!editing && !payload.date) delete payload.date
+
+    if (editing) {
+      const r = await apiPatchSync<{ reversalNo?: string | null; repostNo?: string | null; postNo?: string | null }>(`/api/receipts/${editing.id}`, payload)
+      const syncNote = [
+        r.reversalNo ? `عكس القيد ${r.reversalNo}` : '',
+        r.repostNo ? `إعادة إثبات بالقيد ${r.repostNo}` : '',
+        r.postNo ? `إثبات بالقيد ${r.postNo}` : '',
+      ].filter(Boolean).join(' — ')
+      toast({
+        title: 'تم تعديل الإذن',
+        description: `الديليفري ${values.deliveryNumber || editing.deliveryNumber || editing.shipmentNo || ''} — ${syncNote || 'بلا أثر محاسبي جديد'}`,
+      })
+    } else {
+      const r = await apiPostSync<{ shipmentNo: string; deliveryNumber: string | null; journalEntryNo: string | null }>('/api/receipts', payload)
+      toast({
+        title: 'تم إضافة الإذن',
+        description: `ديليفري ${r.deliveryNumber ?? '—'} — شحنة ${r.shipmentNo}${r.journalEntryNo ? ` — قيد ${r.journalEntryNo}` : ''}`,
+      })
+    }
+    // المزامنة اللحظية لكل الشاشات تجري تلقائيًا عبر apiPostSync/apiPatchSync
+  }
+
+  // ── حذف الإذن — تأكيد ببيان الأثر ثم تنفيذ تفاؤلي ──
+  const handleDelete = async (item: ReceiptItem) => {
+    const ok = await confirmDelete({
+      title: `حذف إذن التسليم ${item.deliveryNumber ?? item.shipmentNo ?? ''}`,
+      message: `سيتم حذف الإذن نهائيًا (الشحنة ${item.shipmentNo ?? ''} — المقاول: ${item.contractor?.name ?? '—'}).\nإذا كان للإذن قيد محاسبي مرحّل سيُعكس تلقائيًا ليزول أثره من رصيد المقاول، والبنود الإضافية المعلقة المرتبطة ستُحذف.\nالبنود المعتمدة والمحصّل تمنع الحذف.`,
+    })
+    if (!ok) return
+    setBusyId(item.id)
+    mutate(async (cur) => {
+      if (!cur) return cur
+      const wasPending = !item.isReceiptDelivered
+      const wasOverdue = item.overdue
+      return {
+        ...cur,
+        items: cur.items.filter((x) => x.id !== item.id),
+        total: Math.max(0, cur.total - 1),
+        totals: {
+          ...cur.totals,
+          all: Math.max(0, cur.totals.all - 1),
+          pending: Math.max(0, cur.totals.pending - (wasPending ? 1 : 0)),
+          overdue: Math.max(0, cur.totals.overdue - (wasOverdue ? 1 : 0)),
+          delivered: Math.max(0, cur.totals.delivered - (item.isReceiptDelivered ? 1 : 0)),
+        },
+        byContractor: cur.byContractor.map((c) => (item.contractor && c.id === item.contractor.id
+          ? {
+              ...c,
+              total: Math.max(0, c.total - 1),
+              pending: Math.max(0, c.pending - (wasPending ? 1 : 0)),
+              overdue: Math.max(0, c.overdue - (wasOverdue ? 1 : 0)),
+              delivered: Math.max(0, c.delivered - (item.isReceiptDelivered ? 1 : 0)),
+            }
+          : c)),
+      } as ReceiptsResponse
+    }, { optimisticData: undefined, rollbackOnError: true, revalidate: false }).catch(() => {})
+    try {
+      await apiDeleteSync(`/api/receipts/${item.id}`)
+      toast({ title: 'تم حذف الإذن', description: `الديليفري ${item.deliveryNumber ?? item.shipmentNo ?? ''} — عُكس أي قيد مرحّل تلقائيًا` })
+    } catch (e: any) {
+      toast({ title: 'تعذر الحذف', description: e.message, variant: 'destructive' })
+    } finally {
+      setBusyId(null)
+      mutate()
     }
   }
 
@@ -211,7 +390,12 @@ export function ReceiptsModule() {
             <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث برقم الديليفري..." className="pr-8 h-9 w-40 sm:w-56 text-xs bg-card" />
           </div>
-          <Button variant="outline" size="sm" onClick={() => mutate()} className="h-9">
+          {canAdd && (
+            <Button size="sm" onClick={openAdd} className="h-9">
+              <Plus className="size-4" /> <span className="hidden sm:inline">إضافة إذن</span>
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => mutate()} className="h-9" aria-label="تحديث">
             <RefreshCw className="size-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={exportCSV} disabled={!items.length} className="h-9">
@@ -300,13 +484,13 @@ export function ReceiptsModule() {
         </Card>
       )}
 
-      {/* ── جدول الأذونات ── */}
+      {/* ── جدول الأذونات + إجراءات الصف ── */}
       <DataTable
         rows={items}
         loading={isLoading && !data}
         emptyText={view === 'overdue' ? 'لا توجد أذونات متأخرة — كل الأذونات تحت السيطرة' : 'لا توجد أذونات في هذا العرض'}
         getRowKey={(x) => x.id}
-        minW={1000}
+        minW={1100}
         resetKey={`${contractorId}|${view}|${search}|${date}`}
         columns={[
           {
@@ -357,6 +541,25 @@ export function ReceiptsModule() {
               ? <span className="text-xs tnum text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><CircleCheck className="size-3.5" />{fmtDate(x.receiptDeliveredAt)}</span>
               : <span className="text-xs text-muted-foreground inline-flex items-center gap-1"><Circle className="size-3" />—</span>,
           },
+          {
+            key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-36', hideInCard: false,
+            render: (x: ReceiptItem) => (
+              <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                {busyId === x.id && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+                {canEdit && (
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEdit(x)} aria-label={`تعديل الإذن ${x.deliveryNumber ?? x.shipmentNo ?? ''}`} title="تعديل">
+                    <Pencil className="size-3.5 text-sky-600 dark:text-sky-400" />
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleDelete(x)} aria-label={`حذف الإذن ${x.deliveryNumber ?? x.shipmentNo ?? ''}`} title="حذف">
+                    <Trash2 className="size-3.5 text-rose-600 dark:text-rose-400" />
+                  </Button>
+                )}
+                {!canEdit && !canDelete && <span className="text-[10px] text-muted-foreground">—</span>}
+              </div>
+            ),
+          },
         ]}
       />
 
@@ -364,7 +567,22 @@ export function ReceiptsModule() {
       <div className="text-[11px] text-muted-foreground leading-relaxed print:hidden">
         علم «سُلّم الإذن» يعني أن المقاول سلّم إذن التسليم لهذه النقلة (رقم الديليفري).
         الأذونات غير المعلمة تبقى ظاهرة في عرض «غير مسلمة» و«الأذونات المتأخرة» بعد {RECEIPT_OVERDUE_DAYS} أيام — كل مقاول له أذوناته الخاصة في تبويبه.
+        الإضافة/التعديل/الحذف تُزامن القيود المحاسبية وعدّادات كل الشاشات لحظيًا.
       </div>
+
+      {/* ── نافذة إضافة/تعديل الإذن ── */}
+      <EntityFormDialog
+        open={dialogOpen}
+        onOpenChange={(v) => { if (!formBusy) setDialogOpen(v) }}
+        title={editing ? `تعديل إذن التسليم ${editing.deliveryNumber ?? editing.shipmentNo ?? ''}` : 'إضافة إذن تسليم جديد'}
+        description={editing
+          ? 'تعديل البيانات أو المقاول أو النولون — أي أثر محاسبي مُرحّل يُعكس ويعاد إثباته تلقائيًا'
+          : 'إنشاء شحنة جديدة مسندة لمقاول برقم ديليفري — الافتراضي «محمّلة على المركبة»'}
+        fields={dialogFields}
+        initial={initialForm}
+        onSubmit={submitForm}
+        submitLabel={editing ? 'حفظ التعديل' : 'إضافة الإذن'}
+      />
     </div>
   )
 }

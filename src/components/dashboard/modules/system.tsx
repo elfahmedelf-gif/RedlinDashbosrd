@@ -29,7 +29,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { DataTable } from '../data-table'
-import { fetcher, apiPost, apiPatch, apiDelete } from '@/lib/api'
+import { fetcher } from '@/lib/api'
+import { apiPostSync as apiPost, apiPatchSync as apiPatch, apiDeleteSync as apiDelete } from '@/lib/sync'
 import { fmtNum, fmtDateTime } from '@/lib/format'
 import { PERMISSION_CATALOG, PERMISSION_GROUPS, expandPermissions } from '@/lib/permissions'
 import { useAuth } from '../auth-provider'

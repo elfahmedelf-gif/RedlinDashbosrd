@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils'
 import { matchPermission } from '@/lib/permissions'
 import type { SessionUser } from '@/lib/permissions'
+import { OverdueReceiptsBadge } from './overdue-badge'
 import { DarkModeToggle } from './dark-mode-toggle'
 import { UserMenu } from './user-menu'
 
@@ -563,8 +564,8 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
   )
 }
 
-// Mobile top header — hamburger + page title + dark mode + user menu (< lg فقط)
-export function MobileHeader({ title, subtitle, icon: Icon, onMenuClick }: { title: string; subtitle: string; icon?: LucideIcon; onMenuClick?: () => void }) {
+// Mobile top header — hamburger + page title + overdue badge + dark mode + user menu (< lg فقط)
+export function MobileHeader({ title, subtitle, icon: Icon, onMenuClick, overdueCount = 0, onOverdueClick }: { title: string; subtitle: string; icon?: LucideIcon; onMenuClick?: () => void; overdueCount?: number; onOverdueClick?: () => void }) {
   return (
     <header className="mobile-header-print-hide lg:hidden sticky top-0 z-30 flex items-center gap-2 px-3 h-14 border-b border-border glass supports-[backdrop-filter]:bg-card/90 backdrop-blur-xl print:hidden">
       {/* زر القائمة (Hamburger) — يفتح الدرج المنزلق */}
@@ -585,6 +586,11 @@ export function MobileHeader({ title, subtitle, icon: Icon, onMenuClick }: { tit
         <h1 className="font-bold text-sm leading-tight truncate">{title}</h1>
         <p className="text-[11px] text-muted-foreground leading-tight truncate">{subtitle}</p>
       </div>
+      {overdueCount > 0 && onOverdueClick && (
+        <div className="shrink-0">
+          <OverdueReceiptsBadge count={overdueCount} onNavigate={onOverdueClick} compact />
+        </div>
+      )}
       <DarkModeToggle className="size-9 shrink-0" />
       <div className="shrink-0">
         <UserMenu />

@@ -405,9 +405,9 @@ export function PartyFinancialProfile({ partyId, partyName, open, onOpenChange }
                                 {c.kind === 'pl' && <Badge variant="outline" className="text-[10px] text-muted-foreground">إيراد/مصروف</Badge>}
                                 {c.kind === 'other' && <Badge variant="outline" className="text-[10px] text-muted-foreground">نقدية/أخرى</Badge>}
                               </td>
-                              <td className="px-3 py-2 text-left tnum">{c.debit ? fmtMoney(c.debit, 2) : '—'}</td>
-                              <td className="px-3 py-2 text-left tnum">{c.credit ? fmtMoney(c.credit, 2) : '—'}</td>
-                              <td className={cn('px-3 py-2 text-left tnum font-bold', balanceTone(c.kind === 'control_credit' ? -c.net : c.net))}>
+                              <td className="px-3 py-2 text-left tnum whitespace-nowrap">{c.debit ? fmtMoney(c.debit, 2) : '—'}</td>
+                              <td className="px-3 py-2 text-left tnum whitespace-nowrap">{c.credit ? fmtMoney(c.credit, 2) : '—'}</td>
+                              <td className={cn('px-3 py-2 text-left tnum font-bold whitespace-nowrap', balanceTone(c.kind === 'control_credit' ? -c.net : c.net))}>
                                 {c.kind === 'control_credit' ? fmtMoney(-c.net, 2) : fmtMoney(c.net, 2)}
                               </td>
                             </tr>
@@ -518,13 +518,13 @@ export function PartyFinancialProfile({ partyId, partyName, open, onOpenChange }
                             const st = voucherStateDef(v.status)
                             return (
                               <tr key={v.id} className="border-t border-border hover:bg-muted/40">
-                                <td className="px-3 py-2 tnum font-bold">{v.voucherNo}</td>
+                                <td className="px-3 py-2 tnum font-bold whitespace-nowrap">{v.voucherNo}</td>
                                 <td className="px-3 py-2">{voucherTypeDef(v.type)?.label ?? v.type}</td>
                                 <td className="px-3 py-2 whitespace-nowrap">{fmtDateTime(v.createdAt)}</td>
-                                {canPrices && <td className="px-3 py-2 text-left tnum font-bold">{fmtMoney(v.amount ?? v.totalValue, 2)}</td>}
+                                {canPrices && <td className="px-3 py-2 text-left tnum font-bold whitespace-nowrap">{fmtMoney(v.amount ?? v.totalValue, 2)}</td>}
                                 <td className="px-3 py-2"><span className={cn('inline-block text-[10px] px-1.5 py-0.5 rounded-full whitespace-nowrap', st?.color)}>{st?.label ?? v.status}</span></td>
                                 <td className="px-3 py-2 text-muted-foreground">{v.cashAccount?.name ?? '—'}</td>
-                                <td className="px-3 py-2 tnum">{v.journalEntry?.entryNo ?? '—'}</td>
+                                <td className="px-3 py-2 tnum whitespace-nowrap">{v.journalEntry?.entryNo ?? '—'}</td>
                                 <td className="px-3 py-2 text-muted-foreground" title={v.items.map((it) => it.shipment?.shipmentNo ?? '').filter(Boolean).join('، ')}>
                                   {v.items.length ? `${v.items.length} شحنة` : '—'}
                                 </td>
@@ -556,11 +556,11 @@ export function PartyFinancialProfile({ partyId, partyName, open, onOpenChange }
                               const st = voucherStateDef(v.status)
                               return (
                                 <tr key={v.id} className="border-t border-border">
-                                  <td className="px-3 py-2 tnum font-bold">{v.voucherNo}</td>
+                                  <td className="px-3 py-2 tnum font-bold whitespace-nowrap">{v.voucherNo}</td>
                                   <td className="px-3 py-2">{voucherTypeDef(v.type)?.label ?? v.type}</td>
                                   <td className="px-3 py-2 whitespace-nowrap">{fmtDateTime(v.createdAt)}</td>
                                   <td className="px-3 py-2"><span className={cn('inline-block text-[10px] px-1.5 py-0.5 rounded-full whitespace-nowrap', st?.color)}>{st?.label ?? v.status}</span></td>
-                                  {canPrices && <td className="px-3 py-2 text-left tnum">{fmtMoney(v.totalValue, 2)}</td>}
+                                  {canPrices && <td className="px-3 py-2 text-left tnum whitespace-nowrap">{fmtMoney(v.totalValue, 2)}</td>}
                                 </tr>
                               )
                             })}
@@ -602,7 +602,7 @@ export function PartyFinancialProfile({ partyId, partyName, open, onOpenChange }
                         <tbody>
                           {data.shipments.items.map((s) => (
                             <tr key={s.id} className="border-t border-border hover:bg-muted/40">
-                              <td className="px-3 py-2 tnum font-bold">{s.shipmentNo ?? '—'}</td>
+                              <td className="px-3 py-2 tnum font-bold whitespace-nowrap">{s.shipmentNo ?? '—'}</td>
                               <td className="px-3 py-2">
                                 <div className="flex gap-1">
                                   {s.customerId && <Badge variant="outline" className="text-[10px]">عميل</Badge>}
@@ -613,8 +613,8 @@ export function PartyFinancialProfile({ partyId, partyName, open, onOpenChange }
                               <td className="px-3 py-2 whitespace-nowrap">{fmtDate(s.date)}</td>
                               <td className="px-3 py-2 whitespace-nowrap">{shipmentStatusLabel(s.status)}</td>
                               <td className="px-3 py-2 whitespace-nowrap">{s.collectionStatus === 'collected' ? 'محصّلة' : s.collectionStatus === 'partial' ? 'جزئي' : 'غير محصّلة'}</td>
-                              {canPrices && <td className="px-3 py-2 text-left tnum">{fmtMoney(s.freightTotal ?? 0, 2)}</td>}
-                              {canPrices && <td className="px-3 py-2 text-left tnum">{fmtMoney(s.totalSuppliers ?? 0, 2)}</td>}
+                              {canPrices && <td className="px-3 py-2 text-left tnum whitespace-nowrap">{fmtMoney(s.freightTotal ?? 0, 2)}</td>}
+                              {canPrices && <td className="px-3 py-2 text-left tnum whitespace-nowrap">{fmtMoney(s.totalSuppliers ?? 0, 2)}</td>}
                             </tr>
                           ))}
                         </tbody>
@@ -659,8 +659,8 @@ export function PartyFinancialProfile({ partyId, partyName, open, onOpenChange }
                                 <td className="px-3 py-2 whitespace-nowrap">
                                   {l.account.name} <span className="text-[10px] text-muted-foreground tnum">{l.account.code}</span>
                                 </td>
-                                <td className="px-3 py-2 text-left tnum">{l.debit ? fmtMoney(l.debit, 2) : '—'}</td>
-                                <td className="px-3 py-2 text-left tnum">{l.credit ? fmtMoney(l.credit, 2) : '—'}</td>
+                                <td className="px-3 py-2 text-left tnum whitespace-nowrap">{l.debit ? fmtMoney(l.debit, 2) : '—'}</td>
+                                <td className="px-3 py-2 text-left tnum whitespace-nowrap">{l.credit ? fmtMoney(l.credit, 2) : '—'}</td>
                                 <td className="px-3 py-2 tnum whitespace-nowrap">{l.shipment?.shipmentNo ?? '—'}</td>
                               </tr>
                             )),

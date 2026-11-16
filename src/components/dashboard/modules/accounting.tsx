@@ -24,7 +24,8 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { EntityFormDialog, type Field } from '../entity-dialog'
 import { DataTable } from '../data-table'
-import { fetcher, apiPost, apiPatch, apiDelete, getToken } from '@/lib/api'
+import { fetcher, getToken } from '@/lib/api'
+import { apiPostSync as apiPost, apiPatchSync as apiPatch, apiDeleteSync as apiDelete } from '@/lib/sync'
 import { fmtNum, fmtDate, ACCOUNT_TYPE } from '@/lib/format'
 import { useAuth } from '../auth-provider'
 import { useConfirm } from '@/components/ui/confirm-dialog'
@@ -249,6 +250,13 @@ export function JournalModule() {
   const totalDebit = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0)
   const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0)
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.001 && lines.length >= 2
+
+  // شارة التوازن (مدين = دائن) — تُستخدم في ذيل الجدول (md+) وذيل البطاقات (موبايل)
+  const balanceBadge = (
+    <Badge variant="outline" className={isBalanced ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'}>
+      {isBalanced ? 'متوازن' : `الفرق: ${fmtNum(Math.abs(totalDebit - totalCredit))}`}
+    </Badge>
+  )
 
   const setLine = (i: number, k: string, v: any) => setLines((arr) => arr.map((l, idx) => idx === i ? { ...l, [k]: v } : l))
   const addLine = () => setLines((arr) => [...arr, { accountId: '', debit: '', credit: '', description: '', partyId: '' }])
@@ -494,8 +502,8 @@ export function JournalModule() {
               </label>
             </div>
           </div>
-          {/* Lines */}
-          <div className="border border-border rounded-lg overflow-hidden">
+          {/* Lines — md+: جدول الإدخال كما هو (يظل هو المعروض في الطباعة) | الموبايل: بطاقات عمودية بالأسفل */}
+          <div className="hidden md:block border border-border rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" style={{ minWidth: 640 }}>
                 <thead className="bg-muted/40 text-xs">
@@ -540,14 +548,71 @@ export function JournalModule() {
                   <td colSpan={2} className="px-2 py-2 text-right"><Button variant="ghost" size="sm" onClick={addLine} className="text-primary"><Plus className="size-3.5" /> سطر جديد</Button></td>
                   <td className="px-2 py-2 text-left tnum">{fmtNum(totalDebit)}</td>
                   <td className="px-2 py-2 text-left tnum">{fmtNum(totalCredit)}</td>
-                  <td colSpan={2} className="px-2 py-2">
-                    <Badge variant="outline" className={isBalanced ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}>
-                      {isBalanced ? 'متوازن' : `الفرق: ${fmtNum(Math.abs(totalDebit - totalCredit))}`}
-                    </Badge>
-                  </td>
+                  <td colSpan={2} className="px-2 py-2">{balanceBadge}</td>
                 </tr>
               </tfoot>
             </table>
+            </div>
+          </div>
+
+          {/* Lines — موبايل (< md): بطاقة لكل سطر بدل الجدول الأفقي (نفس نمط data-table) */}
+          <div className="md:hidden space-y-2 print:hidden">
+            {lines.map((l, i) => (
+              <div key={i} className="rounded-2xl border border-border bg-card p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-muted-foreground">سطر {i + 1}</span>
+                  {lines.length > 2 && (
+                    <button onClick={() => removeLine(i)} className="text-destructive p-1" aria-label={`حذف السطر ${i + 1}`}>
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">الحساب</label>
+                  <Select value={l.accountId} onValueChange={(v) => setLine(i, 'accountId', v)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="اختر حسابًا..." /></SelectTrigger>
+                    <SelectContent>
+                      {detailAccounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.code} - {a.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">الطرف</label>
+                  <Select value={l.partyId} onValueChange={(v) => setLine(i, 'partyId', v === '__' ? '' : v)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__">—</SelectItem>
+                      {(parties?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">مدين</label>
+                    <Input type="number" className="h-8 text-left tnum" value={l.debit} onChange={(e) => setLine(i, 'debit', e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">دائن</label>
+                    <Input type="number" className="h-8 text-left tnum" value={l.credit} onChange={(e) => setLine(i, 'credit', e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">بيان</label>
+                  <Input className="h-8 text-xs" value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} />
+                </div>
+              </div>
+            ))}
+
+            {/* ذيل البطاقات: إضافة سطر + الإجماليات + شارة التوازن (بديل tfoot على الموبايل) */}
+            <div className="rounded-2xl border border-border bg-card p-3 flex items-center justify-between gap-2 flex-wrap">
+              <Button variant="ghost" size="sm" onClick={addLine} className="text-primary min-h-[40px]">
+                <Plus className="size-3.5" /> سطر جديد
+              </Button>
+              <div className="flex items-center gap-3 text-xs tnum">
+                <span className="text-muted-foreground">مدين: <b className="text-foreground">{fmtNum(totalDebit)}</b></span>
+                <span className="text-muted-foreground">دائن: <b className="text-foreground">{fmtNum(totalCredit)}</b></span>
+              </div>
+              {balanceBadge}
             </div>
           </div>
           {err && <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{err}</div>}
