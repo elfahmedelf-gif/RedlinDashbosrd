@@ -6,8 +6,9 @@
 import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { ApiError, num, round2 } from './http'
-import { accountBalancesMap } from './accounting'
+import { accountBalancesMap, ACC } from './accounting'
 import { VOUCHER_CATEGORIES, VOUCHER_STATES, VOUCHER_TYPES } from '../voucher-catalog'
+import { EXTRA_COST_SOURCE, extraCostTypeLabel } from '../extra-cost-catalog'
 import { enrichVoucherRows, voucherInclude } from './vouchers-queries'
 import { canSeePrices, reportRequiresPrices, stripDashboardStats, stripParties, stripShipmentPrices, stripVoucherPrices, stripVoucherStats } from './prices'
 
@@ -112,7 +113,7 @@ export async function listShipments(q: URLSearchParams, user?: { permissions: st
   })
   if (search) {
     rows = rows.filter((s) =>
-      [s.shipmentNo, s.billNo, s.recipientName, s.destination, s.destinationEn, s.routeCode, s.deliveryPhones]
+      [s.shipmentNo, s.deliveryNumber, s.billNo, s.recipientName, s.destination, s.destinationEn, s.routeCode, s.deliveryPhones]
         .some((f) => String(f ?? '').toLowerCase().includes(search)))
   }
   // روابط الإذن↔شحنة لكل الصفوف المفلترة (كانت للصفين الـ60 الأول فقط)
@@ -512,18 +513,171 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
       cur.totalSuppliers += s.totalSuppliers ?? 0
       map.set(s.contractorId, cur)
     }
-    // المدفوعات الفعلية = سندات الصرف المكتملة المرتبطة بالمقاول
-    const paidRows = await db.opVoucher.groupBy({
-      by: ['partyId'],
-      where: { type: 'cash_disbursement', status: 'completed', partyId: { in: [...map.keys()] } },
-      _sum: { amount: true },
-    })
-    const paidMap = new Map(paidRows.map((p) => [p.partyId, p._sum.amount ?? 0]))
+    // البنود الإضافية المعتمدة تدخل مستحقات المقاول (تم ترحيلها محاسبيًا عند الاعتماد)
+    // والمعلقة تُعرض منفصلة — لا تُحسب قبل موافقة الشركة
+    const ecWhere: any = { contractorId: { in: [...map.keys()] } }
+    if (from || to) {
+      ecWhere.date = {}
+      if (from) ecWhere.date.gte = new Date(from + 'T00:00:00')
+      if (to) ecWhere.date.lte = new Date(to + 'T23:59:59')
+    }
+    const [ecRows, contractorsAcc] = await Promise.all([
+      map.size ? db.extraCost.groupBy({ by: ['contractorId', 'approvalStatus'], where: ecWhere, _count: { _all: true }, _sum: { amount: true } }) : Promise.resolve([] as any[]),
+      db.account.findUnique({ where: { code: ACC.CONTRACTORS }, select: { id: true } }),
+    ])
+    // المسحوبات الفعلية = سطور مدين 2102 المصدرها سندات صرف/قيد يدوي — مشتقة من
+    // دفتر الأستاذ نفسه (متسقة مع كشف الحساب ومتابعة الإدارة والتقرير الشهري)
+    const paidRows = contractorsAcc
+      ? await db.journalLine.groupBy({
+          by: ['partyId'],
+          where: { accountId: contractorsAcc.id, partyId: { in: [...map.keys()] }, entry: { status: 'posted', sourceType: { in: ['op_voucher', 'manual'] } }, debit: { gt: 0 } },
+          _sum: { debit: true },
+        })
+      : []
+    const ecMap = new Map<string, { approved: number; approvedCount: number; pending: number; pendingCount: number }>()
+    for (const g of ecRows) {
+      if (!g.contractorId) continue
+      const cur = ecMap.get(g.contractorId) ?? { approved: 0, approvedCount: 0, pending: 0, pendingCount: 0 }
+      if (g.approvalStatus === 'approved') { cur.approved += g._sum.amount ?? 0; cur.approvedCount += g._count._all }
+      if (g.approvalStatus === 'pending') { cur.pending += g._sum.amount ?? 0; cur.pendingCount += g._count._all }
+      ecMap.set(g.contractorId, cur)
+    }
+    const paidMap = new Map(paidRows.map((p) => [p.partyId, p._sum.debit ?? 0]))
     const items = [...map.values()].map((c) => {
       const paid = round2(paidMap.get(c.id) ?? 0)
-      return { ...c, freight: round2(c.freight), totalSuppliers: round2(c.totalSuppliers), paid, due: round2(c.totalSuppliers - paid) }
+      const ec = ecMap.get(c.id) ?? { approved: 0, approvedCount: 0, pending: 0, pendingCount: 0 }
+      const work = round2(c.totalSuppliers)
+      const extrasApproved = round2(ec.approved)
+      return {
+        ...c,
+        freight: round2(c.freight),
+        totalSuppliers: work,
+        extrasApproved,
+        extrasApprovedCount: ec.approvedCount,
+        extrasPending: round2(ec.pending),
+        extrasPendingCount: ec.pendingCount,
+        paid,
+        // المتبقي = قيمة الشغل + البنود المعتمدة − المسحوبات (المعلقة غير محسوبة)
+        due: round2(work + extrasApproved - paid),
+      }
     }).sort((a, b) => b.due - a.due)
     return { items }
+  }
+
+  // ------------------------------------------------------------------
+  // التقرير الشهري الموحد للمقاول — مستمد بالكامل من دفتر الأستاذ (2102)
+  // كل حركة: شغل شحنات (قيد تسليم) / بنود إضافية معتمدة / مسحوبات (سندات صرف)
+  // مرتبة زمنيًا مع رصيد تراكمي + إجماليات نهائية — بلا أي تكرار للبيانات
+  // ------------------------------------------------------------------
+  if (type === 'contractor-monthly') {
+    const contractorId = q.get('contractorId')
+    if (!contractorId) throw new ApiError(400, 'حدد المقاول (contractorId)')
+    const nowD = new Date()
+    const year = Math.min(Math.max(parseInt(q.get('year') || String(nowD.getFullYear()), 10) || nowD.getFullYear(), 2000), 2100)
+    const month = Math.min(Math.max(parseInt(q.get('month') || String(nowD.getMonth() + 1), 10) || nowD.getMonth() + 1, 1), 12)
+    const fromDate = new Date(year, month - 1, 1)
+    const toDate = new Date(year, month, 0, 23, 59, 59, 999)
+    const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' })
+
+    const contractor = await db.party.findUnique({ where: { id: contractorId }, select: { id: true, code: true, name: true, openingBalance: true, openingBalanceType: true } })
+    if (!contractor) throw new ApiError(404, 'المقاول غير موجود')
+
+    const contractorsAcc = await db.account.findUnique({ where: { code: ACC.CONTRACTORS }, select: { id: true } })
+    if (!contractorsAcc) throw new ApiError(500, 'حساب مقاولي النقل (2102) غير موجود في دليل الحسابات')
+
+    // الرصيد الافتتاحي للمقاول (في صالحه إذا كان دائن) + الحركات قبل بداية الشهر
+    const openingSign = contractor.openingBalanceType === 'credit' ? -1 : 1
+    let openingForHim = round2(-openingSign * Number(contractor.openingBalance ?? 0))
+    {
+      const before = await db.journalLine.aggregate({
+        where: { accountId: contractorsAcc.id, partyId: contractorId, entry: { status: 'posted', date: { lt: fromDate } } },
+        _sum: { debit: true, credit: true },
+      })
+      openingForHim = round2(openingForHim + (before._sum.credit ?? 0) - (before._sum.debit ?? 0))
+    }
+
+    const lines = await db.journalLine.findMany({
+      where: { accountId: contractorsAcc.id, partyId: contractorId, entry: { status: 'posted', date: { gte: fromDate, lte: toDate } } },
+      include: {
+        entry: { select: { id: true, entryNo: true, date: true, description: true, reference: true, sourceType: true, sourceId: true, reversalOfId: true } },
+        shipment: { select: { id: true, shipmentNo: true, deliveryNumber: true, destination: true } },
+      },
+      orderBy: [{ entry: { date: 'asc' } }, { id: 'asc' }],
+    })
+
+    // استكمال المراجع: البنود الإضافية (بالنوع) والسندات المالية (برقمها)
+    const ecIds = lines.filter((l) => l.entry.sourceType === EXTRA_COST_SOURCE && l.entry.sourceId).map((l) => l.entry.sourceId as string)
+    const voucherIds = lines.filter((l) => l.entry.sourceType === 'op_voucher' && l.entry.sourceId).map((l) => l.entry.sourceId as string)
+    const [ecRows, voucherRows] = await Promise.all([
+      ecIds.length ? db.extraCost.findMany({ where: { id: { in: ecIds } }, select: { id: true, ref: true, type: true, notes: true } }) : Promise.resolve([]),
+      voucherIds.length ? db.opVoucher.findMany({ where: { id: { in: voucherIds } }, select: { id: true, voucherNo: true, type: true } }) : Promise.resolve([]),
+    ])
+    const ecMap = new Map(ecRows.map((x) => [x.id, x]))
+    const voucherMap = new Map(voucherRows.map((x) => [x.id, x]))
+
+    let running = openingForHim
+    const items: any[] = []
+    const totals = { work: 0, taateeq: 0, mabeet: 0, return: 0, extrasTotal: 0, payments: 0, other: 0, reversal: 0 }
+    for (const l of lines) {
+      // في صالح المقاول: دائن 2102 موجب — المسحوبات (مدين) سالب
+      const amount = round2((l.credit || 0) - (l.debit || 0))
+      running = round2(running + amount)
+      const src = l.entry.sourceType ?? 'manual'
+      let kind = 'other'
+      let label = l.entry.description ?? 'حركة محاسبية'
+      let refNo: string | null = l.entry.reference ?? null
+      const extra: Record<string, any> = {}
+      if (src === 'shipment_delivery' && amount > 0) {
+        kind = 'work'; label = 'قيمة شغل شحنة'
+        totals.work = round2(totals.work + amount)
+      } else if (src === EXTRA_COST_SOURCE) {
+        const ec = ecMap.get(l.entry.sourceId as string)
+        const t = ec?.type ?? 'other'
+        kind = `extra_${t}`
+        label = `بند إضافي — ${extraCostTypeLabel(t)}`
+        refNo = ec?.ref ?? l.entry.reference ?? null
+        extra.ecNotes = ec?.notes ?? null
+        if (t === 'taateeq') totals.taateeq = round2(totals.taateeq + amount)
+        else if (t === 'mabeet') totals.mabeet = round2(totals.mabeet + amount)
+        else if (t === 'return') totals.return = round2(totals.return + amount)
+        else totals.other = round2(totals.other + amount)
+        totals.extrasTotal = round2(totals.extrasTotal + amount)
+      } else if (src === 'op_voucher') {
+        const v = voucherMap.get(l.entry.sourceId as string)
+        if (v?.type === 'cash_disbursement' && amount < 0) {
+          kind = 'payment'; label = 'دفعة/عهدة صرفت للمقاول'
+          refNo = v.voucherNo
+          totals.payments = round2(totals.payments + Math.abs(amount))
+        } else {
+          totals.other = round2(totals.other + amount)
+        }
+      } else if (src === 'journal_reversal') {
+        kind = 'reversal'; label = `قيد عكسي${l.entry.reference ? ` (${l.entry.reference})` : ''}`
+        totals.reversal = round2(totals.reversal + amount)
+      } else {
+        totals.other = round2(totals.other + amount)
+      }
+      items.push({
+        id: l.id,
+        date: l.entry.date,
+        entryNo: l.entry.entryNo,
+        kind,
+        label,
+        refNo,
+        notes: l.description ?? null,
+        shipment: l.shipment ? { id: l.shipment.id, shipmentNo: l.shipment.shipmentNo, deliveryNumber: l.shipment.deliveryNumber, destination: l.shipment.destination } : null,
+        amount,
+        balance: running,
+      })
+    }
+
+    return {
+      contractor: { id: contractor.id, code: contractor.code, name: contractor.name },
+      period: { year, month, from: fromDate.toISOString(), to: toDate.toISOString(), label: monthLabel },
+      opening: openingForHim,
+      items,
+      totals: { ...totals, net: running },
+    }
   }
 
   if (type === 'customer-debts') {

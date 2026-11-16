@@ -51,6 +51,8 @@ export async function POST(req: Request) {
       const s = await tx.shipment.create({
         data: {
           ...data,
+          // رقم الديليفري: المُدخل صريحًا أو رقم الشحنة نفسه (المعرف البحثي الأساسي)
+          deliveryNumber: b.deliveryNumber ? String(b.deliveryNumber).trim() : shipmentNo,
           statusHistory: { create: { fromStatus: null, toStatus: 'new', notes: 'إنشاء شحنة جديدة', userName: user.username } },
         },
       })

@@ -109,7 +109,7 @@ export function stripParties(items: any[], canPrices: boolean): any[] {
 }
 
 /** أسماء التقارير التي تكشف الأسعار — تتطلب صلاحية prices.view */
-export const PRICE_REPORTS = new Set(['freight-margin', 'contractor-dues', 'customer-debts', 'shipments'])
+export const PRICE_REPORTS = new Set(['freight-margin', 'contractor-dues', 'customer-debts', 'shipments', 'contractor-monthly'])
 
 /** هل التقرير المطلوب يكشف أسعارًا؟ */
 export function reportRequiresPrices(type: string): boolean {

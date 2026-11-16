@@ -4,6 +4,11 @@
 //   - JournalEntry.reversalOfId (قيد عكسي) + postedBy
 //   - SeqCounter (أرقام تسلسلية آمنة) + IdempotencyKey (منع تكرار العمليات)
 //   - حذف نموذج Voucher القديم (كان ماليًا فقط ولا يُستخدم — مساراته أوفية فارغة)
+// S2 (2026): منظومة أذونات التسليم للعملاء (إذن التسليم لكل نقلة) + البنود الإضافية
+//   - Shipment.deliveryNumber (رقم الديليفري) + isReceiptDelivered/receiptDeliveredAt
+//   - ExtraCost (تعتيق/مبيت/مرتجعات) مع دورة اعتماد PENDING→APPROVED/REJECTED
+//     والربط المحاسبي: قيد مزدوج (مدين مصروف/دائن مستحقات المقاول 2102) عند الاعتماد
+//     بحيث تُحسب في مستحقات المقاول فقط بعد موافقة الشركة — دون تكرار للبيانات
 
 generator client {
   provider = "prisma-client-js"
@@ -16,6 +21,7 @@ datasource db {
 
 model Party {
   id                 String   @id @default(cuid())
+  // S2: البنود الإضافية المسجلة على الطرف كمقاول (تعتيق/مبيت/مرتجعات)
   code               String?
   name               String
   nameEn             String?
@@ -45,6 +51,7 @@ model Party {
   journalLines          JournalLine[]
   courierVouchers       OpVoucher[]    @relation("OpVoucherCourier")
   partyVouchers         OpVoucher[]    @relation("OpVoucherParty")
+  extraCosts            ExtraCost[]    @relation("ExtraCostContractor")
 }
 
 model Branch {
@@ -161,6 +168,10 @@ model Shipment {
   totalSuppliers Float?
   status        String   @default("new")
   collectionStatus String @default("uncollected")
+  // S2: أذونات التسليم — رقم الديليفري هو المعرف البحثي الأساسي للمقاول
+  deliveryNumber      String?
+  isReceiptDelivered  Boolean   @default(false)
+  receiptDeliveredAt  DateTime?
   date          DateTime?
   shippingDate  DateTime?
   expectedDeliveryDate DateTime?
@@ -180,6 +191,10 @@ model Shipment {
   statusHistory ShipmentStatusHistory[]
   journalLines  JournalLine[]
   opVoucherItems OpVoucherItem[]
+  extraCosts    ExtraCost[]
+
+  @@index([contractorId, isReceiptDelivered])
+  @@index([deliveryNumber])
 }
 
 model ShipmentStatusHistory {
@@ -263,6 +278,7 @@ model JournalEntry {
   reversalOf JournalEntry?    @relation("JournalReversal", fields: [reversalOfId], references: [id])
   reversals  JournalEntry[]   @relation("JournalReversal")
   opVouchers OpVoucher[]
+  extraCosts ExtraCost[]      @relation("ExtraCostJournal")
 }
 
 model JournalLine {
@@ -350,6 +366,42 @@ model OpVoucherAction {
   voucher OpVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
 
   @@index([voucherId])
+}
+
+// ============================================================
+// البنود الإضافية على حساب المقاول (S2) — تعتيق/مبيت/مرتجعات
+// قاعدة العمل الحاسمة: المبيت والمرتجعات لا تدخل مستحقات المقاول
+// إلا بعد اعتماد الشركة (approvalStatus = approved) — وعند الاعتماد
+// يُرحّل قيد مزدوج: مدين تكلفة النقل 5101 / دائن مقاولو النقل 2102.
+// التعتيق يُعتمد تلقائيًا عند الإنشاء (بند قياسي متفق عليه).
+// ============================================================
+model ExtraCost {
+  id              String    @id @default(cuid())
+  ref             String    @unique   // EC-0001 (تسلسلي آمن)
+  type            String    // taateeq | mabeet | return
+  amount          Float
+  notes           String?
+  approvalStatus  String    @default("pending") // pending | approved | rejected
+  contractorId    String
+  shipmentId      String?
+  date            DateTime  @default(now())
+  journalEntryId  String?   @unique  // القيد المحاسبي المرتبط (يُنشأ عند الاعتماد)
+  userId          String?
+  userName        String?
+  approvalUserId  String?
+  approvalUserName String?
+  approvalAt      DateTime?
+  approvalNotes   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  contractor      Party        @relation("ExtraCostContractor", fields: [contractorId], references: [id])
+  shipment        Shipment?    @relation(fields: [shipmentId], references: [id])
+  journalEntry    JournalEntry? @relation("ExtraCostJournal", fields: [journalEntryId], references: [id])
+
+  @@index([contractorId, approvalStatus])
+  @@index([shipmentId])
+  @@index([type])
+  @@index([date])
 }
 
 // عدادات تسلسلية آمنة (أرقام أذونات/قيود) — تمنع تكرار الأرقام بعد الحذف

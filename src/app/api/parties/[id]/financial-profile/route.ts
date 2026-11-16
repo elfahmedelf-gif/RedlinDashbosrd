@@ -3,6 +3,7 @@ import { requirePerm } from '@/lib/server/session'
 import { ensureSeeded } from '@/lib/server/seed'
 import { db } from '@/lib/db'
 import { canSeePrices } from '@/lib/server/prices'
+import { extraCostTypeLabel } from '@/lib/extra-cost-catalog'
 
 export const dynamic = 'force-dynamic'
 
@@ -235,6 +236,39 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       },
     })
 
+    // ------------------------------------------------------------------
+    // 7) البنود الإضافية (تعتيق/مبيت/مرتجعات) — المعتمد داخل المستحقات محاسبيًا
+    // ------------------------------------------------------------------
+    const [extraGroups, extraRecent] = await Promise.all([
+      db.extraCost.groupBy({ by: ['type', 'approvalStatus'], where: { contractorId: id }, _count: { _all: true }, _sum: { amount: true } }),
+      db.extraCost.findMany({
+        where: { contractorId: id },
+        orderBy: { date: 'desc' },
+        take: Math.min(limit, 20),
+        include: { shipment: { select: { shipmentNo: true, deliveryNumber: true, destination: true } }, journalEntry: { select: { entryNo: true } } },
+      }),
+    ])
+    const extrasByType = ['taateeq', 'mabeet', 'return'].map((t) => {
+      const approved = extraGroups.find((g) => g.type === t && g.approvalStatus === 'approved')
+      const pending = extraGroups.find((g) => g.type === t && g.approvalStatus === 'pending')
+      const rejected = extraGroups.find((g) => g.type === t && g.approvalStatus === 'rejected')
+      return {
+        type: t,
+        label: extraCostTypeLabel(t),
+        approved: { count: approved?._count._all ?? 0, amount: round2(approved?._sum.amount ?? 0) },
+        pending: { count: pending?._count._all ?? 0, amount: round2(pending?._sum.amount ?? 0) },
+        rejected: { count: rejected?._count._all ?? 0 },
+      }
+    })
+    const extrasSummary = {
+      approvedAmount: round2(extrasByType.reduce((s, x) => s + x.approved.amount, 0)),
+      approvedCount: extrasByType.reduce((s, x) => s + x.approved.count, 0),
+      pendingAmount: round2(extrasByType.reduce((s, x) => s + x.pending.amount, 0)),
+      pendingCount: extrasByType.reduce((s, x) => s + x.pending.count, 0),
+      byType: extrasByType,
+      items: extraRecent,
+    }
+
     const shipmentsAsCustomer = {
       count: shipAggC._count._all,
       freightTotal: round2(shipAggC._sum.freightTotal ?? 0),
@@ -277,6 +311,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       },
       journal: { count: journalCount, items: journalEntries },
       ledgerRecent,
+      extras: extrasSummary,
     }
 
     if (canPrices) return payload
@@ -312,6 +347,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         items: payload.journal.items.map((e) => ({ ...e, totalDebit: 0, totalCredit: 0, lines: e.lines.map((l) => ({ ...l, debit: 0, credit: 0 })) })),
       },
       ledgerRecent: payload.ledgerRecent.map((l) => ({ ...l, debit: 0, credit: 0 })),
+      extras: {
+        ...payload.extras,
+        approvedAmount: 0,
+        pendingAmount: 0,
+        byType: payload.extras.byType.map((t) => ({ ...t, approved: { ...t.approved, amount: 0 }, pending: { ...t.pending, amount: 0 } })),
+        items: payload.extras.items.map((x) => ({ ...x, amount: null })),
+      },
     }
   })
 }

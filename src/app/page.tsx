@@ -18,6 +18,9 @@ import { ConfirmProvider } from '@/components/ui/confirm-dialog'
 import { LoginScreen, AuthSplash } from '@/components/dashboard/login-screen'
 import { DashboardModule } from '@/components/dashboard/modules/dashboard'
 import { ShipmentsModule } from '@/components/dashboard/modules/shipments'
+import { ReceiptsModule } from '@/components/dashboard/modules/receipts'
+import { ExtraCostsModule } from '@/components/dashboard/modules/extra-costs'
+import { ExecutiveModule } from '@/components/dashboard/modules/executive'
 import { PartiesModule } from '@/components/dashboard/modules/parties'
 import { BranchesModule, WarehousesModule } from '@/components/dashboard/modules/structure'
 import { InventoryModule, MovementsModule, FreightModule } from '@/components/dashboard/modules/inventory'
@@ -37,7 +40,10 @@ import { cn } from '@/lib/utils'
 // ----------------------------------------------------------------------------
 const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
   overview: { title: 'الرئيسية', subtitle: 'لوحة المؤشرات والعمليات الرئيسية' },
+  executive: { title: 'متابعة الإدارة', subtitle: 'الموقف المالي والتشغيلي لكل مقاول — أذونات ومستحقات ومسحوبات' },
   shipments: { title: 'الشحنات', subtitle: 'سجل عمليات الشحن وحالاتها' },
+  receipts: { title: 'أذونات التسليم', subtitle: 'متابعة إذن كل نقلة برقم الديليفري — لكل مقاول أذوناته' },
+  'extra-costs': { title: 'البنود الإضافية', subtitle: 'تعتيق ومبيت ومرتجعات على حساب المقاولين — بدورة اعتماد الشركة' },
   'pending-returns': { title: 'المرتجعات لم تُستلم', subtitle: 'تتبع عهدة المرتجعات مع المندوبين' },
   customers: { title: 'العملاء', subtitle: 'ملفات العملاء وأرصدتهم' },
   contractors: { title: 'المقاولون', subtitle: 'الناقلون وأداؤهم' },
@@ -268,7 +274,10 @@ function DashboardShell() {
             />
             <div key={tab} className="anim-fade-in">
               {tab === 'overview' && <DashboardModule from={from || undefined} to={to || undefined} setFrom={setFrom} setTo={setTo} />}
+              {tab === 'executive' && <ExecutiveModule />}
               {tab === 'shipments' && <ShipmentsModule />}
+              {tab === 'receipts' && <ReceiptsModule />}
+              {tab === 'extra-costs' && <ExtraCostsModule />}
               {tab === 'pending-returns' && <PendingReturnsModule />}
               {tab === 'customers' && <PartiesModule type="customer" title="عملاء" />}
               {tab === 'contractors' && <PartiesModule type="contractor" title="مقاولون" />}

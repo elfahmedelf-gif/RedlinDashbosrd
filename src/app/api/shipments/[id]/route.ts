@@ -9,7 +9,7 @@ import { hasDeliveryJournal } from '@/lib/server/shipment-accounting'
 export const dynamic = 'force-dynamic'
 
 // الحقول القابلة للتعديل (قائمة بيضاء) — تشمل الحقول المالية والتشغيلية
-const EDITABLE_TEXT = ['billNo', 'recipientName', 'deliveryPhones', 'destination', 'destinationEn', 'routeCode', 'branchId', 'warehouseId', 'loadType', 'contractorId', 'customerId', 'notes', 'vehicleNo', 'shipToParty'] as const
+const EDITABLE_TEXT = ['billNo', 'recipientName', 'deliveryPhones', 'destination', 'destinationEn', 'routeCode', 'branchId', 'warehouseId', 'loadType', 'contractorId', 'customerId', 'notes', 'vehicleNo', 'shipToParty', 'deliveryNumber'] as const
 const EDITABLE_NUM = ['freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay', 'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'policyQty'] as const
 const MONEY_FIELDS = ['freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay'] as const
 

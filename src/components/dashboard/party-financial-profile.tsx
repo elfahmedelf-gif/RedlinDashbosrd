@@ -68,6 +68,17 @@ interface LedgerRecent {
   account: { code: string; name: string }
   shipment: { shipmentNo: string | null } | null
 }
+interface ExtraCostItem {
+  id: string; ref: string; type: string; amount: number | null; notes: string | null; approvalStatus: string; date: string
+  userName: string | null; approvalUserName: string | null; approvalAt: string | null
+  shipment: { shipmentNo: string | null; deliveryNumber: string | null; destination: string | null } | null
+  journalEntry: { entryNo: string } | null
+}
+interface ExtraCostSummary {
+  approvedAmount: number; approvedCount: number; pendingAmount: number; pendingCount: number
+  byType: { type: string; label: string; approved: { count: number; amount: number }; pending: { count: number; amount: number }; rejected: { count: number } }[]
+  items: ExtraCostItem[]
+}
 interface ProfileData {
   party: ProfileParty
   balances: { opening: number; current: number; totalDebit: number; totalCredit: number; owedByParty: number; owedToParty: number; creditLimit: number | null; creditUsed: number; creditAvailable: number | null }
@@ -88,6 +99,7 @@ interface ProfileData {
   }
   journal: { count: number; items: JournalItem[] }
   ledgerRecent: LedgerRecent[]
+  extras?: ExtraCostSummary
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +148,7 @@ const SOURCE_LABELS: Record<string, string> = {
   shipment_delivery: 'قيد تسليم شحنة',
   shipment_return_reversal: 'عكس مرتجع',
   op_voucher: 'سند مالي',
+  extra_cost: 'بند إضافي معتمد',
   journal_reversal: 'قيد عكسي',
   manual: 'قيد يدوي',
 }
@@ -423,6 +436,48 @@ export function PartyFinancialProfile({ partyId, partyName, open, onOpenChange }
                             <div className={cn('shrink-0 font-bold tnum', (l.debit - l.credit) > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
                               {(l.debit - l.credit) > 0 ? '+' : ''}{fmtMoney(l.debit - l.credit, 2)}
                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* البنود الإضافية (تعتيق/مبيت/مرتجعات) — للطرف المقاول */}
+                  {data.extras && (data.extras.items.length > 0) && (
+                    <div>
+                      <div className="text-xs font-semibold mb-1.5">البنود الإضافية (تعتيق / مبيت / مرتجعات)</div>
+                      <div className="grid grid-cols-3 gap-2 mb-2">
+                        <CountChip
+                          label="معتمد (داخل المستحقات)"
+                          count={data.extras.approvedCount}
+                          value={fmtMoney(data.extras.approvedAmount, 2) + ' ج.م'}
+                          tone="border border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30"
+                        />
+                        <CountChip
+                          label="بانتظار اعتماد الشركة"
+                          count={data.extras.pendingCount}
+                          value={fmtMoney(data.extras.pendingAmount, 2) + ' ج.م'}
+                          tone="border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30"
+                        />
+                        <CountChip label="مرفوض" value={String(data.extras.byType.reduce((s, t) => s + t.rejected.count, 0))} />
+                      </div>
+                      <div className="rounded-xl border divide-y max-h-48 overflow-y-auto">
+                        {data.extras.items.map((x) => (
+                          <div key={x.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">
+                                {x.ref} — {x.type === 'taateeq' ? 'تعتيق' : x.type === 'mabeet' ? 'مبيت' : x.type === 'return' ? 'مرتجعات' : x.type}
+                                <span className={cn('text-[9px] px-1 py-0.5 rounded-full mr-1',
+                                  x.approvalStatus === 'approved' ? 'bg-emerald-100 text-emerald-700' : x.approvalStatus === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700')}>
+                                  {x.approvalStatus === 'approved' ? 'معتمد' : x.approvalStatus === 'pending' ? 'بانتظار الاعتماد' : 'مرفوض'}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-muted-foreground tnum">
+                                {fmtDate(x.date)}{x.shipment ? ` · ${x.shipment.deliveryNumber ?? x.shipment.shipmentNo ?? ''}${x.shipment.destination ? ` — ${x.shipment.destination}` : ''}` : ''}
+                                {x.journalEntry ? ` · قيد ${x.journalEntry.entryNo}` : ''}
+                              </div>
+                            </div>
+                            {canPrices && <div className="shrink-0 font-bold tnum">{fmtMoney(x.amount ?? 0, 2)}</div>}
                           </div>
                         ))}
                       </div>

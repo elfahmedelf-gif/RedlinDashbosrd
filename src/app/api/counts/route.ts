@@ -26,6 +26,7 @@ export async function GET(req: Request) {
       branchesCount, warehousesCount, itemsCount, movementsCount,
       freightCount, accountsCount, journalCount, vouchersCount,
       usersCount, auditCount, lookupsCount, pendingReturns,
+      receiptsPending, extrasPending,
     ] = await Promise.all([
       db.shipment.count(),
       db.party.count({ where: { isCustomer: true } }),
@@ -52,12 +53,18 @@ export async function GET(req: Request) {
           return 0
         }
       })(),
+      // أذونات التسليم غير المسلمة (شحنات مسندة لمقاولين بلا ملغاة/مشطوبة)
+      db.shipment.count({ where: { contractorId: { not: null }, isReceiptDelivered: false, status: { notIn: ['cancelled', 'written_off'] } } }),
+      // البنود الإضافية بانتظار اعتماد الشركة (مبيت/مرتجعات)
+      db.extraCost.count({ where: { approvalStatus: 'pending' } }),
     ])
 
     return {
       overview: shipmentsCount,
       shipments: shipmentsCount,
       'pending-returns': pendingReturns,
+      receipts: receiptsPending,
+      'extra-costs': extrasPending,
       customers: customersCount,
       contractors: contractorsCount,
       suppliers: suppliersCount,

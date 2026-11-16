@@ -21,11 +21,16 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'shipments.status', label: 'تغيير حالة الشحنة', group: 'الشحنات' },
   { key: 'shipments.assign', label: 'تعيين مقاول', group: 'الشحنات' },
   { key: 'shipments.settle', label: 'تسوية COD', group: 'الشحنات' },
+  { key: 'shipments.receipts', label: 'تسليم إذن التسليم (الديليفري)', group: 'الشحنات' },
   { key: 'shipments.print', label: 'طباعة بوليصة', group: 'الشحنات' },
   { key: 'shipments.export', label: 'تصدير الشحنات', group: 'الشحنات' },
   // الأطراف
   { key: 'parties.view', label: 'عرض العملاء والمقاولين', group: 'الأطراف' },
   { key: 'parties.manage', label: 'إضافة/تعديل الأطراف', group: 'الأطراف' },
+  // البنود الإضافية على حساب المقاولين (تعتيق/مبيت/مرتجعات)
+  { key: 'parties.extras.view', label: 'عرض البنود الإضافية للمقاولين', group: 'الأطراف' },
+  { key: 'parties.extras.manage', label: 'إضافة/تعديل/حذف البنود الإضافية', group: 'الأطراف' },
+  { key: 'parties.extras.approve', label: 'اعتماد/رفض البنود الإضافية (مبيت ومرتجعات)', group: 'الأطراف' },
   // الهيكل
   { key: 'structure.view', label: 'عرض الفروع والمخازن', group: 'الهيكل' },
   { key: 'structure.manage', label: 'إدارة الفروع والمخازن', group: 'الهيكل' },

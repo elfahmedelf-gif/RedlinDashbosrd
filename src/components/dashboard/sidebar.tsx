@@ -6,7 +6,7 @@ import {
   Warehouse as WarehouseIcon, Boxes, ArrowRightLeft, Receipt, BookOpen,
   FileText, Landmark, FileBarChart, Upload, UserCircle, Settings, History,
   ChevronRight, ChevronLeft, ChevronDown, PanelRightClose, PanelRightOpen,
-  LogOut, ListChecks, Shield, Undo2, Menu, X, type LucideIcon,
+  LogOut, ListChecks, Shield, Undo2, Menu, X, ClipboardCheck, Layers, Eye, type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { matchPermission } from '@/lib/permissions'
@@ -15,7 +15,7 @@ import { DarkModeToggle } from './dark-mode-toggle'
 import { UserMenu } from './user-menu'
 
 export type ModuleKey =
-  | 'overview' | 'shipments' | 'pending-returns' | 'customers' | 'contractors' | 'suppliers'
+  | 'overview' | 'shipments' | 'receipts' | 'extra-costs' | 'executive' | 'pending-returns' | 'customers' | 'contractors' | 'suppliers'
   | 'branches' | 'warehouses' | 'inventory' | 'movements' | 'freight'
   | 'accounts' | 'journal' | 'vouchers' | 'reports' | 'import'
   | 'users' | 'roles' | 'lookups' | 'settings' | 'audit'
@@ -30,7 +30,10 @@ export interface ModuleDef {
 
 export const MODULES: ModuleDef[] = [
   { key: 'overview', label: 'الرئيسية', icon: LayoutDashboard, desc: 'لوحة المؤشرات', group: 'main' },
+  { key: 'executive', label: 'متابعة الإدارة', icon: Eye, desc: 'الموقف المالي والتشغيلي للإدارة', group: 'main' },
   { key: 'shipments', label: 'الشحنات', icon: PackageSearch, desc: 'سجل الشحنات', group: 'main' },
+  { key: 'receipts', label: 'أذونات التسليم', icon: ClipboardCheck, desc: 'الديليفري لكل مقاول', group: 'main' },
+  { key: 'extra-costs', label: 'البنود الإضافية', icon: Layers, desc: 'تعتيق/مبيت/مرتجعات + الاعتماد', group: 'main' },
   { key: 'pending-returns', label: 'المرتجعات لم تُستلم', icon: Undo2, desc: 'تتبع عهدة المرتجعات', group: 'main' },
   { key: 'customers', label: 'العملاء', icon: Users, desc: 'ملفات العملاء', group: 'parties' },
   { key: 'contractors', label: 'المقاولون', icon: UserCog, desc: 'الناقلون', group: 'parties' },
@@ -55,7 +58,10 @@ export const MODULES: ModuleDef[] = [
 /** الصلاحية المطلوبة لكل وحدة */
 export const MODULE_PERMISSIONS: Record<ModuleKey, string> = {
   overview: 'dashboard.view',
+  executive: 'dashboard.view',
   shipments: 'shipments.view',
+  receipts: 'shipments.view',
+  'extra-costs': 'parties.extras.view',
   'pending-returns': 'vouchers.view',
   customers: 'parties.view',
   contractors: 'parties.view',
