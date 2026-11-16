@@ -64,7 +64,7 @@ export function stripVoucherStats(stats: Record<string, any>, canPrices: boolean
 /** يُفرغ الإحصاءات المالية من لوحة المؤشرات الرئيسية */
 export function stripDashboardStats(d: Record<string, any>, canPrices: boolean): Record<string, any> {
   if (canPrices) return d
-  const s = { ...d, summary: { ...d.summary } }
+  const s: Record<string, any> = { ...d, summary: { ...d.summary } }
   // إخفاء كل المجاميع المالية من ملخص لوحة المؤشرات
   for (const k of [
     'totalFreight', 'totalCustomerPay', 'totalSuppliers', 'totalSale',

@@ -21,7 +21,7 @@ export function searchArr<T>(arr: T[], q: string, fields: (keyof T)[]): T[] {
   return arr.filter((item) => fields.some((f) => String(item[f] ?? '').toLowerCase().includes(ql)))
 }
 
-const partyMap = new Map((mock.parties || []).map((p: any) => [p.id, p.name]))
+const partyMap = new Map<string, string>((mock.parties || []).map((p: any) => [String(p.id), String(p.name)] as [string, string]))
 export function partyName(id: string | null): string {
   if (!id) return '-'
   return partyMap.get(id) ?? '-'

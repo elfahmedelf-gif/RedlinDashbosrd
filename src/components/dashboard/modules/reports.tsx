@@ -150,15 +150,15 @@ export function ReportsModule() {
         {/* عرض مخصص لتقرير المرتجعات لم تُستلم — مع بطاقة مسؤولية السائقين */}
         {active === 'pending-returns' ? (
           <PendingReturnsReport
-            items={data.items}
-            byCourier={data.byCourier ?? []}
-            total={data.total ?? 0}
+            items={data?.items ?? []}
+            byCourier={data?.byCourier ?? []}
+            total={data?.total ?? 0}
             loading={isLoading}
             onMarkReceived={markReceived}
             canExecute={has('vouchers.execute')}
           />
         ) : (
-          <ReportTable type={active} items={data.items} loading={isLoading} />
+          <ReportTable type={active} items={data?.items ?? []} loading={isLoading} />
         )}
       </div>
     )

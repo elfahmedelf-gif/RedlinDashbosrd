@@ -612,8 +612,12 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
       ecIds.length ? db.extraCost.findMany({ where: { id: { in: ecIds } }, select: { id: true, ref: true, type: true, notes: true } }) : Promise.resolve([]),
       voucherIds.length ? db.opVoucher.findMany({ where: { id: { in: voucherIds } }, select: { id: true, voucherNo: true, type: true } }) : Promise.resolve([]),
     ])
-    const ecMap = new Map(ecRows.map((x) => [x.id, x]))
-    const voucherMap = new Map(voucherRows.map((x) => [x.id, x]))
+    const ecMap = new Map<string, { id: string; ref: string | null; type: string; notes: string | null }>(
+      ecRows.map((x) => [x.id, x] as [string, typeof x]),
+    )
+    const voucherMap = new Map<string, { id: string; voucherNo: string; type: string }>(
+      voucherRows.map((x) => [x.id, x] as [string, typeof x]),
+    )
 
     let running = openingForHim
     const items: any[] = []
