@@ -246,7 +246,7 @@ export function PartyStatementDialog({ partyId, partyName, open, onOpenChange }:
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 min-w-0">
               <FileText className="size-4 text-primary shrink-0" />
-              <span className="truncate">كشف حساب — {data?.party.name ?? partyName ?? ''}</span>
+              <span className="truncate min-w-0">كشف حساب — {data?.party.name ?? partyName ?? ''}</span>
             </DialogTitle>
             <DialogDescription>كل الحركات المالية المرحّلة للطرف مرتبة زمنيًا مع الرصيد التراكمي بعد كل حركة.</DialogDescription>
           </DialogHeader>

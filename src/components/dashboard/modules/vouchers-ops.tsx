@@ -888,7 +888,7 @@ export function VouchersModule() {
             {/* Date range — labels are sibling spans OUTSIDE the inputs (never overlaid).
                 dir="ltr" keeps the native calendar picker on the conventional side and
                 prevents RTL from flipping it over the date numbers. */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted-foreground whitespace-nowrap">من</span>
               <Input
                 type="date"

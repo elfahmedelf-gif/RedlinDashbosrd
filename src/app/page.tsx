@@ -161,7 +161,7 @@ function DashboardHeader({
       </div>
 
       {/* يسار: شارة الأذونات المتأخرة + نطاق التاريخ (overview فقط) + ثيم + مستخدم */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <OverdueReceiptsBadge count={overdueCount} onNavigate={onOverdueClick} />
         {tab === 'overview' && (
           <div className="hidden sm:flex items-center gap-1.5">
@@ -184,7 +184,7 @@ function DashboardHeader({
               ))}
             </div>
             {/* نطاق مخصص */}
-            <div className="flex items-center gap-1.5 bg-card border border-border rounded-xl p-1 px-2 min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5 bg-card border border-border rounded-xl p-1 px-2 min-w-0">
               <Calendar className="size-3.5 text-muted-foreground shrink-0" />
               <input
                 type="date"

@@ -263,7 +263,7 @@ export function PartyFinancialProfile({ partyId, partyName, open, onOpenChange }
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 min-w-0">
               <Wallet className="size-4 text-primary shrink-0" />
-              <span className="truncate">الملف المالي — {party?.name ?? partyName ?? ''}</span>
+              <span className="truncate min-w-0">الملف المالي — {party?.name ?? partyName ?? ''}</span>
             </DialogTitle>
             <DialogDescription>كل ما يخص الطرف ماليًا: ما له وما عليه، السندات والأذونات، الشحنات، القيود، وأعمار المديونية.</DialogDescription>
           </DialogHeader>
