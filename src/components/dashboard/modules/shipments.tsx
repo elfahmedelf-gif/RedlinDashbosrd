@@ -68,7 +68,7 @@ const SHIPMENT_EDIT_NUM_FIELDS = [
 // نموذج الإنشاء الفارغ — الحالة تُفرض دائمًا من الخادم (جديدة)
 function emptyCreateForm(): any {
   return {
-    recipientName: '', destination: '', loadType: '', customerId: '', contractorId: '',
+    deliveryNumber: '', recipientName: '', destination: '', loadType: '', customerId: '', contractorId: '',
     branchId: '', warehouseId: '', date: new Date().toISOString().slice(0, 10),
     freightCost: '', freightTotal: '', notes: '',
     salePrice: '', customerPay: '', aging: '', overnight: '', returns: '', transfer: '', other: '', drop: '', policyQty: '',
@@ -601,7 +601,7 @@ export function ShipmentsModule() {
       )}
 
       {/* Add dialog */}
-      <ShipmentCreateDialog open={addOpen} onOpenChange={setAddOpen} onCreated={() => { mutate(); toast({ title: 'تم إنشاء الشحنة بنجاح' }) }} />
+      <ShipmentCreateDialog open={addOpen} onOpenChange={setAddOpen} onCreated={() => { mutate(); toast({ title: 'تم إنشاء الشحنة بنجاح' }) }} onViewExisting={(dn) => { setQ(dn); setStatus('all'); setDestination('all'); setContractor('all'); setProvince('all') }} />
 
       {/* Waybill print dialog */}
       <WaybillPrint
@@ -665,7 +665,7 @@ export function ShipmentsModule() {
   )
 }
 
-function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (v: boolean) => void; onCreated: () => void }) {
+function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }: { open: boolean; onOpenChange: (v: boolean) => void; onCreated: () => void; onViewExisting?: (deliveryNumber: string) => void }) {
   const { toast } = useToast()
   // صلاحية رؤية الأسعار — تتحكم في إظهار حقول المبالغ ومحرك التسعير التلقائي
   const canPrices = useCanPrices()
@@ -679,6 +679,8 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
   const LOAD_TYPE_OPTIONS = loadTypeItems.map((i) => ({ value: i.key, label: i.label }))
 
   const [v, setV] = React.useState<any>(emptyCreateForm())
+  // بيانات الشحنة المكررة (رقم الديليفري موجود مسبقًا) — لعرض رابط سريع لعرضها
+  const [dupInfo, setDupInfo] = React.useState<null | { existingShipmentNo?: string; existingContractor?: string | null }>(null)
   // محرك التسعير التلقائي: تتبّع تعديل المستخدم لحقل النولون + السعر المقترح من جدول النولون
   const freightTouchedRef = React.useRef(false)
   const [suggested, setSuggested] = React.useState<{ routeName: string; sellPrice: number } | null>(null)
@@ -690,6 +692,7 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
       freightTouchedRef.current = false
       setSuggested(null)
       setErr('')
+      setDupInfo(null)
     }
   }, [open])
 
@@ -722,12 +725,22 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
   }, [open, canPrices, v.destination, v.loadType, lookupQuote])
 
   const submit = async () => {
-    setLoading(true); setErr('')
+    setLoading(true); setErr(''); setDupInfo(null)
     try {
+      // تحقق سريع قبل الإرسال: المقاول إلزامي + لا مبالغ سالبة
+      if (!v.contractorId) { setErr('اختيار المقاول مطلوب — عيّن مقاول النقل قبل حفظ الشحنة'); setLoading(false); return }
+      const moneyKeys = ['freightCost', 'freightTotal', 'salePrice', 'customerPay', 'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'policyQty']
+      for (const k of moneyKeys) {
+        const n = Number(v[k])
+        if (v[k] !== '' && Number.isFinite(n) && n < 0) { setErr(`القيمة في «${k}» لا يمكن أن تكون سالبة — أدخل مبلغًا صحيحًا`); setLoading(false); return }
+      }
       // الحالة تُفرض دائمًا من الخادم (جديدة) — ونمرر الحقول المالية الكاملة
       await apiPost('/api/shipments', { ...v })
       onOpenChange(false); onCreated()
-    } catch (e: any) { setErr(e.message) } finally { setLoading(false) }
+    } catch (e: any) {
+      setErr(e.message)
+      if (e?.details?.code === 'DUPLICATE_DELIVERY_NUMBER') setDupInfo(e.details)
+    } finally { setLoading(false) }
   }
 
   return (
@@ -738,6 +751,25 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
           <DialogDescription>أدخل بيانات الشحنة. الحقول النجمية مطلوبة.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
+          <div>
+            <label className="text-xs font-medium">رقم الديليفري</label>
+            <Input
+              value={v.deliveryNumber}
+              onChange={(e) => setV({ ...v, deliveryNumber: e.target.value })}
+              placeholder="يُولّد تلقائيًا إن تُرك فارغًا"
+            />
+            <div className="text-[10px] text-muted-foreground mt-1">رقم الإذن الورقي مع المقاول — فريد للنظام كله، ويُمنع التكرار</div>
+          </div>
+          <div>
+            <label className="text-xs font-medium">المقاول / الناقل *</label>
+            <Select value={v.contractorId || '__'} onValueChange={(val) => setV({ ...v, contractorId: val === '__' ? '' : val })}>
+              <SelectTrigger><SelectValue placeholder="اختر المقاول..." /></SelectTrigger>
+              <SelectContent>
+                {(contractors?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <div className="text-[10px] text-muted-foreground mt-1">مطلوب — مستحقات النولون تُسجل على حساب المقاول المختار</div>
+          </div>
           <div className="sm:col-span-2">
             <label className="text-xs font-medium">العميل / المستلم *</label>
             <Select value={v.customerId} onValueChange={(val) => setV({ ...v, customerId: val === '__' ? '' : val, recipientName: parties?.items.find(p => p.id === val)?.name || '' })}>
@@ -764,16 +796,6 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
               <SelectContent>
                 <SelectItem value="__">— غير محدد —</SelectItem>
                 {LOAD_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs font-medium">المقاول/الناقل</label>
-            <Select value={v.contractorId} onValueChange={(val) => setV({ ...v, contractorId: val === '__' ? '' : val })}>
-              <SelectTrigger><SelectValue placeholder="اختر مقاولًا..." /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__">— بدون —</SelectItem>
-                {(contractors?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -881,9 +903,27 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated }: { open: boolean
           </div>
         </div>
         {err && <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{err}</div>}
+        {dupInfo && (
+          <div className="flex items-center justify-between gap-2 flex-wrap rounded-md border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900/60 dark:bg-amber-950/30">
+            <span className="text-xs text-amber-800 dark:text-amber-200">
+              الشحنة المسجلة: <b className="tnum">{dupInfo.existingShipmentNo}</b>{dupInfo.existingContractor ? ` — ${dupInfo.existingContractor}` : ''}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-[36px]"
+              onClick={() => {
+                onOpenChange(false)
+                if (v.deliveryNumber) onViewExisting?.(String(v.deliveryNumber).trim())
+              }}
+            >
+              عرض الشحنة المسجلة
+            </Button>
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>إلغاء</Button>
-          <Button onClick={submit} disabled={loading || !v.recipientName}>{loading ? 'جاري الحفظ...' : 'حفظ الشحنة'}</Button>
+          <Button onClick={submit} disabled={loading || !v.recipientName || !v.contractorId}>{loading ? 'جاري الحفظ...' : 'حفظ الشحنة'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

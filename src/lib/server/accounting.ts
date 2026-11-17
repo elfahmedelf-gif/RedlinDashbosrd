@@ -3,6 +3,7 @@
 // كل الدوال تقبل Tx لتشغيلها داخل معاملة المتصل (ذرية كاملة)
 // ============================================================================
 import type { Prisma } from '@prisma/client'
+import { db } from '@/lib/db'
 import { ApiError, round2 } from './http'
 import { logAudit, nextSeq } from './audit'
 import { matchPermission } from '../permissions'
@@ -238,6 +239,72 @@ export async function accountBalancesMap(tx: Tx): Promise<Map<string, { debit: n
   const map = new Map<string, { debit: number; credit: number }>()
   for (const g of grouped) {
     map.set(g.accountId, { debit: round2(g._sum.debit ?? 0), credit: round2(g._sum.credit ?? 0) })
+  }
+  return map
+}
+
+// ---------------------------------------------------------------------------
+// تصنيف سطور دفتر المقاولين (2102) — متسق عبر كل الشاشات المشتقة
+// (متابعة الإدارة / مستحقات المقاولين / كشف الحساب / التقرير الشهري)
+// قاعدة العكس: القيد العكسي يُنسب لأثره الأصلي — عكس دفعة يخفض المسحوبات
+// وعكس شغل/بند يخفض الشغل المعتمد، فلا يتضخم أي رقم بعد أي إرجاع.
+// ---------------------------------------------------------------------------
+
+export interface ContractorLedgerLine {
+  partyId: string | null
+  debit: number | null
+  credit: number | null
+  entry: { sourceType: string | null; sourceId: string | null }
+}
+
+export interface ContractorLedgerSummary {
+  earnedFromLedger: number
+  paidFromVouchers: number
+  duesReduction: number
+}
+
+/** نوع المصدر الأصلي للقيود العكسية — عكس دفعة (op_voucher/manual) يختلف عن عكس شغل/بند */
+export async function reversalOriginalSources(
+  dbOrTx: Pick<typeof db, 'journalEntry'>,
+  sourceIds: string[],
+): Promise<Map<string, string | null>> {
+  if (!sourceIds.length) return new Map()
+  const rows = await dbOrTx.journalEntry.findMany({
+    where: { id: { in: sourceIds } },
+    select: { id: true, sourceType: true },
+  })
+  return new Map(rows.map((r) => [r.id, r.sourceType]))
+}
+
+export function summarizeContractorLedgerLines(
+  lines: ContractorLedgerLine[],
+  originalSources: Map<string, string | null>,
+): Map<string, ContractorLedgerSummary> {
+  const map = new Map<string, ContractorLedgerSummary>()
+  for (const l of lines) {
+    if (!l.partyId) continue
+    const cur = map.get(l.partyId) ?? { earnedFromLedger: 0, paidFromVouchers: 0, duesReduction: 0 }
+    const src = l.entry?.sourceType ?? 'manual'
+    const debit = round2(l.debit ?? 0)
+    const credit = round2(l.credit ?? 0)
+    if (src === 'journal_reversal') {
+      const originalSrc = (l.entry.sourceId && originalSources.get(l.entry.sourceId)) ?? null
+      if (originalSrc === 'op_voucher' || originalSrc === 'manual') {
+        // عكس دفعة/سند صرف — يخفض المسحوبات (وليس الشغل)
+        cur.paidFromVouchers = round2(cur.paidFromVouchers + debit - credit)
+      } else {
+        // عكس شغل/بند معتمد — يخفض الشغل المعتمد
+        cur.duesReduction = round2(cur.duesReduction + debit - credit)
+      }
+    } else {
+      if (credit > 0) cur.earnedFromLedger = round2(cur.earnedFromLedger + credit)
+      if (src === 'op_voucher' || src === 'manual') {
+        cur.paidFromVouchers = round2(cur.paidFromVouchers + debit)
+      } else if (debit > 0) {
+        cur.duesReduction = round2(cur.duesReduction + debit)
+      }
+    }
+    map.set(l.partyId, cur)
   }
   return map
 }

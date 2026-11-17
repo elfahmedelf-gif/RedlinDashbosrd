@@ -40,7 +40,9 @@ async function request(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string,
   let data: any = null
   try { data = await res.json() } catch { /* empty body */ }
   if (!res.ok) {
-    throw new Error(data?.error ?? `فشل الطلب (${res.status})`)
+    const err = new Error(data?.error ?? `فشل الطلب (${res.status})`) as Error & { details?: Record<string, any> }
+    if (data?.details) err.details = data.details
+    throw err
   }
   return data
 }

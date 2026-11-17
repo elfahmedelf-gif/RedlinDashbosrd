@@ -9,7 +9,7 @@
 import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { round2 } from './http'
-import { ACC } from './accounting'
+import { ACC, reversalOriginalSources, summarizeContractorLedgerLines } from './accounting'
 import { canSeePrices } from './prices'
 import { dailyShipmentKpis } from './receipts'
 import { RECEIPT_EXCLUDED_STATUSES } from '../extra-cost-catalog'
@@ -51,26 +51,15 @@ export async function executiveSummary(q: URLSearchParams, user?: { permissions:
   const ledgerRows = accId
     ? await db.journalLine.findMany({
         where: { accountId: accId, partyId: { in: contractors.map((c) => c.id) }, entry: { status: 'posted', date: { lte: end } } },
-        select: { partyId: true, debit: true, credit: true, entry: { select: { sourceType: true, reference: true } } },
+        select: { partyId: true, debit: true, credit: true, entry: { select: { sourceType: true, sourceId: true, reference: true } } },
       })
     : []
-  const ledgerMap = new Map<string, { earnedFromLedger: number; paidFromVouchers: number; duesReduction: number }>()
-  for (const l of ledgerRows) {
-    if (!l.partyId) continue
-    const cur = ledgerMap.get(l.partyId) ?? { earnedFromLedger: 0, paidFromVouchers: 0, duesReduction: 0 }
-    const src = l.entry?.sourceType ?? 'manual'
-    const debit = round2(l.debit ?? 0)
-    const credit = round2(l.credit ?? 0)
-    cur.earnedFromLedger += credit
-    if (src === 'op_voucher' || src === 'manual') {
-      // صرف فعلي للمقاول (سند نقدية / قيد يدوي)
-      cur.paidFromVouchers += debit
-    } else if (debit > 0) {
-      // تخفيض مستحقات (قيد عكسي لبند مرفوض بعد الاعتماد مثلًا) — يخفض الشغل المعتمد
-      cur.duesReduction += debit
-    }
-    ledgerMap.set(l.partyId, cur)
-  }
+  // القيود العكسية تُنسب لأثرها الأصلي: عكس دفعة يخفض المسحوبات، وعكس شغل يخفض الشغل المعتمد
+  const reversalSourceIds = ledgerRows
+    .filter((l) => l.entry?.sourceType === 'journal_reversal' && l.entry?.sourceId)
+    .map((l) => l.entry.sourceId as string)
+  const originalSources = await reversalOriginalSources(db, [...new Set(reversalSourceIds)])
+  const ledgerMap = summarizeContractorLedgerLines(ledgerRows, originalSources)
   const receiptsMap = new Map(receiptGroups.map((g) => [g.contractorId as string, g._count._all]))
   const extrasMap = new Map(extraGroups.map((g) => [g.contractorId as string, { count: g._count._all, amount: round2(g._sum.amount ?? 0) }]))
 

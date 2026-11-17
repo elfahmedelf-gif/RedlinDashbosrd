@@ -101,12 +101,16 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
     { name: 'openingBalanceType', label: 'نوع الرصيد', type: 'select', options: [{ value: 'debit', label: 'مدين' }, { value: 'credit', label: 'دائن' }] },
     { name: 'paymentTerms', label: 'شروط السداد', type: 'text' },
     { name: 'branchId', label: 'الفرع المسؤول', type: 'select', options: (branches?.items ?? []).map((b) => ({ value: b.id, label: b.name })) },
+    ...(editing ? [{ name: 'active', label: 'نشط (غير موقوف)', type: 'switch' } as Field] : []),
     { name: 'notes', label: 'ملاحظات', type: 'textarea', span: 2 },
   ]
 
   const submit = async (vals: any) => {
     // اسم المستخدم يُستخرج من الجلسة على الخادم — لا حاجة لإرساله في الحمولة
     const payload = { ...vals, [`is${type.charAt(0).toUpperCase() + type.slice(1)}`]: true }
+    // التوقيف/الإيقاف عند التعديل فقط — الإضافة تكون نشطة افتراضيًا على الخادم
+    if (editing) payload.active = !!vals.active
+    else delete payload.active
     if (editing) {
       // For edit, use PATCH
       await apiPatch(`/api/parties/${editing.id}`, payload)
@@ -156,7 +160,10 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
         </div>
       ) : data && data.items.length === 0 ? (
-        <Card><CardContent className="py-12 text-center text-muted-foreground">لا يوجد {title} بعد</CardContent></Card>
+        <Card><CardContent className="py-12 text-center text-muted-foreground">
+          <div className="text-sm font-medium">مفيش {title} مسجّلين بعد</div>
+          <div className="text-xs mt-1">اضغط «إضافة جديد» وسجّل أول طرف باسمه وكوده ورقم هاتفه — هيظهر هنا فورًا</div>
+        </CardContent></Card>
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -165,7 +172,12 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm leading-tight line-clamp-2">{p.name}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={cn('font-semibold text-sm leading-tight line-clamp-2', !p.active && 'text-muted-foreground line-through')} dir="auto">{p.name}</span>
+                      {!p.active && (
+                        <Badge variant="outline" className="text-[9px] px-1 py-0 bg-slate-200 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-300 shrink-0">موقوف</Badge>
+                      )}
+                    </div>
                     {p.code && <div className="text-[11px] text-muted-foreground tnum mt-0.5">كود: {p.code}</div>}
                   </div>
                   <div className="flex gap-1 print:hidden">

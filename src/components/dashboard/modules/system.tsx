@@ -8,7 +8,7 @@ import * as React from 'react'
 import useSWR from 'swr'
 import {
   Plus, Pencil, Trash2, UserCircle, Shield, Settings as SettingsIcon, History,
-  Check, Save, KeyRound, ShieldCheck, ShieldOff, LogIn, LogOut,
+  Check, Save, KeyRound, ShieldCheck, ShieldOff, LogIn, LogOut, DatabaseBackup,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -29,7 +29,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { DataTable } from '../data-table'
-import { fetcher } from '@/lib/api'
+import { fetcher, getToken } from '@/lib/api'
 import { apiPostSync as apiPost, apiPatchSync as apiPatch, apiDeleteSync as apiDelete } from '@/lib/sync'
 import { fmtNum, fmtDateTime } from '@/lib/format'
 import { PERMISSION_CATALOG, PERMISSION_GROUPS, expandPermissions } from '@/lib/permissions'
@@ -498,6 +498,7 @@ export function SettingsModule() {
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/settings', fetcher)
   const [drafts, setDrafts] = React.useState<Record<string, string>>({})
   const [saving, setSaving] = React.useState(false)
+  const [backupBusy, setBackupBusy] = React.useState(false)
 
   React.useEffect(() => {
     if (data && Object.keys(drafts).length === 0) {
@@ -530,7 +531,31 @@ export function SettingsModule() {
   }
 
   const catLabels: Record<string, string> = {
-    general: 'عام', import: 'تعريفات أعمدة الاستيراد', accounting: 'محاسبي', inventory: 'المخزون',
+    general: 'عام', import: 'تعريفات أعمدة الاستيراد', accounting: 'محاسبي', inventory: 'المخزون', policy: 'سياسات النظام',
+  }
+
+  // تنزيل نسخة احتياطية كاملة (JSON) — لقطة لكل جداول النظام بنقرة واحدة
+  const downloadBackup = async () => {
+    setBackupBusy(true)
+    try {
+      const res = await fetch('/api/backup', { headers: { 'x-session-token': getToken() } })
+      if (!res.ok) {
+        const j = await res.json().catch(() => null)
+        throw new Error(j?.error ?? 'فشل إنشاء النسخة الاحتياطية')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `shipping-backup-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      toast({ title: 'تم تنزيل النسخة الاحتياطية', description: 'ملف JSON كامل — احفظه في مكان آمن' })
+    } catch (e: any) {
+      toast({ title: 'تعذر إنشاء النسخة الاحتياطية', description: e?.message ?? '', variant: 'destructive' })
+    } finally { setBackupBusy(false) }
   }
 
   return (
@@ -541,6 +566,22 @@ export function SettingsModule() {
       </div>
       {isLoading ? <Skeleton className="h-96" /> : (
         <div className="space-y-4">
+          {/* النسخ الاحتياطي — لقطة JSON كاملة بنقرة واحدة (للمالك/النظام فقط) */}
+          <Card className="border-emerald-200 dark:border-emerald-900">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <DatabaseBackup className="size-4 text-emerald-600 dark:text-emerald-400" />
+                النسخ الاحتياطي (Backup)
+              </CardTitle>
+              <CardDescription>تصدير لقطة كاملة من كل بيانات النظام — الأطراف والشحنات والأذونات والقيود والبنود والمستخدمين — كملف JSON قابل للأرشفة. كلمات المرور مستثناة لأمانكم.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={downloadBackup} disabled={backupBusy} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+                <DatabaseBackup className="size-4" />
+                {backupBusy ? 'جارٍ تجهيز النسخة...' : 'تنزيل نسخة احتياطية الآن'}
+              </Button>
+            </CardContent>
+          </Card>
           {grouped.map(([cat, items]) => (
             <Card key={cat}>
               <CardHeader className="pb-2"><CardTitle className="text-sm">{catLabels[cat] || cat}</CardTitle><CardDescription>{fmtNum(items.length)} إعداد</CardDescription></CardHeader>

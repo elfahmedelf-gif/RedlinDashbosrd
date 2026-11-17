@@ -4,6 +4,7 @@ import { ensureSeeded, nextShipmentNo } from '@/lib/server/seed'
 import { logAudit } from '@/lib/server/audit'
 import { db } from '@/lib/db'
 import { listShipments } from '@/lib/server/queries'
+import { assertUniqueDeliveryNumber } from '@/lib/server/receipts'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,33 @@ export async function POST(req: Request) {
     const user = await requirePerm(req, 'shipments.create')
     const b = await readBody(req)
     const shipmentNo = await nextShipmentNo()
+
+    // ── تحقق صارم قبل الحفظ ──
+    // المقاول إلزامي — لا شحنة بدون ناقل (يُختار المقاول قبل الحفظ)
+    const contractorId = String(b.contractorId ?? '').trim()
+    if (!contractorId) throw new ApiError(400, 'اختيار المقاول مطلوب — عيّن مقاول النقل قبل حفظ الشحنة')
+    // المبالغ السالبة ممنوعة — لا معنى لنولون/مبالغ سالبة
+    for (const k of NUMERIC_FIELDS) {
+      const v = num(b[k])
+      if (v != null && v < 0) throw new ApiError(400, `القيمة في «${k}» لا يمكن أن تكون سالبة — أدخل مبلغًا صحيحًا أو اتركه فارغًا`)
+    }
+    // رقم الديليفري فريد على مستوى النظام — يُمنع التكرار برسالة عربية واضحة + بيانات الشحنة الموجودة
+    const dn = b.deliveryNumber ? String(b.deliveryNumber).trim() : ''
+    if (dn) {
+      const dup = await db.shipment.findFirst({
+        where: { deliveryNumber: dn },
+        select: { id: true, shipmentNo: true, contractor: { select: { name: true } } },
+      })
+      if (dup) {
+        throw new ApiError(409, `رقم الديليفري مسجل مسبقًا لشحنة أخرى (${dup.shipmentNo}${dup.contractor?.name ? ` — ${dup.contractor.name}` : ''})`, {
+          code: 'DUPLICATE_DELIVERY_NUMBER',
+          existingShipmentId: dup.id,
+          existingShipmentNo: dup.shipmentNo,
+          existingDeliveryNumber: dn,
+          existingContractor: dup.contractor?.name ?? null,
+        })
+      }
+    }
 
     // إنشاء الشحنة + السجل التاريخي + التدقيق داخل معاملة واحدة (ذرية كاملة)
     const created = await db.$transaction(async (tx) => {

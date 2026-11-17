@@ -12,7 +12,7 @@ import * as React from 'react'
 import useSWR from 'swr'
 import {
   Plus, Pencil, Trash2, CheckCircle2, XCircle, Search, RefreshCw,
-  FileSpreadsheet, Info, Hourglass, BadgeCheck, Layers,
+  FileSpreadsheet, Info, Hourglass, BadgeCheck, Layers, Wallet, Undo2,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,31 @@ import { useAuth } from '../auth-provider'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { bus, BUS_EVENTS, consumeIntent } from '@/lib/bus'
+
+interface PaymentItem {
+  id: string
+  voucherNo: string
+  contractorId: string | null
+  contractorName: string
+  contractorCode: string | null
+  amount: number
+  method: string
+  notes: string | null
+  status: string
+  effective: boolean
+  journalEntryNo: string | null
+  journalEntryStatus: string | null
+  date: string
+}
+
+interface PaymentsResponse {
+  items: PaymentItem[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+  summary: { totalPaid: number; count: number }
+}
 
 interface ExtraCostItem {
   id: string
@@ -106,6 +131,69 @@ export function ExtraCostsModule() {
   // نافذة رفض بسبب
   const [rejectTarget, setRejectTarget] = React.useState<ExtraCostItem | null>(null)
   const [rejectNotes, setRejectNotes] = React.useState('')
+
+  // ── دفعات وعهد المقاولين (قيد فوري: مدين 2102 / دائن الصندوق أو البنك) ──
+  const canPay = has('vouchers.create')
+  const canReverse = has('vouchers.cancel')
+  const [payOpen, setPayOpen] = React.useState(false)
+  const [pContractor, setPContractor] = React.useState('')
+  const [pAmount, setPAmount] = React.useState('')
+  const [pMethod, setPMethod] = React.useState('cash')
+  const [pNotes, setPNotes] = React.useState('')
+  const [pError, setPError] = React.useState('')
+  const [pBusy, setPBusy] = React.useState(false)
+  const [payPage, setPayPage] = React.useState(1)
+
+  const payQs = new URLSearchParams()
+  if (contractorId !== 'all') payQs.set('contractorId', contractorId)
+  payQs.set('page', String(payPage))
+  payQs.set('pageSize', '8')
+  const { data: payData, mutate: mutatePayments, isLoading: payLoading } = useSWR<PaymentsResponse>(`/api/payments?${payQs.toString()}`, fetcher, { keepPreviousData: true })
+  const payItems = payData?.items ?? []
+
+  const openPay = () => {
+    setPContractor(contractorId !== 'all' ? contractorId : '')
+    setPAmount(''); setPMethod('cash'); setPNotes(''); setPError('')
+    setPayOpen(true)
+  }
+
+  const submitPayment = async () => {
+    setPError('')
+    if (!pContractor) { setPError('اختر المقاول — لا توجد دفعة بدون مقاول'); return }
+    const amount = Number(pAmount)
+    if (!Number.isFinite(amount) || amount <= 0) { setPError('أدخل مبلغًا صحيحًا أكبر من صفر'); return }
+    setPBusy(true)
+    try {
+      const r = await apiPost('/api/payments', { contractorId: pContractor, amount, method: pMethod, notes: pNotes })
+      toast({
+        title: 'تم تسجيل الدفعة',
+        description: `سند ${r.voucherNo}${r.journalEntryNo ? ` — قيد ${r.journalEntryNo}` : ''} — رصيد المقاول تحدّث فورًا`,
+      })
+      setPayOpen(false)
+      mutatePayments()
+      mutate()
+    } catch (e: any) {
+      setPError(e.message)
+    } finally { setPBusy(false) }
+  }
+
+  const reversePayment = async (p: PaymentItem) => {
+    const ok = await confirmDialog({
+      title: 'إرجاع الدفعة',
+      message: `إرجاع دفعة ${p.voucherNo} بقيمة ${fmtNum(p.amount, 2)} ج.م للمقاول «${p.contractorName}»؟\nسيتم عكس القيد المحاسبي تلقائيًا (مدين الخزينة / دائن مستحقات المقاول) — ورصيد المقاول يرتد فورًا في كشف الحساب والتقرير الشهري.`,
+      variant: 'danger',
+      confirmText: 'إرجاع وعكس القيد',
+    })
+    if (!ok) return
+    try {
+      const r = await apiDelete(`/api/payments/${p.id}`)
+      toast({ title: 'تم إرجاع الدفعة', description: `عكس القيد بالقيد ${r.reversalNo} — الرصيد محدّث` })
+      mutatePayments()
+      mutate()
+    } catch (e: any) {
+      toast({ title: 'تعذر الإرجاع', description: e.message, variant: 'destructive' })
+    }
+  }
 
   const qs = new URLSearchParams()
   if (contractorId !== 'all') qs.set('contractorId', contractorId)
@@ -330,6 +418,11 @@ export function ExtraCostsModule() {
           <Button variant="outline" size="sm" onClick={exportCSV} disabled={!items.length} className="h-9">
             <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">تصدير</span>
           </Button>
+          {canPay && (
+            <Button size="sm" variant="outline" onClick={openPay} className="h-9 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:border-emerald-900 dark:hover:bg-emerald-950/40">
+              <Wallet className="size-4" /> <span className="hidden sm:inline">دفعة / عهدة</span>
+            </Button>
+          )}
           {canManage && (
             <Button size="sm" onClick={openCreate} className="h-9">
               <Plus className="size-4" /> <span className="hidden sm:inline">بند إضافي</span>
@@ -431,6 +524,80 @@ export function ExtraCostsModule() {
           },
         ]}
       />
+
+      {/* ── دفعات وعهد المقاولين — قيد فوري بين 2102 والصندوق/البنك ── */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="flex items-center justify-center size-8 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 shrink-0">
+                <Wallet className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-bold leading-tight">دفعات وعهد المقاولين</div>
+                <div className="text-[11px] text-muted-foreground leading-tight">كل دفعة تُرحّل قيدًا مزدوجًا فوريًا (مدين مستحقات المقاول / دائن الصندوق أو البنك) — الإرجاع يعكس القيد تلقائيًا</div>
+              </div>
+            </div>
+            {canPrices && (
+              <Badge variant="outline" className="text-[11px] tnum bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900">
+                إجمالي المصروف: {fmtNum(payData?.summary.totalPaid ?? 0, 2)} ج.م
+              </Badge>
+            )}
+          </div>
+          <DataTable
+            rows={payItems}
+            loading={payLoading && !payData}
+            emptyText="لا توجد دفعات مسجّلة"
+            emptyTitle="مفيش دفعات أو عهد مسجّلة"
+            emptyHint="سجّل أول دفعة/عهدة لمقاول من زر «دفعة / عهدة» — القيد المحاسبي بيتعمل أوتوماتيك"
+            emptyAction={canPay ? (
+              <Button size="sm" onClick={openPay} className="min-h-[40px]">
+                <Wallet className="size-4" /> تسجيل دفعة / عهدة
+              </Button>
+            ) : undefined}
+            getRowKey={(x) => x.id}
+            minW={860}
+            resetKey={`${contractorId}|${payPage}`}
+            columns={[
+              {
+                key: 'voucherNo', header: 'السند', primary: true, width: 'w-28',
+                render: (x: PaymentItem) => <span className="font-mono text-xs font-bold">{x.voucherNo}</span>,
+              },
+              { key: 'contractor', header: 'المقاول', width: 'w-40', render: (x: PaymentItem) => <span className="text-xs font-medium truncate-1 block" dir="auto">{x.contractorName}</span> },
+              {
+                key: 'amount', header: 'المبلغ', align: 'center' as const, width: 'w-28',
+                render: (x: PaymentItem) => canPrices
+                  ? <span className={cn('text-xs font-bold tnum num-ltr', x.effective ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground line-through')}>{fmtNum(x.amount, 2)}</span>
+                  : <span className="text-[11px] text-muted-foreground">—</span>,
+              },
+              { key: 'method', header: 'الطريقة', align: 'center' as const, width: 'w-32', render: (x: PaymentItem) => <span className="text-xs">{x.method}</span> },
+              {
+                key: 'je', header: 'القيد المحاسبي', align: 'center' as const, width: 'w-32', hideInCard: true,
+                render: (x: PaymentItem) => x.journalEntryNo
+                  ? <span className="font-mono text-[11px] tnum">{x.journalEntryNo}</span>
+                  : <span className="text-xs text-muted-foreground">—</span>,
+              },
+              {
+                key: 'status', header: 'الحالة', align: 'center' as const, width: 'w-28',
+                render: (x: PaymentItem) => x.effective
+                  ? <span className="inline-block text-[10px] font-semibold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">سارية</span>
+                  : <span className="inline-block text-[10px] font-semibold px-2 py-1 rounded-full bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300">معكوسة</span>,
+              },
+              { key: 'date', header: 'التاريخ', align: 'center' as const, hideInCard: true, width: 'w-28', render: (x: PaymentItem) => <span className="text-xs tnum">{fmtDate(x.date)}</span> },
+              {
+                key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-28',
+                render: (x: PaymentItem) => x.effective && canReverse ? (
+                  <Button size="sm" variant="outline" onClick={() => reversePayment(x)} className="h-8 px-2 text-xs text-rose-600 hover:text-rose-700 border-rose-200 hover:border-rose-300">
+                    <Undo2 className="size-3.5" /> إرجاع
+                  </Button>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground">{x.effective ? '—' : 'مُرجعة'}</span>
+                ),
+              },
+            ]}
+          />
+        </CardContent>
+      </Card>
 
       {/* ── نافذة تسجيل/تعديل بند ── */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
@@ -548,6 +715,60 @@ export function ExtraCostsModule() {
             <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={() => setRejectTarget(null)} disabled={busy}>إلغاء</Button>
               <Button variant="destructive" onClick={submitReject} disabled={busy}>{busy ? 'جارٍ التنفيذ...' : 'تأكيد الرفض'}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── نافذة تسجيل دفعة / عهدة للمقاول ── */}
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wallet className="size-4 text-emerald-600 dark:text-emerald-400" /> تسجيل دفعة / عهدة لمقاول
+            </DialogTitle>
+            <DialogDescription>
+              الدفعة تُرحّل قيدًا مزدوجًا فورًا: مدين مستحقات المقاول (2102) / دائن الصندوق أو البنك — وتظهر في كشف الحساب والتقرير الشهري ومتابعة الإدارة لحظيًا.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3.5">
+            <div className="space-y-1.5">
+              <Label className="text-xs">المقاول *</Label>
+              <Select value={pContractor} onValueChange={setPContractor}>
+                <SelectTrigger className="w-full" aria-label="مقاول الدفعة"><SelectValue placeholder="اختر المقاول..." /></SelectTrigger>
+                <SelectContent>
+                  {contractors.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}{c.code ? ` — ${c.code}` : ''}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">المبلغ (ج.م) *</Label>
+                <Input type="number" min="0" step="0.01" inputMode="decimal" value={pAmount} onChange={(e) => setPAmount(e.target.value)} placeholder="مثلًا 2000" className="tnum num-ltr" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">طريقة الدفع *</Label>
+                <Select value={pMethod} onValueChange={setPMethod}>
+                  <SelectTrigger className="w-full" aria-label="طريقة الدفع"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">نقدي من الصندوق (1101)</SelectItem>
+                    <SelectItem value="bank">تحويل بنكي (1102)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">ملاحظات</Label>
+              <Textarea value={pNotes} onChange={(e) => setPNotes(e.target.value)} rows={2} placeholder="مثلًا: عهدة أفراد — دفعة على حساب مستحقات الشهر" />
+            </div>
+            {pError && (
+              <div className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2">{pError}</div>
+            )}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={() => setPayOpen(false)} disabled={pBusy}>إلغاء</Button>
+              <Button onClick={submitPayment} disabled={pBusy} className="bg-emerald-600 hover:bg-emerald-700">
+                {pBusy ? 'جارٍ التسجيل...' : 'تسجيل الدفعة + القيد'}
+              </Button>
             </div>
           </div>
         </DialogContent>

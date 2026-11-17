@@ -161,7 +161,7 @@ async function loadVoucher(tx: Tx, id: string): Promise<VoucherRow> {
   return v as VoucherRow
 }
 
-async function nextVoucherNo(tx: Tx, type: string): Promise<string> {
+export async function nextVoucherNo(tx: Tx, type: string): Promise<string> {
   const tdef = voucherTypeDef(type)
   const n = await nextSeq(tx, `voucher:${type}`)
   return `${tdef?.prefix ?? 'VCH'}-${String(n).padStart(4, '0')}`
@@ -199,7 +199,7 @@ async function assertShipmentsForType(tx: Tx, v: VoucherRow, phase: 'execute' | 
 // ---------------------------------------------------------------------------
 // الأثر المالي — إنشاء قيد مزدوج لكل سند مالي مكتمل (مرة واحدة فقط)
 // ---------------------------------------------------------------------------
-async function postFinancialVoucherJournal(tx: Tx, voucherId: string, user: SessionUser) {
+export async function postFinancialVoucherJournal(tx: Tx, voucherId: string, user: SessionUser) {
   const v = await loadVoucher(tx, voucherId)
   if (v.journalEntryId) {
     // أثر مالي مسجل مسبقًا — لا تكرار (منع الترحيل المزدوج)

@@ -198,18 +198,33 @@ const RECEIPT_MONEY_FIELDS = ['freightCost', 'freightTotal'] as const
 
 interface ReceiptActor { userId: string; username: string }
 
-/** تحقق من تسلسل رقم الديليفري داخل مقاول واحد (فريد بين أذوناته النشطة) */
-async function assertUniqueDeliveryNumber(tx: Tx, deliveryNumber: string, contractorId: string, exceptId?: string) {
+/**
+ * منع تكرار رقم الديليفري على مستوى النظام كله — فريد عبر كل المقاولين والشحنات
+ * (رقم الديليفري هو معرّف البحث الأساسي لدى المقاول ولا يجوز أن يتكرر إطلاقًا).
+ * عند التكرار تُعاد رسالة عربية واضحة + بيانات الشحنة الموجودة لعرض رابط سريع لها.
+ */
+export async function assertUniqueDeliveryNumber(tx: Tx, deliveryNumber: string, _contractorId: string, exceptId?: string) {
   const dup = await tx.shipment.findFirst({
     where: {
       deliveryNumber,
-      contractorId,
       id: exceptId ? { not: exceptId } : undefined,
       status: { notIn: [...RECEIPT_EXCLUDED_STATUSES] },
     },
-    select: { id: true, shipmentNo: true },
+    select: { id: true, shipmentNo: true, deliveryNumber: true, contractor: { select: { name: true } } },
   })
-  if (dup) throw new ApiError(409, `رقم الديليفري "${deliveryNumber}" مستخدم بالفعل لإذن آخر لنفس المقاول (${dup.shipmentNo ?? dup.id})`)
+  if (dup) {
+    throw new ApiError(
+      409,
+      `رقم الديليفري مسجل مسبقًا لشحنة أخرى (${dup.shipmentNo}${dup.contractor?.name ? ` — ${dup.contractor.name}` : ''})`,
+      {
+        code: 'DUPLICATE_DELIVERY_NUMBER',
+        existingShipmentId: dup.id,
+        existingShipmentNo: dup.shipmentNo,
+        existingDeliveryNumber: dup.deliveryNumber,
+        existingContractor: dup.contractor?.name ?? null,
+      },
+    )
+  }
 }
 
 /**

@@ -6,7 +6,7 @@
 import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { ApiError, num, round2 } from './http'
-import { accountBalancesMap, ACC } from './accounting'
+import { accountBalancesMap, ACC, reversalOriginalSources, summarizeContractorLedgerLines } from './accounting'
 import { VOUCHER_CATEGORIES, VOUCHER_STATES, VOUCHER_TYPES } from '../voucher-catalog'
 import { EXTRA_COST_SOURCE, extraCostTypeLabel } from '../extra-cost-catalog'
 import { enrichVoucherRows, voucherInclude } from './vouchers-queries'
@@ -527,13 +527,20 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
     ])
     // المسحوبات الفعلية = سطور مدين 2102 المصدرها سندات صرف/قيد يدوي — مشتقة من
     // دفتر الأستاذ نفسه (متسقة مع كشف الحساب ومتابعة الإدارة والتقرير الشهري)
-    const paidRows = contractorsAcc
-      ? await db.journalLine.groupBy({
-          by: ['partyId'],
-          where: { accountId: contractorsAcc.id, partyId: { in: [...map.keys()] }, entry: { status: 'posted', sourceType: { in: ['op_voucher', 'manual'] } }, debit: { gt: 0 } },
-          _sum: { debit: true },
+    // مع نسبة القيود العكسية لأثرها الأصلي: عكس دفعة يُخرجها من المسحوبات فورًا
+    const paidLines = contractorsAcc
+      ? await db.journalLine.findMany({
+          where: { accountId: contractorsAcc.id, partyId: { in: [...map.keys()] }, entry: { status: 'posted', sourceType: { in: ['op_voucher', 'manual', 'journal_reversal'] } } },
+          select: { partyId: true, debit: true, credit: true, entry: { select: { sourceType: true, sourceId: true } } },
         })
       : []
+    const reversalIds = paidLines
+      .filter((l) => l.entry?.sourceType === 'journal_reversal' && l.entry?.sourceId)
+      .map((l) => l.entry.sourceId as string)
+    const paidOriginalSources = await reversalOriginalSources(db, [...new Set(reversalIds)])
+    const paidSummary = summarizeContractorLedgerLines(paidLines, paidOriginalSources)
+    const paidMap = new Map<string, number>()
+    for (const [pid, s] of paidSummary) paidMap.set(pid, s.paidFromVouchers)
     const ecMap = new Map<string, { approved: number; approvedCount: number; pending: number; pendingCount: number }>()
     for (const g of ecRows) {
       if (!g.contractorId) continue
@@ -542,7 +549,6 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
       if (g.approvalStatus === 'pending') { cur.pending += g._sum.amount ?? 0; cur.pendingCount += g._count._all }
       ecMap.set(g.contractorId, cur)
     }
-    const paidMap = new Map(paidRows.map((p) => [p.partyId, p._sum.debit ?? 0]))
     const items = [...map.values()].map((c) => {
       const paid = round2(paidMap.get(c.id) ?? 0)
       const ec = ecMap.get(c.id) ?? { approved: 0, approvedCount: 0, pending: 0, pendingCount: 0 }

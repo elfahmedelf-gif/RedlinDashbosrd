@@ -169,7 +169,7 @@ model Shipment {
   status        String   @default("new")
   collectionStatus String @default("uncollected")
   // S2: أذونات التسليم — رقم الديليفري هو المعرف البحثي الأساسي للمقاول
-  deliveryNumber      String?
+  deliveryNumber      String?   @unique  // فريد على مستوى النظام — منع تسجيل نفس رقم الديليفري لشحتين
   isReceiptDelivered  Boolean   @default(false)
   receiptDeliveredAt  DateTime?
   date          DateTime?
@@ -194,7 +194,6 @@ model Shipment {
   extraCosts    ExtraCost[]
 
   @@index([contractorId, isReceiptDelivered])
-  @@index([deliveryNumber])
 }
 
 model ShipmentStatusHistory {

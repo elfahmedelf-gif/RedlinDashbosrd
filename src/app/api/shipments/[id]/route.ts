@@ -6,6 +6,7 @@ import { db } from '@/lib/db'
 import { getShipment } from '@/lib/server/queries'
 import { getActiveDeliveryJournal, postShipmentDeliveryJournal } from '@/lib/server/shipment-accounting'
 import { reverseJournal } from '@/lib/server/accounting'
+import { assertUniqueDeliveryNumber } from '@/lib/server/receipts'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,7 +62,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
       const data: any = {}
       for (const k of EDITABLE_TEXT) if (b[k] !== undefined) data[k] = b[k] === '' ? null : b[k]
-      for (const k of EDITABLE_NUM) if (b[k] !== undefined) data[k] = b[k] === '' || b[k] === null ? null : Number(b[k]) || 0
+      for (const k of EDITABLE_NUM) {
+        if (b[k] === undefined) continue
+        const v = b[k] === '' || b[k] === null ? null : Number(b[k]) || 0
+        if (v != null && v < 0) throw new ApiError(400, `القيمة في «${k}» لا يمكن أن تكون سالبة — أدخل مبلغًا صحيحًا`)
+        data[k] = v
+      }
+
+      // رقم الديليفري فريد على مستوى النظام — تحقق عند تغييره
+      if (data.deliveryNumber && String(data.deliveryNumber).trim() !== (s.deliveryNumber ?? s.shipmentNo)) {
+        await assertUniqueDeliveryNumber(tx, String(data.deliveryNumber).trim(), s.contractorId ?? '', id)
+      }
 
       // اتساق تكلفة المقاول: تعديل تكلفة النقل يُحدّث totalSuppliers ما لم يُرسل صراحة
       if (data.freightCost !== undefined && data.totalSuppliers === undefined) {

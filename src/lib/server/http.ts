@@ -6,9 +6,12 @@ import { db } from '@/lib/db'
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  /** بيانات إضافية اختيارية تُرجع للعميل (مثل بيانات السجل المكرر لعرض رابط سريع) */
+  details?: Record<string, any>
+  constructor(status: number, message: string, details?: Record<string, any>) {
     super(message)
     this.status = status
+    this.details = details
   }
 }
 
@@ -19,7 +22,10 @@ export async function handle(fn: () => Promise<any>): Promise<NextResponse> {
   } catch (e: any) {
     const status = e instanceof ApiError ? e.status : 500
     if (status >= 500) console.error('[api-error]', e)
-    return NextResponse.json({ error: e?.message ?? 'خطأ غير متوقع في الخادم' }, { status })
+    return NextResponse.json(
+      { error: e?.message ?? 'خطأ غير متوقع في الخادم', ...(e?.details ? { details: e.details } : {}) },
+      { status },
+    )
   }
 }
 

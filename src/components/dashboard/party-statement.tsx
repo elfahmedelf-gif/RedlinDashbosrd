@@ -12,13 +12,13 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { Printer, FileText, AlertCircle } from 'lucide-react'
+import { Printer, FileText, AlertCircle, FileSpreadsheet } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
-import { fetcher } from '@/lib/api'
+import { fetcher, getToken } from '@/lib/api'
 import { fmtMoney, fmtDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
@@ -232,6 +232,33 @@ export function PartyStatementDialog({ partyId, partyName, open, onOpenChange }:
   const items = data?.items ?? []
   const periodLabel = (from || to) ? `من ${from || 'البداية'} إلى ${to || 'اليوم'}` : 'كل الفترات'
 
+  // تصدير كشف الحساب Excel (.xlsx) — نفس بيانات الشاشة من الخادم مباشرة (RTL منسّق)
+  const exportXlsx = async () => {
+    if (!data) return
+    try {
+      const expQs = new URLSearchParams()
+      if (from) expQs.set('from', from)
+      if (to) expQs.set('to', to)
+      const res = await fetch(`/api/parties/${partyId}/statement/export?${expQs.toString()}`, { headers: { 'x-session-token': getToken() } })
+      if (!res.ok) {
+        const j = await res.json().catch(() => null)
+        throw new Error(j?.error ?? 'فشل التصدير')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `كشف حساب - ${party?.name ?? partyName ?? ''}${from || to ? ` (${from || 'start'}_${to || 'today'})` : ''}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      toast({ title: 'تم تصدير كشف الحساب بنجاح' })
+    } catch (e: any) {
+      toast({ title: 'تعذر تصدير Excel', description: e?.message ?? '', variant: 'destructive' })
+    }
+  }
+
   return (
     <>
       {/* منصة الطباعة A4 — خارج الـ Dialog كي لا يُقص الجدول في الورق */}
@@ -281,6 +308,9 @@ export function PartyStatementDialog({ partyId, partyName, open, onOpenChange }:
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-32 h-8 text-xs" aria-label="من تاريخ" />
                   <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-32 h-8 text-xs" aria-label="إلى تاريخ" />
+                  <Button variant="outline" size="sm" onClick={exportXlsx} disabled={!items.length} className="h-8">
+                    <FileSpreadsheet className="size-4" /> Excel
+                  </Button>
                   <Button variant="outline" size="sm" onClick={printModal}><Printer className="size-4" /> طباعة</Button>
                 </div>
               </div>
