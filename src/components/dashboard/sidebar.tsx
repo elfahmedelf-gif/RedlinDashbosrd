@@ -14,6 +14,7 @@ import type { SessionUser } from '@/lib/permissions'
 import { OverdueReceiptsBadge } from './overdue-badge'
 import { DarkModeToggle } from './dark-mode-toggle'
 import { UserMenu } from './user-menu'
+import { QuickTourButton } from './quick-tour'
 
 export type ModuleKey =
   | 'overview' | 'shipments' | 'receipts' | 'extra-costs' | 'executive' | 'pending-returns' | 'customers' | 'contractors' | 'suppliers'
@@ -24,20 +25,22 @@ export type ModuleKey =
 export interface ModuleDef {
   key: ModuleKey
   label: string
+  /** مسمّى مبسّط بلغة الأعمال اليومية — يظهر للمستخدمين التشغيليين في الوضع المبسّط */
+  simpleLabel?: string
   icon: LucideIcon
   desc: string
   group: string
 }
 
 export const MODULES: ModuleDef[] = [
-  { key: 'overview', label: 'الرئيسية', icon: LayoutDashboard, desc: 'لوحة المؤشرات', group: 'main' },
-  { key: 'executive', label: 'متابعة الإدارة', icon: Eye, desc: 'الموقف المالي والتشغيلي للإدارة', group: 'main' },
-  { key: 'shipments', label: 'الشحنات', icon: PackageSearch, desc: 'سجل الشحنات', group: 'main' },
-  { key: 'receipts', label: 'أذونات التسليم', icon: ClipboardCheck, desc: 'الديليفري لكل مقاول', group: 'main' },
-  { key: 'extra-costs', label: 'البنود الإضافية', icon: Layers, desc: 'تعتيق/مبيت/مرتجعات + الاعتماد', group: 'main' },
+  { key: 'overview', label: 'الرئيسية', simpleLabel: 'الرئيسية', icon: LayoutDashboard, desc: 'لوحة المؤشرات', group: 'main' },
+  { key: 'executive', label: 'متابعة الإدارة', simpleLabel: 'متابعة الإدارة', icon: Eye, desc: 'الموقف المالي والتشغيلي للإدارة', group: 'main' },
+  { key: 'shipments', label: 'الشحنات', simpleLabel: 'الشحنات اليومية', icon: PackageSearch, desc: 'سجل الشحنات', group: 'main' },
+  { key: 'receipts', label: 'أذونات التسليم', simpleLabel: 'أذونات التسليم', icon: ClipboardCheck, desc: 'الديليفري لكل مقاول', group: 'main' },
+  { key: 'extra-costs', label: 'البنود الإضافية', simpleLabel: 'المصاريف والبنود', icon: Layers, desc: 'تعتيق/مبيت/مرتجعات + الاعتماد', group: 'main' },
   { key: 'pending-returns', label: 'المرتجعات لم تُستلم', icon: Undo2, desc: 'تتبع عهدة المرتجعات', group: 'main' },
   { key: 'customers', label: 'العملاء', icon: Users, desc: 'ملفات العملاء', group: 'parties' },
-  { key: 'contractors', label: 'المقاولون', icon: UserCog, desc: 'الناقلون', group: 'parties' },
+  { key: 'contractors', label: 'المقاولون', simpleLabel: 'حسابات المقاولين', icon: UserCog, desc: 'الناقلون', group: 'parties' },
   { key: 'suppliers', label: 'الموردون', icon: Truck, desc: 'الموردون', group: 'parties' },
   { key: 'branches', label: 'الفروع', icon: Building2, desc: 'الفروع', group: 'structure' },
   { key: 'warehouses', label: 'المخازن', icon: WarehouseIcon, desc: 'المخازن', group: 'structure' },
@@ -86,11 +89,39 @@ export const MODULE_PERMISSIONS: Record<ModuleKey, string> = {
 
 /** الوحدات المسموحة حسب صلاحيات المستخدم */
 export function visibleModules(permissions: string[] | null | undefined): ModuleDef[] {
-  return MODULES.filter((m) => matchPermission(permissions, MODULE_PERMISSIONS[m.key]))
+  const allowed = MODULES.filter((m) => matchPermission(permissions, MODULE_PERMISSIONS[m.key]))
+  // الوضع المبسّط: موظفو العمليات وإدخال البيانات يرون شغلهم اليومي فقط —
+  // بدون مصطلحات محاسبية (القيود، شجرة الحسابات، التقارير...).
+  // الصلاحيات تبقى طبقة الأمان الفعلية — هذا تبسيط للعرض فقط.
+  if (!isSimplifiedUser(permissions)) return allowed
+  return allowed
+    .filter((m) => SIMPLIFIED_KEYS.includes(m.key))
+    .map((m) => ({ ...m, label: m.simpleLabel ?? m.label, group: SIMPLE_GROUP }))
+}
+
+// ----------------------------------------------------------------------------
+// الوضع المبسّط للمستخدم العادي — 4 شاشات شغل يومية + الرئيسية
+// ----------------------------------------------------------------------------
+
+/** مفتاح مجموعة الشغل اليومي في الوضع المبسّط */
+export const SIMPLE_GROUP = 'daily'
+
+/** الشاشات اليومية الأربع + الرئيسية — كل ما يحتاجه موظف العمليات */
+export const SIMPLIFIED_KEYS: ModuleKey[] = ['overview', 'shipments', 'receipts', 'extra-costs', 'contractors']
+
+/**
+ * هل هذا المستخدم يحتاج الواجهة المبسّطة؟
+ * المعيار: من لا يملك صلاحية عرض شجرة الحسابات يُعامل كمستخدم تشغيلي يومي —
+ * فيرى شاشات الشغل الأربع فقط بدل القوائم الكاملة.
+ * (المدير المالي والمالك والعارف بالمحاسبة يرون الواجهة الكاملة)
+ */
+export function isSimplifiedUser(permissions: string[] | null | undefined): boolean {
+  return !matchPermission(permissions, 'accounting.view')
 }
 
 export const GROUP_LABELS: Record<string, string> = {
   main: 'العمليات الرئيسية',
+  daily: 'شغلك اليومي',
   parties: 'الأطراف',
   structure: 'الهيكل التنظيمي',
   inventory: 'المخزون والتسعير',
@@ -102,6 +133,7 @@ export const GROUP_LABELS: Record<string, string> = {
 // Group meta: icon + label
 const GROUP_META: Record<string, { icon: LucideIcon; label: string }> = {
   main: { icon: LayoutDashboard, label: 'العمليات الرئيسية' },
+  daily: { icon: LayoutDashboard, label: 'شغلك اليومي' },
   parties: { icon: Users, label: 'الأطراف' },
   structure: { icon: Building2, label: 'الهيكل التنظيمي' },
   inventory: { icon: Boxes, label: 'المخزون والتسعير' },
@@ -464,7 +496,11 @@ export function MobileNav({ active, onChange, permissions }: { active: ModuleKey
   const [open, setOpen] = React.useState(false)
   const allowed = React.useMemo(() => visibleModules(permissions), [permissions])
   const allowedKeys = React.useMemo(() => new Set(allowed.map((m) => m.key)), [allowed])
-  const primary: ModuleKey[] = (['overview', 'shipments', 'customers', 'reports'] as ModuleKey[]).filter((k) => allowedKeys.has(k))
+  // الوضع المبسّط: الشحنات والأذونات والبنود هي الأكثر استخدامًا — والإدارة الكاملة تحتفظ بترتيبها
+  const primaryFor: ModuleKey[] = isSimplifiedUser(permissions)
+    ? ['overview', 'shipments', 'receipts', 'extra-costs']
+    : ['overview', 'shipments', 'customers', 'reports']
+  const primary: ModuleKey[] = primaryFor.filter((k) => allowedKeys.has(k))
   const primaryHas = primary.includes(active)
 
   // Escape يغلق شبكة الوحدات
@@ -591,6 +627,7 @@ export function MobileHeader({ title, subtitle, icon: Icon, onMenuClick, overdue
           <OverdueReceiptsBadge count={overdueCount} onNavigate={onOverdueClick} compact />
         </div>
       )}
+      <QuickTourButton variant="mobile" />
       <DarkModeToggle className="size-9 shrink-0" />
       <div className="shrink-0">
         <UserMenu />

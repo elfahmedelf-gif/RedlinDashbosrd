@@ -101,6 +101,32 @@ function statusBadge(status: string) {
   )
 }
 
+/**
+ * حبة حالة الإذن بلغة الأعمال اليومية — 3 ألوان واضحة بلا مصطلحات:
+ * تم التسليم ✓ (أخضر) · لم يُسلّم بعد (أصفر) · متأخر +3 أيام (أحمر)
+ */
+function receiptPill(item: ReceiptItem) {
+  if (item.isReceiptDelivered) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+        تم التسليم ✓
+      </span>
+    )
+  }
+  if (item.overdue) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+        متأخر +{RECEIPT_OVERDUE_DAYS} أيام
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+      لم يُسلّم بعد
+    </span>
+  )
+}
+
 export function ReceiptsModule() {
   const { has } = useAuth()
   const { toast } = useToast()
@@ -130,6 +156,12 @@ export function ReceiptsModule() {
       setView('overdue')
       setContractorId('all')
     })
+  }, [])
+
+  // زر «تأكيد استلام إذن» السريع في الرئيسية — فتح عرض «غير مسلمة» جاهز للتأشير ✓
+  React.useEffect(() => {
+    if (consumeIntent() === BUS_EVENTS.OPEN_RECEIPTS_PENDING) setView('undelivered')
+    return bus.on(BUS_EVENTS.OPEN_RECEIPTS_PENDING, () => setView('undelivered'))
   }, [])
 
   const qs = new URLSearchParams()
@@ -488,7 +520,31 @@ export function ReceiptsModule() {
       <DataTable
         rows={items}
         loading={isLoading && !data}
-        emptyText={view === 'overdue' ? 'لا توجد أذونات متأخرة — كل الأذونات تحت السيطرة' : 'لا توجد أذونات في هذا العرض'}
+        emptyText="لا توجد أذونات في هذا العرض"
+        emptyTitle={
+          view === 'overdue'
+            ? 'كل الأذونات مستلمة ✓'
+            : view === 'delivered'
+              ? 'لسه مفيش أذونات مسلّمة في هذا العرض'
+              : 'مفيش أذونات مستنية تأشير'
+        }
+        emptyHint={
+          view === 'overdue'
+            ? (contractorId !== 'all'
+              ? `لا توجد أذونات متأخرة أكثر من ${RECEIPT_OVERDUE_DAYS} أيام على هذا المقاول — شغله تمام`
+              : 'لا توجد أذونات متأخرة أكثر من ٣ أيام على أي مقاول — كل الأذونات تحت السيطرة')
+            : view === 'delivered'
+              ? 'أول ما تُعلم ✓ على أي إذن هيظهر هنا بسجل التسليم'
+              : 'الإذن بيتسجل أوتوماتيك مع كل شحنة جديدة — أو ضيفه يدوي من زر «إضافة إذن»'
+        }
+        emptyAction={
+          canAdd && view !== 'overdue' ? (
+            <Button size="sm" onClick={openAdd} className="min-h-[40px]">
+              <Plus className="size-4" /> إضافة إذن يدوي
+            </Button>
+          ) : undefined
+        }
+        emptyIcon={view === 'overdue' ? PackageCheck : ClipboardCheck}
         getRowKey={(x) => x.id}
         minW={1100}
         resetKey={`${contractorId}|${view}|${search}|${date}`}
@@ -516,23 +572,24 @@ export function ReceiptsModule() {
             ),
           },
           {
-            key: 'receipt', header: 'سُلّم الإذن؟', align: 'center' as const, width: 'w-32',
+            key: 'receipt', header: 'سُلّم الإذن؟', align: 'center' as const, width: 'w-36',
             render: (x: ReceiptItem) => (
-              <label
-                className="inline-flex items-center gap-2 cursor-pointer select-none"
+              <div
+                className="flex flex-col items-center gap-1.5"
                 onClick={(e) => e.stopPropagation()}
               >
-                <Checkbox
-                  checked={x.isReceiptDelivered}
-                  disabled={!canToggle || busyId === x.id}
-                  onCheckedChange={() => toggleReceipt(x)}
-                  className="size-5"
-                  aria-label={`تسليم إذن الديليفري ${x.deliveryNumber ?? x.shipmentNo ?? ''}`}
-                />
-                <span className={cn('text-[11px] font-medium', x.isReceiptDelivered ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
-                  {x.isReceiptDelivered ? 'سُلّم' : 'لم يُسلّم'}
-                </span>
-              </label>
+                {receiptPill(x)}
+                <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                  <Checkbox
+                    checked={x.isReceiptDelivered}
+                    disabled={!canToggle || busyId === x.id}
+                    onCheckedChange={() => toggleReceipt(x)}
+                    className="size-5"
+                    aria-label={`تسليم إذن الديليفري ${x.deliveryNumber ?? x.shipmentNo ?? ''}`}
+                  />
+                  <span className="text-[10px] text-muted-foreground">علّم ✓ عند الاستلام</span>
+                </label>
+              </div>
             ),
           },
           {

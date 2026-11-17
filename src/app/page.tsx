@@ -10,14 +10,15 @@
 import * as React from 'react'
 import useSWR from 'swr'
 import { Calendar, X, ChevronLeft } from 'lucide-react'
-import { Sidebar, MobileNav, MobileHeader, type ModuleKey, MODULES, MODULE_PERMISSIONS, visibleModules, GROUP_LABELS } from '@/components/dashboard/sidebar'
+import { Sidebar, MobileNav, MobileHeader, type ModuleKey, MODULES, MODULE_PERMISSIONS, visibleModules, GROUP_LABELS, isSimplifiedUser } from '@/components/dashboard/sidebar'
 import { OverdueReceiptsBadge } from '@/components/dashboard/overdue-badge'
+import { QuickTourButton } from '@/components/dashboard/quick-tour'
 import { DarkModeToggle } from '@/components/dashboard/dark-mode-toggle'
 import { UserMenu } from '@/components/dashboard/user-menu'
 import { AuthProvider, useAuth } from '@/components/dashboard/auth-provider'
 import { ConfirmProvider } from '@/components/ui/confirm-dialog'
 import { LoginScreen, AuthSplash } from '@/components/dashboard/login-screen'
-import { DashboardModule } from '@/components/dashboard/modules/dashboard'
+import { DashboardModule, type QuickAction } from '@/components/dashboard/modules/dashboard'
 import { ShipmentsModule } from '@/components/dashboard/modules/shipments'
 import { ReceiptsModule } from '@/components/dashboard/modules/receipts'
 import { ExtraCostsModule } from '@/components/dashboard/modules/extra-costs'
@@ -41,11 +42,11 @@ import { cn } from '@/lib/utils'
 // بيانات تعريف التبويبات — تُستورد إلى الهيدر والقائمة
 // ----------------------------------------------------------------------------
 const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
-  overview: { title: 'الرئيسية', subtitle: 'لوحة المؤشرات والعمليات الرئيسية' },
+  overview: { title: 'الرئيسية', subtitle: 'كل حاجة تحتاجها في صفحة واحدة — ابدأ من الأزرار الكبيرة فوق' },
   executive: { title: 'متابعة الإدارة', subtitle: 'الموقف المالي والتشغيلي لكل مقاول — أذونات ومستحقات ومسحوبات' },
-  shipments: { title: 'الشحنات', subtitle: 'سجل عمليات الشحن وحالاتها' },
-  receipts: { title: 'أذونات التسليم', subtitle: 'متابعة إذن كل نقلة برقم الديليفري — لكل مقاول أذوناته' },
-  'extra-costs': { title: 'البنود الإضافية', subtitle: 'تعتيق ومبيت ومرتجعات على حساب المقاولين — بدورة اعتماد الشركة' },
+  shipments: { title: 'الشحنات', subtitle: 'سجّل النقلات الجديدة وتابع حالتها برقم الديليفري' },
+  receipts: { title: 'أذونات التسليم', subtitle: 'ابحث برقم الديليفري واضغط علامة ✓ فور استلام الإذن الورقي من المقاول' },
+  'extra-costs': { title: 'البنود الإضافية', subtitle: 'تعتيق ومبيت ومرتجعات ودفعات على حساب المقاول — تُعتمد من الشركة قبل ما تسمع في الحساب' },
   'pending-returns': { title: 'المرتجعات لم تُستلم', subtitle: 'تتبع عهدة المرتجعات مع المندوبين' },
   customers: { title: 'العملاء', subtitle: 'ملفات العملاء وأرصدتهم' },
   contractors: { title: 'المقاولون', subtitle: 'الناقلون وأداؤهم' },
@@ -65,6 +66,19 @@ const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
   settings: { title: 'الإعدادات', subtitle: 'إعدادات النظام وتعريفات الأعمدة' },
   audit: { title: 'سجل التدقيق', subtitle: 'سجل عمليات النظام والدخول والخروج' },
   lookups: { title: 'القوائم المنسدلة', subtitle: 'إدارة قوائم النظام المنسدلة' },
+}
+
+// في الوضع المبسّط (موظفو العمليات) تُعرض شاشة المقاولين بلغة الأعمال اليومية
+const SIMPLIFIED_TAB_LABELS: Partial<Record<ModuleKey, { title: string; subtitle: string }>> = {
+  overview: { title: 'الرئيسية', subtitle: 'ابدأ من الأزرار الكبيرة — أهم 3 عمليات في شغلك اليومي' },
+  contractors: { title: 'حسابات المقاولين', subtitle: 'كل مقاول ليه كام شغل وكام اتسحب وكام متبقي له — في نظرة واحدة' },
+  shipments: { title: 'الشحنات اليومية', subtitle: 'اضغط «تسجيل شحنة جديدة» واكتب رقم الديليفري واختر المقاول — وتابع حالة كل نقلة من هنا' },
+  'extra-costs': { title: 'المصاريف والبنود', subtitle: 'سجّل تعتيق أو مبيت أو مرتجع أو دفعة للمقاول — بتتسمع في الحساب بعد موافقة الشركة' },
+}
+
+function labelsFor(tab: ModuleKey, simplified: boolean): { title: string; subtitle: string } {
+  if (simplified && SIMPLIFIED_TAB_LABELS[tab]) return SIMPLIFIED_TAB_LABELS[tab]!
+  return TAB_LABELS[tab]
 }
 
 // ----------------------------------------------------------------------------
@@ -96,6 +110,7 @@ function presetToRange(preset: DatePreset): { from: string; to: string } {
 // ----------------------------------------------------------------------------
 function DashboardHeader({
   tab,
+  simplified,
   from,
   to,
   setFrom,
@@ -104,6 +119,7 @@ function DashboardHeader({
   onOverdueClick,
 }: {
   tab: ModuleKey
+  simplified: boolean
   from: string
   to: string
   setFrom: (v: string) => void
@@ -114,6 +130,7 @@ function DashboardHeader({
   const activeMod = MODULES.find((m) => m.key === tab)
   const ActiveIcon = activeMod?.icon
   const groupLabel = activeMod ? GROUP_LABELS[activeMod.group] : null
+  const labels = labelsFor(tab, simplified)
 
   // اكتشاف البريسيت الحالي من from/to (لإبرار الزر النشط)
   const activePreset: DatePreset | null = React.useMemo(() => {
@@ -148,20 +165,21 @@ function DashboardHeader({
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70 mb-0.5 leading-none">
               <span className="truncate">{groupLabel}</span>
               <ChevronLeft className="size-2.5 shrink-0" />
-              <span className="text-foreground/90 font-medium truncate">{TAB_LABELS[tab].title}</span>
+              <span className="text-foreground/90 font-medium truncate">{labels.title}</span>
             </div>
           )}
           <h1 className="text-base sm:text-lg font-bold text-slate-850 dark:text-white leading-tight truncate">
-            {TAB_LABELS[tab].title}
+            {labels.title}
           </h1>
           <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-            {TAB_LABELS[tab].subtitle}
+            {labels.subtitle}
           </span>
         </div>
       </div>
 
-      {/* يسار: شارة الأذونات المتأخرة + نطاق التاريخ (overview فقط) + ثيم + مستخدم */}
+      {/* يسار: دليل الاستخدام + شارة الأذونات المتأخرة + نطاق التاريخ (overview فقط) + ثيم + مستخدم */}
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <QuickTourButton variant="desktop" />
         <OverdueReceiptsBadge count={overdueCount} onNavigate={onOverdueClick} />
         {tab === 'overview' && (
           <div className="hidden sm:flex items-center gap-1.5">
@@ -226,11 +244,14 @@ function DashboardHeader({
 // ----------------------------------------------------------------------------
 function DashboardShell() {
   const { user, logout, has } = useAuth()
+  // الوضع المبسّط: موظفو العمليات يرون شاشات الشغل اليومي فقط بدون مصطلحات محاسبية
+  const simplified = isSimplifiedUser(user?.permissions)
   const [tab, setTab] = React.useState<ModuleKey>('overview')
   const [from, setFrom] = React.useState('')
   const [to, setTo] = React.useState('')
   // حالة الدرج المنزلق للقائمة الجانبية على الشاشات < lg (موبايل + تابلت)
   const [navOpen, setNavOpen] = React.useState(false)
+  const labels = labelsFor(tab, simplified)
 
   // إعادة توجيه تلقائية إذا فقد المستخدم صلاحية التبويب الحالي
   React.useEffect(() => {
@@ -254,7 +275,24 @@ function DashboardShell() {
     setIntent(BUS_EVENTS.OPEN_OVERDUE_RECEIPTS)
     setTab('receipts')
     bus.emit(BUS_EVENTS.OPEN_OVERDUE_RECEIPTS)
-  }, [])
+  }, [setTab])
+
+  // الأزرار السريعة في الرئيسية — تنقل للشاشة المطلوبة مع فتح النافذة جاهزة للإدخال
+  const handleQuickAction = React.useCallback((action: QuickAction) => {
+    if (action === 'new-shipment') {
+      setIntent(BUS_EVENTS.OPEN_SHIPMENT_CREATE)
+      setTab('shipments')
+      bus.emit(BUS_EVENTS.OPEN_SHIPMENT_CREATE)
+    } else if (action === 'confirm-receipt') {
+      setIntent(BUS_EVENTS.OPEN_RECEIPTS_PENDING)
+      setTab('receipts')
+      bus.emit(BUS_EVENTS.OPEN_RECEIPTS_PENDING)
+    } else {
+      setIntent(BUS_EVENTS.OPEN_EXTRA_COST_CREATE)
+      setTab('extra-costs')
+      bus.emit(BUS_EVENTS.OPEN_EXTRA_COST_CREATE)
+    }
+  }, [setTab])
 
   // الوحدة النشطة حاليًا — تُمرّر للهيدر والموبايل-هيدر
   const activeMod = MODULES.find((m) => m.key === tab)
@@ -262,8 +300,8 @@ function DashboardShell() {
   return (
     <div className="min-h-screen flex flex-col bg-background overflow-x-clip" dir="rtl">
       <MobileHeader
-        title={TAB_LABELS[tab].title}
-        subtitle={TAB_LABELS[tab].subtitle}
+        title={labels.title}
+        subtitle={labels.subtitle}
         icon={activeMod?.icon}
         onMenuClick={() => setNavOpen(true)}
         overdueCount={Number(counts['receiptsOverdue'] ?? 0)}
@@ -283,6 +321,7 @@ function DashboardShell() {
         <main className="flex-1 min-w-0 flex flex-col pb-20 lg:pb-0">
           <DashboardHeader
             tab={tab}
+            simplified={simplified}
             from={from}
             to={to}
             setFrom={setFrom}
@@ -293,19 +332,33 @@ function DashboardShell() {
           <div className="flex-1 p-3 sm:p-4 md:p-6 xl:p-8 w-full mx-auto max-w-[1600px] print:p-0">
             {/* ترويسة التقرير الرسمية — تظهر فقط أثناء الطباعة */}
             <PrintHeader
-              title={TAB_LABELS[tab].title}
-              subtitle={TAB_LABELS[tab].subtitle}
+              title={labels.title}
+              subtitle={labels.subtitle}
               user={user?.name}
             />
             <div key={tab} className="anim-fade-in">
-              {tab === 'overview' && <DashboardModule from={from || undefined} to={to || undefined} setFrom={setFrom} setTo={setTo} />}
+              {tab === 'overview' && (
+                <DashboardModule
+                  from={from || undefined}
+                  to={to || undefined}
+                  setFrom={setFrom}
+                  setTo={setTo}
+                  onQuickAction={handleQuickAction}
+                  quickCan={{
+                    'new-shipment': has('shipments.create'),
+                    'confirm-receipt': has('shipments.receipts') || has('shipments.view'),
+                    'new-payment': has('parties.extras.manage'),
+                  }}
+                />
+              )}
               {tab === 'executive' && <ExecutiveModule />}
               {tab === 'shipments' && <ShipmentsModule />}
               {tab === 'receipts' && <ReceiptsModule />}
               {tab === 'extra-costs' && <ExtraCostsModule />}
               {tab === 'pending-returns' && <PendingReturnsModule />}
               {tab === 'customers' && <PartiesModule type="customer" title="عملاء" />}
-              {tab === 'contractors' && <PartiesModule type="contractor" title="مقاولون" />}
+              {/* في الوضع المبسّط: «حسابات المقاولين» = ملخص مبسط لكل مقاول (نفس شاشة متابعة الإدارة) */}
+              {tab === 'contractors' && (simplified ? <ExecutiveModule /> : <PartiesModule type="contractor" title="مقاولون" />)}
               {tab === 'suppliers' && <PartiesModule type="supplier" title="موردون" />}
               {tab === 'branches' && <BranchesModule />}
               {tab === 'warehouses' && <WarehousesModule />}

@@ -27,6 +27,7 @@ import { useLookup } from '@/lib/lookups'
 import { cn } from '@/lib/utils'
 import { useAuth, useCanPrices } from '../auth-provider'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { bus, BUS_EVENTS, consumeIntent } from '@/lib/bus'
 // كتالوج آلة حالات الشحنة الصارمة — مصدر واحد للخادم والواجهة
 import {
   SHIPMENT_STATUSES,
@@ -76,6 +77,7 @@ function emptyCreateForm(): any {
 
 export function ShipmentsModule() {
   const { toast } = useToast()
+  const { has } = useAuth()
   // صلاحية رؤية الأسعار — تتحكم في إظهار كل المبالغ (نولون/تكلفة/تحصيل/هامش)
   const canPrices = useCanPrices()
   const { confirm: confirmDialog } = useConfirm()
@@ -108,6 +110,13 @@ export function ShipmentsModule() {
   const [waybillShipment, setWaybillShipment] = React.useState<any>(null)
 
   React.useEffect(() => { const t = setTimeout(() => { setDebouncedQ(q); setPage(1) }, 350); return () => clearTimeout(t) }, [q])
+
+  // زر «تسجيل شحنة جديدة» السريع في الرئيسية — يفتح نافذة الإنشاء جاهزة مباشرة
+  React.useEffect(() => {
+    const open = () => { if (has('shipments.create')) setAddOpen(true) }
+    if (consumeIntent() === BUS_EVENTS.OPEN_SHIPMENT_CREATE) open()
+    return bus.on(BUS_EVENTS.OPEN_SHIPMENT_CREATE, open)
+  }, [])
 
   const params = new URLSearchParams()
   if (debouncedQ) params.set('q', debouncedQ)
@@ -513,9 +522,25 @@ export function ShipmentsModule() {
                   )
                 })
               ) : (
-                <tr><td colSpan={12} className="py-16 text-center text-muted-foreground">
-                  <PackageSearch className="size-10 mx-auto mb-2 opacity-50" />
-                  لا توجد شحنات مطابقة
+                <tr><td colSpan={12} className="py-14 text-center text-muted-foreground">
+                  <div className="flex flex-col items-center gap-2 max-w-md mx-auto">
+                    <span className="flex items-center justify-center size-12 rounded-full bg-muted/70 text-muted-foreground/70">
+                      <PackageSearch className="size-6" />
+                    </span>
+                    <div className="text-sm font-semibold text-foreground mt-1">
+                      {hasFilters ? 'مفيش شحنات مطابقة للبحث ده' : 'لسه مفيش شحنات مسجّلة'}
+                    </div>
+                    <div className="text-xs">
+                      {hasFilters
+                        ? 'جرّب تغيّر كلمة البحث أو الفلاتر — أو سجّل شحنة جديدة لو متوقعة'
+                        : 'سجّل أول شحنة برقم الديليفري واختار المقاول — هتظهر هنا فورًا'}
+                    </div>
+                    {has('shipments.create') && (
+                      <Button size="sm" onClick={() => setAddOpen(true)} className="mt-1.5 min-h-[40px]">
+                        <Plus className="size-4" /> تسجيل شحنة جديدة
+                      </Button>
+                    )}
+                  </div>
                 </td></tr>
               )}
             </tbody>
@@ -537,9 +562,25 @@ export function ShipmentsModule() {
 
       {/* Mobile empty state */}
       {data && data.items.length === 0 && !isLoading && (
-        <Card className="md:hidden"><CardContent className="py-16 text-center text-muted-foreground">
-          <PackageSearch className="size-10 mx-auto mb-2 opacity-50" />
-          لا توجد شحنات مطابقة
+        <Card className="md:hidden"><CardContent className="py-12 px-6 text-center text-muted-foreground">
+          <div className="flex flex-col items-center gap-2 max-w-md mx-auto">
+            <span className="flex items-center justify-center size-12 rounded-full bg-muted/70 text-muted-foreground/70">
+              <PackageSearch className="size-6" />
+            </span>
+            <div className="text-sm font-semibold text-foreground mt-1">
+              {hasFilters ? 'مفيش شحنات مطابقة للبحث ده' : 'لسه مفيش شحنات مسجّلة'}
+            </div>
+            <div className="text-xs">
+              {hasFilters
+                ? 'جرّب تغيّر كلمة البحث أو الفلاتر — أو سجّل شحنة جديدة لو متوقعة'
+                : 'سجّل أول شحنة برقم الديليفري واختار المقاول — هتظهر هنا فورًا'}
+            </div>
+            {has('shipments.create') && (
+              <Button size="sm" onClick={() => setAddOpen(true)} className="mt-1.5 min-h-[40px]">
+                <Plus className="size-4" /> تسجيل شحنة جديدة
+              </Button>
+            )}
+          </div>
         </CardContent></Card>
       )}
 

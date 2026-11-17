@@ -15,6 +15,7 @@ import {
   Package, Banknote, Receipt, TrendingUp, TrendingDown,
   Truck, Clock, Moon, Undo2, ArrowRightLeft, Boxes,
   MapPin, UserCog, CalendarDays, Wallet, AlertCircle, Calendar, X,
+  PackagePlus, ClipboardCheck,
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart,
@@ -170,18 +171,83 @@ function MobileDateFilter({
 }
 
 // ---------------------------------------------------------------------------
-// الحاوية الرئيسية
+// شريط الإجراءات السريعة — 3 أزرار كبيرة في أول الرئيسية توصل المستخدم
+// لأهم عمليات الشغل اليومي مباشرة (تفتح الشاشة + النافذة جاهزة للإدخال)
 // ---------------------------------------------------------------------------
+export type QuickAction = 'new-shipment' | 'confirm-receipt' | 'new-payment'
+
+const QUICK_ACTIONS: { key: QuickAction; label: string; hint: string; icon: React.ElementType; classes: string; chip: string }[] = [
+  {
+    key: 'new-shipment',
+    label: 'تسجيل شحنة جديدة',
+    hint: 'اكتب رقم الديليفري واختر المقاول',
+    icon: PackagePlus,
+    classes: 'border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 text-primary',
+    chip: 'bg-primary/15 text-primary',
+  },
+  {
+    key: 'confirm-receipt',
+    label: 'تأكيد استلام إذن',
+    hint: 'ابحث برقم الديليفري واضغط علامة ✓',
+    icon: ClipboardCheck,
+    classes: 'border-emerald-300/60 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/50 text-emerald-700 dark:text-emerald-300',
+    chip: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+  },
+  {
+    key: 'new-payment',
+    label: 'تسجيل دفعة / مصروف',
+    hint: 'تعتيق · مبيت · مرتجع · دفعة للمقاول',
+    icon: Wallet,
+    classes: 'border-amber-300/60 bg-amber-500/5 hover:bg-amber-500/10 hover:border-amber-500/50 text-amber-700 dark:text-amber-300',
+    chip: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+  },
+]
+
+function QuickActionBar({ onAction, can }: { onAction: (a: QuickAction) => void; can: Record<QuickAction, boolean> }) {
+  const visible = QUICK_ACTIONS.filter((a) => can[a.key])
+  if (!visible.length || !onAction) return null
+  return (
+    <div className={cn('grid gap-2.5 stagger', visible.length === 3 ? 'sm:grid-cols-3' : visible.length === 2 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
+      {visible.map((a) => {
+        const Icon = a.icon
+        return (
+          <button
+            key={a.key}
+            onClick={() => onAction(a.key)}
+            className={cn(
+              'group flex items-center gap-3 rounded-2xl border-2 p-3.5 sm:p-4 text-right transition-all min-h-[68px] hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+              a.classes,
+            )}
+            aria-label={a.label}
+          >
+            <span className={cn('flex items-center justify-center size-11 rounded-xl shrink-0 transition-transform group-hover:scale-110', a.chip)}>
+              <Icon className="size-5.5" />
+            </span>
+            <span className="flex flex-col min-w-0">
+              <span className="text-sm sm:text-[15px] font-bold leading-tight">{a.label}</span>
+              <span className="text-[11px] opacity-75 truncate">{a.hint}</span>
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function DashboardModule({
   from,
   to,
   setFrom,
   setTo,
+  onQuickAction,
+  quickCan,
 }: {
   from?: string
   to?: string
   setFrom?: (v: string) => void
   setTo?: (v: string) => void
+  onQuickAction?: (action: QuickAction) => void
+  quickCan?: Partial<Record<QuickAction, boolean>>
 }) {
   const canPrices = useCanPrices()
   const qs = new URLSearchParams()
@@ -236,6 +302,17 @@ export function DashboardModule({
     <div className="space-y-4">
       {/* شريط فلترة التاريخ للموبايل */}
       {mobileFilter}
+      {/* === الإجراءات السريعة — أهم 3 عمليات يومية === */}
+      {onQuickAction && (
+        <QuickActionBar
+          onAction={onQuickAction}
+          can={{
+            'new-shipment': quickCan?.['new-shipment'] ?? false,
+            'confirm-receipt': quickCan?.['confirm-receipt'] ?? false,
+            'new-payment': quickCan?.['new-payment'] ?? false,
+          }}
+        />
+      )}
       {/* === المؤشرات الرئيسية (KPIs) === */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger">
         <Kpi title="إجمالي الشحنات" value={fmtNum(s.totalShipments)} icon={Package} tone="primary"

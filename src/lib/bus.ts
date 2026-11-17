@@ -31,12 +31,18 @@ export const bus = {
   },
 }
 
-/** أسماء الأحداث الموثقة (توحيد الاستخدام ومنع الأخطاء الإملائية) */
+/** أسماء الأحداث الموثقة (توثيق الاستخدام ومنع الأخطاء الإملائية) */
 export const BUS_EVENTS = {
   /** التنقل إلى وحدة — payload: { tab: ModuleKey } */
   NAVIGATE_TAB: 'navigate-tab',
   /** فتح عرض الأذونات المتأخرة في وحدة أذونات التسليم */
   OPEN_OVERDUE_RECEIPTS: 'open-overdue-receipts',
+  /** فتح نافذة تسجيل شحنة جديدة — من الأزرار السريعة في الرئيسية */
+  OPEN_SHIPMENT_CREATE: 'open-shipment-create',
+  /** فتح نافذة تسجيل بند إضافي/دفعة — من الأزرار السريعة في الرئيسية */
+  OPEN_EXTRA_COST_CREATE: 'open-extra-cost-create',
+  /** فتح أذونات التسليم على عرض «غير مسلمة» للتأشير ✓ — من الأزرار السريعة */
+  OPEN_RECEIPTS_PENDING: 'open-receipts-pending',
 } as const
 
 // ----------------------------------------------------------------------------

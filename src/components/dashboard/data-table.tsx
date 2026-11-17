@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Search, X } from 'lucide-react'
+import { Search, X, PackageOpen, type LucideIcon } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -28,6 +28,14 @@ interface DataTableProps<T> {
   columns: Column<T>[]
   loading?: boolean
   emptyText?: string
+  /** عنوان ودي للحالة الفارغة (مثل: «كل الأذونات مستلمة ✓») — يظهر فوق النص */
+  emptyTitle?: string
+  /** تلميح إرشادي قصير يشرح السبب أو الخطوة التالية */
+  emptyHint?: string
+  /** زر إجراء مباشر (مثل: تسجيل أول سجل) — يظهر أسفل التلميح */
+  emptyAction?: React.ReactNode
+  /** أيقونة الحالة الفارغة — افتراضيًا صندوق مفتوح */
+  emptyIcon?: LucideIcon
   getRowKey: (row: T, index: number) => string
   onRowClick?: (row: T) => void
   minW?: number
@@ -47,6 +55,10 @@ export function DataTable<T>({
   columns,
   loading,
   emptyText = 'لا توجد بيانات',
+  emptyTitle,
+  emptyHint,
+  emptyAction,
+  emptyIcon,
   getRowKey,
   onRowClick,
   minW = 800,
@@ -118,8 +130,16 @@ export function DataTable<T>({
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-14" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-2xl border border-border bg-card elev-sm py-16 text-center text-muted-foreground">
-          {emptyContent}
+        <div className="rounded-2xl border border-border bg-card elev-sm py-12 sm:py-14 px-6 text-center print:hidden">
+          <div className="flex flex-col items-center gap-2 max-w-md mx-auto">
+            <span className="flex items-center justify-center size-12 rounded-full bg-muted/70 text-muted-foreground/70">
+              {emptyIcon ? React.createElement(emptyIcon, { className: 'size-6' }) : <PackageOpen className="size-6" />}
+            </span>
+            {emptyTitle && <div className="text-sm font-semibold text-foreground mt-1">{emptyTitle}</div>}
+            <div className={cn('text-muted-foreground', emptyTitle ? 'text-xs' : 'text-sm')}>{emptyContent}</div>
+            {emptyHint && <div className="text-[11px] text-muted-foreground/80 leading-relaxed">{emptyHint}</div>}
+            {emptyAction && <div className="pt-1.5">{emptyAction}</div>}
+          </div>
         </div>
       ) : (
         <>

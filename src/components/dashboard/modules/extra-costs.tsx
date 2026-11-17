@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
+import { bus, BUS_EVENTS, consumeIntent } from '@/lib/bus'
 
 interface ExtraCostItem {
   id: string
@@ -133,6 +134,13 @@ export function ExtraCostsModule() {
   const summary = data?.summary
 
   React.useEffect(() => { setPage(1) }, [contractorId, type, status, search])
+
+  // زر «تسجيل دفعة / مصروف» السريع في الرئيسية — يفتح نافذة الإضافة جاهزة مباشرة
+  React.useEffect(() => {
+    const open = () => { if (canManage) openCreate() }
+    if (consumeIntent() === BUS_EVENTS.OPEN_EXTRA_COST_CREATE) open()
+    return bus.on(BUS_EVENTS.OPEN_EXTRA_COST_CREATE, open)
+  }, [])
 
   const openCreate = () => {
     setEditing(null)
@@ -344,6 +352,13 @@ export function ExtraCostsModule() {
         rows={items}
         loading={isLoading && !data}
         emptyText="لا توجد بنود إضافية مطابقة للفلترة"
+        emptyTitle="مفيش بنود إضافية مسجّلة"
+        emptyHint="سجّل تعتيق أو مبيت أو مرتجع أو دفعة للمقاول — البند بيظهر في حسابه بعد اعتماد الشركة"
+        emptyAction={canManage ? (
+          <Button size="sm" onClick={openCreate} className="min-h-[40px]">
+            <Plus className="size-4" /> تسجيل بند / دفعة
+          </Button>
+        ) : undefined}
         getRowKey={(x) => x.id}
         minW={1050}
         resetKey={`${contractorId}|${type}|${status}|${search}|${page}`}
