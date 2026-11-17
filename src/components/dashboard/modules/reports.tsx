@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { FileBarChart, FileSpreadsheet, Printer, Truck, Banknote, Users, Boxes, BookOpen, MapPin, Undo2, AlertCircle, Layers, CalendarDays, Sheet } from 'lucide-react'
+import { FileBarChart, FileSpreadsheet, Printer, Truck, Banknote, Users, Boxes, BookOpen, MapPin, Undo2, AlertCircle, Layers, CalendarDays, Sheet, TrendingUp } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +22,7 @@ import { PrintStage, usePrintModal } from '../print-stage'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 // تقرير التقرير الشهري للمقاول — خاص بواجهته (يدير بياناته بنفسه)
-type ReportType = 'shipments' | 'freight-margin' | 'contractor-dues' | 'customer-debts' | 'trial-balance' | 'inventory-movements' | 'low-stock' | 'pending-returns' | 'contractor-monthly'
+type ReportType = 'shipments' | 'freight-margin' | 'contractor-dues' | 'customer-debts' | 'trial-balance' | 'income-statement' | 'inventory-movements' | 'low-stock' | 'pending-returns' | 'contractor-monthly'
 
 // تقارير تكشف أسعارًا — تتطلب صلاحية prices.view (يُفرض أيضًا على الخادم)
 const PRICE_REPORTS = new Set<ReportType>(['shipments', 'freight-margin', 'contractor-dues', 'customer-debts', 'contractor-monthly'])
@@ -34,7 +34,8 @@ const REPORTS: { type: ReportType; title: string; desc: string; icon: React.Elem
   { type: 'contractor-dues', title: 'مستحقات المقاولين', desc: 'مستحقات المقاولين والمدفوع والمتبقي + البنود الإضافية المعتمدة', icon: Users, tone: 'bg-sky-100 text-sky-700' },
   { type: 'contractor-monthly', title: 'التقرير الشهري للمقاول', desc: 'كشف شهري موحد لكل مقاول: شغل + بنود معتمدة + مسحوبات + الصافي — للطباعة', icon: CalendarDays, tone: 'bg-emerald-100 text-emerald-700' },
   { type: 'customer-debts', title: 'ديون العملاء', desc: 'مديونيات العملاء ومحصّل منها', icon: Banknote, tone: 'bg-rose-100 text-rose-700' },
-  { type: 'trial-balance', title: 'ميزان المراجعة', desc: 'أرصدة الحسابات مدين/دائن', icon: BookOpen, tone: 'bg-purple-100 text-purple-700' },
+  { type: 'trial-balance', title: 'ميزان المراجعة', desc: 'أرصدة الحسابات مدين/دائن — مع فلترة بفترة زمنية', icon: BookOpen, tone: 'bg-purple-100 text-purple-700' },
+  { type: 'income-statement', title: 'قائمة الدخل', desc: 'الإيرادات والمصروفات وصافي الربح من دفتر الأستاذ', icon: TrendingUp, tone: 'bg-emerald-100 text-emerald-700' },
   { type: 'inventory-movements', title: 'حركة المخزون', desc: 'كل حركات الإضافة والصرف والتحويل', icon: Boxes, tone: 'bg-indigo-100 text-indigo-700' },
   { type: 'low-stock', title: 'الأصناف منخفضة المخزون', desc: 'أصناف وصلت تحت حد إعادة الطلب', icon: Boxes, tone: 'bg-orange-100 text-orange-700' },
 ]
@@ -109,7 +110,7 @@ export function ReportsModule() {
   // تصفية التقارير حسب الصلاحية — تقارير الأسعار تُخفى عن غير المصرح لهم
   const visibleReports = REPORTS.filter((r) => !PRICE_REPORTS.has(r.type) || canPrices)
 
-  if (active && (active === 'contractor-monthly' || data)) {
+  if (active && (active === 'contractor-monthly' || active === 'income-statement' || data)) {
     const activeReport = REPORTS.find((r) => r.type === active)
     // التقرير الشهري للمقاول — لوحة خاصة كاملة (مقاول + شهر + طباعة رسمية)
     if (active === 'contractor-monthly') {
@@ -122,6 +123,21 @@ export function ReportsModule() {
             </div>
           </div>
           <ContractorMonthlyReport />
+        </div>
+      )
+    }
+    // قائمة الدخل — بنية خاصة (إيرادات/مصروفات/صافي الربح) وليست جدول items
+    if (active === 'income-statement') {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setActive(null)}>← رجوع للتقارير</Button>
+              <h3 className="text-base font-semibold">{activeReport?.title}</h3>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="size-4" /> طباعة</Button>
+          </div>
+          <IncomeStatementView data={data} loading={isLoading} />
         </div>
       )
     }
@@ -316,6 +332,66 @@ function PendingReturnsReport({
             searchFn={(s, q) => (s.shipmentNo || '').toLowerCase().includes(q) || (s.courierName || '').toLowerCase().includes(q) || (s.recipientName || '').toLowerCase().includes(q)}
             searchPlaceholder="بحث برقم الشحنة/المندوب..."
           />
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// قائمة الدخل — الإيرادات (حسابات 4xxx) والمصروفات (حسابات 5xxx) وصافي الربح
+// مستمدة من دفتر الأستاذ (القيود المرحّلة فقط) — شكل خاص غير جدولي
+// ---------------------------------------------------------------------------
+function IncomeStatementView({ data, loading }: { data?: any; loading: boolean }) {
+  if (loading) return <Skeleton className="h-96 rounded-xl" />
+  const revenue = data?.revenue ?? []
+  const expenses = data?.expenses ?? []
+  const totalRevenue = data?.totalRevenue ?? 0
+  const totalExpenses = data?.totalExpenses ?? 0
+  const netProfit = data?.netProfit ?? 0
+  const row = (x: any, sign: 'credit' | 'debit') => (
+    <div key={x.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-border/60 last:border-0">
+      <span className="text-sm flex items-center gap-2 min-w-0">
+        <span className="font-mono text-xs text-muted-foreground">{x.code}</span>
+        <span className="truncate-1">{x.name}</span>
+      </span>
+      <span className="tnum font-medium shrink-0">{fmtNum(x.amount)}</span>
+    </div>
+  )
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2"><TrendingUp className="size-4 text-emerald-600" /> الإيرادات</CardTitle>
+            <CardDescription>حسابات الإيرادات من القيود المرحّلة (سلسلة 4)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {revenue.length ? revenue.map((x: any) => row(x, 'credit')) : <div className="text-sm text-muted-foreground py-3">لا توجد إيرادات مسجلة</div>}
+            <div className="flex items-center justify-between pt-2 mt-1 border-t-2 border-border font-bold text-sm">
+              <span>إجمالي الإيرادات</span><span className="tnum">{fmtNum(totalRevenue)}</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2"><TrendingUp className="size-4 text-rose-600 rotate-180" /> المصروفات</CardTitle>
+            <CardDescription>حسابات المصروفات من القيود المرحّلة (سلسلة 5)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {expenses.length ? expenses.map((x: any) => row(x, 'debit')) : <div className="text-sm text-muted-foreground py-3">لا توجد مصروفات مسجلة</div>}
+            <div className="flex items-center justify-between pt-2 mt-1 border-t-2 border-border font-bold text-sm">
+              <span>إجمالي المصروفات</span><span className="tnum">{fmtNum(totalExpenses)}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      <Card>
+        <CardContent className="p-4 flex items-center justify-between gap-2">
+          <span className="text-sm font-bold">صافي الربح (الإيرادات − المصروفات)</span>
+          <Badge variant="outline" className={cn('text-sm tnum px-3 py-1', netProfit >= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300')}>
+            {fmtNum(netProfit)} ج.م
+          </Badge>
         </CardContent>
       </Card>
     </div>

@@ -213,8 +213,19 @@ export async function listParties(q: URLSearchParams, user?: { permissions: stri
 // ---------------------------------------------------------------------------
 export async function listJournal(q: URLSearchParams) {
   const status = q.get('status')
+  // فلاتر موسّعة: الفترة الزمنية + الحساب + مصدر القيد (يدوي/سند/تسليم/بند إضافي...)
+  const from = q.get('from') || null
+  const to = q.get('to') || null
+  const accountId = q.get('accountId') || null
+  const sourceType = q.get('sourceType') || null
+  const where: Prisma.JournalEntryWhereInput = {
+    ...(status ? { status } : {}),
+    ...(sourceType ? { sourceType } : {}),
+    ...(from || to ? { date: dateRange(from, to) } : {}),
+    ...(accountId ? { lines: { some: { accountId } } } : {}),
+  }
   const rows = await db.journalEntry.findMany({
-    where: status ? { status } : undefined,
+    where,
     include: {
       branch: { select: { id: true, name: true } },
       lines: { include: { account: true, party: { select: { id: true, name: true } }, shipment: { select: { shipmentNo: true } } } },
@@ -728,15 +739,21 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
   }
 
   if (type === 'trial-balance') {
-    const [accounts, bal] = await Promise.all([
-      db.account.findMany({ where: { isDetail: true }, orderBy: { code: 'asc' } }),
-      accountBalancesMap(db),
-    ])
+    const range = dateRange(from, to)
+    // بفترة: حركة الفترة فقط (مدين/دائن داخل الفترة) — بلا فترة: الأرصدة التراكمية الكاملة
+    const bal = range
+      ? await db.journalLine.groupBy({
+          by: ['accountId'],
+          where: { entry: { status: 'posted', date: range } },
+          _sum: { debit: true, credit: true },
+        }).then((grouped) => new Map(grouped.map((g) => [g.accountId, { debit: round2(g._sum.debit ?? 0), credit: round2(g._sum.credit ?? 0) }])))
+      : await accountBalancesMap(db)
+    const accounts = await db.account.findMany({ where: { isDetail: true }, orderBy: { code: 'asc' } })
     const items = accounts.map((a) => {
       const b = bal.get(a.id) ?? { debit: 0, credit: 0 }
       return { ...a, parent: null, debit: b.debit, credit: b.credit, balance: round2(b.debit - b.credit) }
     })
-    return { items }
+    return { items, period: range ? { from: from || null, to: to || null } : null }
   }
 
   if (type === 'income-statement') {

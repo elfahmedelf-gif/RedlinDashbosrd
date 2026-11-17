@@ -13,6 +13,40 @@ import { syncPermissionsCatalog } from './perm-sync'
 let seedPromise: Promise<void> | null = null
 
 /**
+ * ربط الحسابات التفصيلية بمجموعاتها في الشجرة — خريطة مرجعية ثابتة للدليل المحاسبي.
+ * تُستخدم عند البذر الأول وتُعاد تطبيقها بشكل idempotent عند كل إقلاع (تصحيح قواعد قديمة
+ * كان فيها الحسابات التفصيلية بلا أب فتظهر في جذر الشجرة بدل مجموعاتها).
+ */
+export const ACCOUNT_PARENT_BY_CODE: Record<string, string> = {
+  '1101': '11', '1102': '11', '1103': '11', '1104': '11',
+  '1201': '12',
+  '2101': '21', '2102': '21', '2103': '21', '2104': '21',
+  '3101': '3', '3102': '3',
+  '4101': '4', '4102': '4', '4103': '4',
+  '5101': '5', '5102': '5', '5103': '5', '5104': '5',
+}
+
+/** تصحيح شجرة الحسابات: كل حساب تفصيلي معروف الكود يُربط بمجموعته الأم (idempotent) */
+export async function ensureAccountTree(): Promise<void> {
+  const detached = await db.account.findMany({
+    where: { parentId: null, code: { in: Object.keys(ACCOUNT_PARENT_BY_CODE) } },
+    select: { id: true, code: true },
+  })
+  if (!detached.length) return
+  const groups = await db.account.findMany({ where: { isDetail: false }, select: { id: true, code: true } })
+  const byCode = new Map(groups.map((g) => [g.code, g.id]))
+  let fixed = 0
+  for (const acc of detached) {
+    const pid = byCode.get(ACCOUNT_PARENT_BY_CODE[acc.code])
+    if (pid) {
+      await db.account.update({ where: { id: acc.id }, data: { parentId: pid } })
+      fixed++
+    }
+  }
+  if (fixed) console.log(`[seed] تم ربط ${fixed} حساب تفصيلي بمجموعته في شجرة الحسابات`)
+}
+
+/**
  * يُستدعى من كل مسارات API — يزرع البيانات مرة واحدة فقط.
  * يستخدم "قفل تهيئة" عبر قيد فريد في قاعدة البيانات نفسها لمنع
  * تزامن أكثر من نافذة تشغيل (multiple module instances/processes).
@@ -49,6 +83,12 @@ export async function ensureSeeded(): Promise<void> {
       }
     } catch (e) {
       console.warn('[perm-sync] فشلت مزامنة الصلاحيات (ستُعاد في الإقلاع القادم):', (e as Error)?.message)
+    }
+    // تصحيح شجرة الحسابات — يضمن ظهور الحسابات التفصيلية تحت مجموعاتها في كل الإقلاعات
+    try {
+      await ensureAccountTree()
+    } catch (e) {
+      console.warn('[seed] فشل تصحيح شجرة الحسابات:', (e as Error)?.message)
     }
   })()
   seedPromise.catch(() => { seedPromise = null })
@@ -114,6 +154,13 @@ async function runSeed(): Promise<void> {
           nameEn: 'Courier Custody (COD)', type: 'liability', parentId: liabilityGroup?.id ?? null,
           isDetail: true, active: true, createdAt: new Date(),
         })
+      }
+      // ربط الحسابات التفصيلية بمجموعاتها (mock-data القديم كان يتركها بلا أب — شجرة مسطحة)
+      const groupIds = new Map(accounts.filter((a: any) => !a.isDetail).map((a: any) => [a.code, a.id]))
+      for (const a of accounts) {
+        if (!a.parentId && ACCOUNT_PARENT_BY_CODE[a.code]) {
+          a.parentId = groupIds.get(ACCOUNT_PARENT_BY_CODE[a.code]) ?? null
+        }
       }
       await tx.account.createMany({ data: accounts })
 

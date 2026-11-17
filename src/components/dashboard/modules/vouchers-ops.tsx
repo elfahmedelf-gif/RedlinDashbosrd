@@ -9,11 +9,12 @@
 // ============================================================================
 
 import * as React from 'react'
+import { flushSync } from 'react-dom'
 import useSWR from 'swr'
 import {
   Landmark, Plus, Trash2, Printer, FileSpreadsheet, Clock, CheckCircle2, FileText,
   Loader2, Banknote, BanknoteArrowDown, Link2, Search, X,
-  PackageCheck, AlertCircle, Undo2,
+  PackageCheck, AlertCircle, Undo2, BookOpen, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -298,12 +299,25 @@ export function VouchersModule() {
   const { data: usersRes } = useSWR<{ items: any[] }>('/api/users', fetcher)
   const { data: branchesRes } = useSWR<{ items: any[] }>('/api/branches', fetcher)
   const { data: lookupsRes } = useSWR<{ items: any[] }>('/api/lookups?category=shipment_status', fetcher)
+  // حسابات الخزينة (الصندوق/البنوك + الصناديق الفرعية) — لمنتقي الخزينة في السندات المالية
+  // تُجلب فقط لمن يملك صلاحية الأسعار (منشئو السندات المالية)
+  const { data: accountsRes } = useSWR<{ items: any[] }>(canPrices ? '/api/accounts' : null, fetcher)
 
   const items = data?.items ?? []
   const parties = partiesRes?.items ?? []
   const users = usersRes?.items ?? []
   const branches = branchesRes?.items ?? []
   const shipmentStatusMap = React.useMemo(() => buildShipmentStatusMap(lookupsRes?.items), [lookupsRes])
+
+  // خيارات الخزينة: تفصيلية/مفعّلة تحت 1101 الصندوق أو 1102 البنوك
+  const treasuryAccounts = React.useMemo(() => {
+    const accs = accountsRes?.items ?? []
+    const byId = new Map(accs.map((a: any) => [a.id, a]))
+    return accs.filter((a: any) => a.isDetail && a.active && (
+      a.code === '1101' || a.code === '1102' ||
+      (a.parentId && (byId.get(a.parentId)?.code === '1101' || byId.get(a.parentId)?.code === '1102'))
+    ))
+  }, [accountsRes])
 
   // ---- Type grouping (for selects) ----
   const typesByCategory = React.useMemo(() => {
@@ -325,6 +339,7 @@ export function VouchersModule() {
     destBranchId: '',
     amount: '',
     accountName: 'الصندوق',
+    cashAccountId: '',
     notes: '',
   })
   const [addedShipments, setAddedShipments] = React.useState<any[]>([])
@@ -345,12 +360,21 @@ export function VouchersModule() {
         destBranchId: branches[0]?.id ?? '',
         amount: '',
         accountName: 'الصندوق',
+        cashAccountId: '',
         notes: '',
       })
       setAddedShipments([])
       setErr('')
     }
   }, [open, branches])
+
+  // تعيين الخزينة الافتراضية (الصندوق 1101) عند فتح إذن مالي — إن توفرت قائمة الخزينة
+  React.useEffect(() => {
+    if (open && tdef?.isFinancial && !v.cashAccountId && treasuryAccounts.length) {
+      const cash = treasuryAccounts.find((a: any) => a.code === '1101') ?? treasuryAccounts[0]
+      setV((cur: any) => ({ ...cur, cashAccountId: cash.id, accountName: cash.name }))
+    }
+  }, [open, tdef?.isFinancial, treasuryAccounts.length])
 
   React.useEffect(() => {
     // default source/dest branch when loaded
@@ -379,6 +403,7 @@ export function VouchersModule() {
           destBranchId: voucher.destBranchId ?? '',
           amount: voucher.amount ?? '',
           accountName: voucher.accountName ?? 'الصندوق',
+          cashAccountId: voucher.cashAccountId ?? '',
           notes: voucher.notes ?? '',
         })
         setEErr('')
@@ -418,6 +443,7 @@ export function VouchersModule() {
       if (t.isFinancial && (!v.amount || Number(v.amount) <= 0)) throw new Error('أدخل مبلغًا صحيحًا')
       if (t.requiresShipments && addedShipments.length === 0) throw new Error('أضف شحنة واحدة على الأقل')
 
+      const finAcc = treasuryAccounts.find((a: any) => a.id === v.cashAccountId)
       const body: any = {
         type: v.type,
         employeeId: v.employeeId || null,
@@ -426,14 +452,17 @@ export function VouchersModule() {
         sourceBranchId: v.sourceBranchId || null,
         destBranchId: v.destBranchId || null,
         amount: t.isFinancial ? Number(v.amount) : null,
-        accountName: t.isFinancial ? v.accountName : null,
+        accountName: t.isFinancial ? (finAcc?.name ?? v.accountName ?? 'الصندوق') : null,
+        cashAccountId: t.isFinancial ? (v.cashAccountId || null) : null,
         notes: v.notes || null,
         shipmentIds: addedShipments.map((s) => s.id),
         userName: me?.username,
       }
       const res: any = await apiPost('/api/vouchers', body)
+      // إغلاق الحوار في commit مستقل قبل أي تحديث بيانات — يمنع سباق React 19
+      // (تفكيك refs في Radix Presence أثناء رندر متزامن للبيانات = حلقة setState)
+      flushSync(() => setOpen(false))
       toast({ title: 'تم إنشاء الإذن', description: `رقم الإذن: ${res?.voucherNo ?? '—'}` })
-      setOpen(false)
       refreshAll()
     } catch (e: any) {
       setErr(e.message)
@@ -453,6 +482,7 @@ export function VouchersModule() {
       if (t.requiresParty && !ev.partyId) throw new Error('حدد الطرف')
       if (t.requiresDestBranch && !ev.destBranchId) throw new Error('حدد فرع الاستلام')
       if (t.isFinancial && (!ev.amount || Number(ev.amount) <= 0)) throw new Error('أدخل مبلغًا صحيحًا')
+      const finAccEdit = treasuryAccounts.find((a: any) => a.id === ev.cashAccountId)
       await apiPatch(`/api/vouchers/${editId}`, {
         notes: ev.notes ?? null,
         partyId: ev.partyId || null,
@@ -461,11 +491,12 @@ export function VouchersModule() {
         sourceBranchId: ev.sourceBranchId || null,
         destBranchId: ev.destBranchId || null,
         amount: t.isFinancial ? Number(ev.amount) : undefined,
-        accountName: t.isFinancial ? ev.accountName : undefined,
+        accountName: t.isFinancial ? (finAccEdit?.name ?? ev.accountName) : undefined,
+        cashAccountId: t.isFinancial ? (ev.cashAccountId || null) : undefined,
         userName: me?.username,
       })
+      flushSync(() => setEditId(null))
       toast({ title: 'تم تعديل الإذن' })
-      setEditId(null)
       refreshAll()
     } catch (e: any) {
       setEErr(e.message)
@@ -1055,8 +1086,36 @@ export function VouchersModule() {
                     <Input type="number" min="0" step="0.01" value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} />
                   </div>
                   <div>
-                    <label className="text-xs font-medium">الحساب</label>
-                    <Input value={v.accountName} onChange={(e) => setV({ ...v, accountName: e.target.value })} />
+                    <label className="text-xs font-medium">الخزينة / الحساب النقدي *</label>
+                    {treasuryAccounts.length > 0 ? (
+                      <>
+                        <Select
+                          value={v.cashAccountId || treasuryAccounts[0].id}
+                          onValueChange={(val) => {
+                            const acc = treasuryAccounts.find((a: any) => a.id === val)
+                            setV({ ...v, cashAccountId: val, accountName: acc?.name ?? v.accountName })
+                          }}
+                        >
+                          <SelectTrigger><SelectValue placeholder="اختر الخزينة..." /></SelectTrigger>
+                          <SelectContent>
+                            {treasuryAccounts.map((a: any) => (
+                              <SelectItem key={a.id} value={a.id}>{a.code} - {a.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {(() => {
+                          const acc = treasuryAccounts.find((a: any) => a.id === (v.cashAccountId || treasuryAccounts[0]?.id))
+                          if (!acc) return null
+                          return (
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              الرصيد الحالي: <b className="tnum text-foreground">{fmtNum(acc.balance)}</b> ج.م — يُرحّل القيد على هذا الحساب عند الإكمال
+                            </p>
+                          )
+                        })()}
+                      </>
+                    ) : (
+                      <Input value={v.accountName} onChange={(e) => setV({ ...v, accountName: e.target.value })} placeholder="اسم الحساب..." />
+                    )}
                   </div>
                 </>
               )}
@@ -1168,8 +1227,36 @@ export function VouchersModule() {
                     <Input type="number" min="0" step="0.01" value={ev.amount ?? ''} onChange={(e) => setEv({ ...ev, amount: e.target.value })} />
                   </div>
                   <div>
-                    <label className="text-xs font-medium">الحساب</label>
-                    <Input value={ev.accountName ?? ''} onChange={(e) => setEv({ ...ev, accountName: e.target.value })} />
+                    <label className="text-xs font-medium">الخزينة / الحساب النقدي</label>
+                    {treasuryAccounts.length > 0 ? (
+                      <>
+                        <Select
+                          value={ev.cashAccountId || treasuryAccounts[0].id}
+                          onValueChange={(val) => {
+                            const acc = treasuryAccounts.find((a: any) => a.id === val)
+                            setEv({ ...ev, cashAccountId: val, accountName: acc?.name ?? ev.accountName })
+                          }}
+                        >
+                          <SelectTrigger><SelectValue placeholder="اختر الخزينة..." /></SelectTrigger>
+                          <SelectContent>
+                            {treasuryAccounts.map((a: any) => (
+                              <SelectItem key={a.id} value={a.id}>{a.code} - {a.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {(() => {
+                          const acc = treasuryAccounts.find((a: any) => a.id === (ev.cashAccountId || treasuryAccounts[0]?.id))
+                          if (!acc) return null
+                          return (
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              الرصيد الحالي: <b className="tnum text-foreground">{fmtNum(acc.balance)}</b> ج.م
+                            </p>
+                          )
+                        })()}
+                      </>
+                    ) : (
+                      <Input value={ev.accountName ?? ''} onChange={(e) => setEv({ ...ev, accountName: e.target.value })} />
+                    )}
                   </div>
                 </>
               )}
@@ -1242,7 +1329,7 @@ export function VouchersModule() {
                   <DetailItem label="الفرع المصدر" value={detailData.sourceBranch?.name ?? '—'} />
                   <DetailItem label="فرع الاستلام" value={detailData.destBranch?.name ?? '—'} />
                   {/* الحساب والقيمة المالية — فقط لمن يملك صلاحية الأسعار */}
-                  {canPrices && <DetailItem label="الحساب" value={detailData.accountName ?? '—'} />}
+                  {canPrices && <DetailItem label="الخزينة" value={detailData.cashAccount ? `${detailData.cashAccount.code} - ${detailData.cashAccount.name}` : (detailData.accountName ?? '—')} />}
                   {canPrices && <DetailItem label="القيمة" value={`${fmtNum(detailData.totalValue ?? 0)} ج.م`} />}
                   <DetailItem label="القيد" value={detailData.journalEntryNo ?? '—'} mono />
                   <DetailItem label="عدد الشحنات" value={`${detailData.itemCount ?? 0}`} />
@@ -1254,6 +1341,11 @@ export function VouchersModule() {
                     <div className="text-[10px] font-bold text-muted-foreground mb-0.5">ملاحظات</div>
                     <div className="text-sm whitespace-pre-wrap">{detailData.notes}</div>
                   </div>
+                )}
+
+                {/* القيد المحاسبي المرتبط — قابل للتوسيع لعرض سطور القيد (لمن يملك صلاحية الأسعار) */}
+                {canPrices && detailData.journalEntryId && (
+                  <VoucherJournalCard entryId={detailData.journalEntryId} entryNo={detailData.journalEntryNo} />
                 )}
 
                 <Separator />
@@ -1462,6 +1554,69 @@ function DetailItem({ label, value, mono }: { label: string; value: string; mono
     <div className="border border-border rounded-md px-2.5 py-1.5">
       <div className="text-[10px] text-muted-foreground">{label}</div>
       <div className={cn('text-xs font-medium truncate-1', mono && 'font-mono')}>{value}</div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// القيد المحاسبي المرتبط بالسند المالي — قابل للتوسيع لعرض سطور القيد كاملة
+// (التتبع ثنائي الاتجاه: من السند إلى القيد — والعكس متاح من شارة المصدر في اليومية)
+// ---------------------------------------------------------------------------
+function VoucherJournalCard({ entryId, entryNo }: { entryId: string; entryNo?: string | null }) {
+  const [expanded, setExpanded] = React.useState(false)
+  const { data, isLoading } = useSWR<any>(expanded && entryId ? `/api/journal/${entryId}` : null, fetcher)
+  return (
+    <div className="border border-border rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-muted/30 hover:bg-muted/60 transition-colors"
+        aria-expanded={expanded}
+      >
+        <span className="text-xs font-bold flex items-center gap-1.5">
+          <BookOpen className="size-3.5 text-primary" />
+          القيد المحاسبي المرتبط
+          {entryNo && <span className="font-mono text-muted-foreground font-normal">({entryNo})</span>}
+        </span>
+        {expanded ? <ChevronUp className="size-3.5 text-muted-foreground" /> : <ChevronDown className="size-3.5 text-muted-foreground" />}
+      </button>
+      {expanded && (
+        <div className="p-2">
+          {isLoading && <div className="px-1 py-2 text-xs text-muted-foreground">جاري تحميل القيد...</div>}
+          {!isLoading && !data && <div className="px-1 py-2 text-xs text-destructive">تعذر تحميل القيد</div>}
+          {!isLoading && data && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs" style={{ minWidth: 480 }}>
+                <thead className="bg-muted/40 text-muted-foreground">
+                  <tr>
+                    <th className="font-medium px-2 py-1.5 text-right">الحساب</th>
+                    <th className="font-medium px-2 py-1.5 text-right">الطرف</th>
+                    <th className="font-medium px-2 py-1.5 text-left">مدين</th>
+                    <th className="font-medium px-2 py-1.5 text-left">دائن</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.lines ?? []).map((l: any) => (
+                    <tr key={l.id} className="border-t border-border">
+                      <td className="px-2 py-1.5"><span className="font-mono text-muted-foreground">{l.account?.code}</span> {l.account?.name}</td>
+                      <td className="px-2 py-1.5">{l.party?.name ?? '—'}</td>
+                      <td className="px-2 py-1.5 text-left tnum">{l.debit ? fmtNum(l.debit) : '—'}</td>
+                      <td className="px-2 py-1.5 text-left tnum">{l.credit ? fmtNum(l.credit) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-muted/30 border-t font-bold">
+                  <tr>
+                    <td colSpan={2} className="px-2 py-1.5">الإجمالي ({data.status === 'posted' ? 'مرحّل' : data.status === 'void' ? 'ملغي' : 'مسودة'})</td>
+                    <td className="px-2 py-1.5 text-left tnum">{fmtNum(data.totalDebit)}</td>
+                    <td className="px-2 py-1.5 text-left tnum">{fmtNum(data.totalCredit)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

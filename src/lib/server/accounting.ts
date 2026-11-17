@@ -210,6 +210,50 @@ export async function reverseJournal(tx: Tx, id: string, user: JUser, reason?: s
   return reversal
 }
 
+/** تعديل قيد مسودة — استبدال كامل للسطور بعد التحقق (المسودات فقط) */
+export async function updateJournalDraft(
+  tx: Tx,
+  id: string,
+  opts: Omit<CreateJournalOpts, 'status' | 'sourceType' | 'sourceId' | 'preventDuplicateSource' | 'allowIfReversed'>,
+) {
+  const e = await tx.journalEntry.findUnique({ where: { id } })
+  if (!e) throw new ApiError(404, 'القيد غير موجود')
+  if (e.status !== 'draft') throw new ApiError(409, 'لا يمكن تعديل قيد مرحّل أو ملغي — استخدم القيد العكسي للتصحيح')
+  const { clean, totalDebit, totalCredit } = await validateLines(tx, opts.lines)
+  const updated = await tx.journalEntry.update({
+    where: { id },
+    data: {
+      date: opts.date ? new Date(opts.date as any) : e.date,
+      description: opts.description ?? e.description,
+      reference: opts.reference ?? null,
+      branchId: opts.branchId ?? null,
+      totalDebit,
+      totalCredit,
+      lines: {
+        // استبدال كامل للسطور — أبسط وأأمن من المطابقة سطرًا بسطر
+        deleteMany: {},
+        create: clean.map((l) => ({
+          accountId: l.accountId,
+          debit: l.debit,
+          credit: l.credit,
+          description: l.description ?? null,
+          partyId: l.partyId ?? null,
+          shipmentId: l.shipmentId ?? null,
+          costCenterId: l.costCenterId ?? null,
+        })),
+      },
+    },
+  })
+  await logAudit(tx, {
+    action: 'update', entity: 'journal_entry', entityId: id,
+    notes: `تعديل قيد مسودة ${e.entryNo} — ${opts.description ?? e.description}`,
+    user: opts.user,
+    before: { totalDebit: e.totalDebit, totalCredit: e.totalCredit },
+    after: { totalDebit, totalCredit },
+  })
+  return updated
+}
+
 /** إلغاء قيد مسودة (وليس مرحّلًا) */
 export async function voidJournal(tx: Tx, id: string, user: JUser, reason?: string) {
   const e = await tx.journalEntry.findUnique({ where: { id } })

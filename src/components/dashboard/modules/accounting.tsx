@@ -2,15 +2,15 @@
 
 // ============================================================================
 // وحدات المحاسبة — شجرة الحسابات (AccountsModule) + دفتر اليومية (JournalModule)
-// الحسابات: إضافة/تعديل (الاسم) + تفعيل/إيقاف + حذف — عبر PATCH و DELETE على
-// /api/accounts مع إظهار أخطاء الخادم العربية (409: حساب له حركات...)
-// اليومية: ترحيل/حذف للمسودات، إلغاء (void)، عكس القيود المرحّلة بالقيد العكسي،
-// وترحيل جماعي لقيود تسليم الشحنات غير المرحّلة (backfill) — بفرض الصلاحية.
+// الحسابات: بطاقات الخزينة (الصندوق/البنوك/العهد) + كشف حساب تفاعلي لكل حساب
+// (رصيد افتتاحي + حركات + رصيد متحرك بفترة) + إضافة/تعديل/تفعيل/حذف عبر /api/accounts
+// اليومية: فلاتر موسّعة (الحالة/المصدر/الحساب/الفترة) + شارة مصدر القيد والطرف
+// + ترحيل/تعديل المسودة (PATCH)/حذف/إلغاء/عكس + ترحيل جماعي لقيود التسليم (backfill)
 // ============================================================================
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { Plus, Trash2, BookOpen, FileText, Check, Undo2, Ban, UploadCloud, SquarePen, Loader2 } from 'lucide-react'
+import { Plus, Trash2, BookOpen, FileText, Check, Undo2, Ban, UploadCloud, SquarePen, Loader2, ScrollText, Wallet, Landmark, HandCoins, X } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -32,18 +32,60 @@ import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
+// === شارات مصدر القيد — تتبع أصل كل قيد (يدوي/سند/تسليم/مرتجع/بند إضافي/عكسي/افتتاحي) ===
+const JOURNAL_SOURCES: Record<string, { label: string; tone: string }> = {
+  manual: { label: 'يدوي', tone: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' },
+  op_voucher: { label: 'سند مالي', tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+  shipment_delivery: { label: 'تسليم شحنة', tone: 'bg-sky-50 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300' },
+  shipment_return_reversal: { label: 'عكس مرتجع', tone: 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
+  extra_cost: { label: 'بند إضافي', tone: 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  journal_reversal: { label: 'قيد عكسي', tone: 'bg-orange-50 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300' },
+  seed: { label: 'افتتاحي', tone: 'bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300' },
+}
+
 // === Chart of Accounts ===
 export function AccountsModule() {
   const { toast } = useToast()
   const { has } = useAuth()
   const { confirmDelete } = useConfirm()
-  const canManage = has('accounting.journal')
+  // مطابقة الخادم: إدارة الحسابات بصلاحية accounting.accounts.manage
+  const canManage = has('accounting.accounts.manage')
   const [open, setOpen] = React.useState(false)
   // حوار تعديل الحساب (الاسم العربي/الإنجليزي — الكود والحساب الأب ثابتان على الخادم)
   const [editAcc, setEditAcc] = React.useState<any>(null)
   const [ev, setEv] = React.useState({ name: '', nameEn: '' })
   const [eSaving, setESaving] = React.useState(false)
+  // حوار كشف الحساب — رصيد افتتاحي + حركات الفترة + رصيد متحرك
+  const [stmtAcc, setStmtAcc] = React.useState<any>(null)
+  const [stmtFrom, setStmtFrom] = React.useState('')
+  const [stmtTo, setStmtTo] = React.useState('')
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/accounts', fetcher, { refreshInterval: 30000 })
+
+  const openStatement = (a: any) => {
+    setStmtFrom('')
+    setStmtTo('')
+    setStmtAcc(a)
+  }
+
+  const stmtQ = new URLSearchParams()
+  if (stmtFrom) stmtQ.set('from', stmtFrom)
+  if (stmtTo) stmtQ.set('to', stmtTo)
+  const { data: stmtData, isLoading: stmtLoading } = useSWR<any>(
+    stmtAcc ? `/api/accounts/${stmtAcc.id}/statement?${stmtQ.toString()}` : null,
+    fetcher,
+  )
+
+  // بطاقات الخزينة — أرصدة الحسابات النقدية الرئيسية من القيود المرحّلة
+  const accountsByIdx = React.useMemo(() => {
+    const map = new Map<string, any>()
+    for (const a of data?.items ?? []) map.set(a.code, a)
+    return map
+  }, [data])
+  const treasuryCards = [
+    { code: '1101', label: 'الصندوق', hint: 'النقدية بالخزينة', icon: Wallet, tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+    { code: '1102', label: 'البنوك', hint: 'أرصدة الحسابات البنكية', icon: Landmark, tone: 'bg-sky-50 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300' },
+    { code: '2104', label: 'عهد المندوبين', hint: 'نقدية COD مع المندوبين', icon: HandCoins, tone: 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  ].filter((c) => accountsByIdx.has(c.code))
 
   // build tree
   const tree = React.useMemo(() => {
@@ -150,7 +192,12 @@ export function AccountsModule() {
     { key: 'debit', header: 'مدين', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum">{fmtNum(a.debit)}</span> },
     { key: 'credit', header: 'دائن', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum">{fmtNum(a.credit)}</span> },
     { key: 'balance', header: 'الرصيد', align: 'left' as const, width: 'w-28', render: (a: any) => <span className="tnum font-bold">{fmtNum(a.balance)}</span> },
-    // إدارة الحسابات — بصلاحية accounting.journal (الخادم يفرضها أيضًا)
+    { key: 'stmt', header: 'الكشف', align: 'center' as const, width: 'w-14', hideInCard: true, render: (a: any) => (
+      <Button variant="ghost" size="sm" onClick={() => openStatement(a)} title="عرض كشف الحساب" aria-label={`كشف الحساب ${a.name}`}>
+        <ScrollText className="size-3.5 text-primary" />
+      </Button>
+    ) },
+    // إدارة الحسابات — بصلاحية accounting.accounts.manage (الخادم يفرضها أيضًا)
     ...(canManage ? [{
       key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-36',
       render: (a: any) => (
@@ -172,8 +219,58 @@ export function AccountsModule() {
     }] : []),
   ]
 
+  // أعمدة كشف الحساب — حركة مزدوجة مع الرصيد المتحرك
+  const stmtColumns = [
+    { key: 'date', header: 'التاريخ', align: 'center' as const, width: 'w-28', render: (l: any) => <span className="text-xs tnum">{fmtDate(l.date)}</span> },
+    { key: 'entryNo', header: 'القيد', align: 'center' as const, width: 'w-24', primary: true, render: (l: any) => <span className="font-mono text-xs font-bold">{l.entryNo}</span> },
+    { key: 'desc', header: 'البيان', render: (l: any) => (
+      <div className="min-w-0">
+        <div className="text-sm truncate-1">{l.description || l.lineDescription || '—'}</div>
+        {l.lineDescription && l.description && <div className="text-[10px] text-muted-foreground truncate-1">{l.lineDescription}</div>}
+      </div>
+    ) },
+    { key: 'party', header: 'الطرف', width: 'w-32', render: (l: any) => <span className="text-xs truncate-1 block">{l.party?.name || '—'}</span> },
+    { key: 'debit', header: 'مدين', align: 'left' as const, width: 'w-28', render: (l: any) => <span className="tnum">{l.debit ? fmtNum(l.debit) : '—'}</span> },
+    { key: 'credit', header: 'دائن', align: 'left' as const, width: 'w-28', render: (l: any) => <span className="tnum">{l.credit ? fmtNum(l.credit) : '—'}</span> },
+    { key: 'balance', header: 'الرصيد', align: 'left' as const, width: 'w-32', render: (l: any) => <span className="tnum font-bold">{fmtNum(l.balance)}</span> },
+  ]
+
   return (
     <div className="space-y-4">
+      {/* بطاقات الخزينة — لمحة فورية عن النقدية والعهد */}
+      {treasuryCards.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {treasuryCards.map((c) => {
+            const acc = accountsByIdx.get(c.code)
+            const Icon = c.icon
+            return (
+              <button
+                key={c.code}
+                onClick={() => openStatement(acc)}
+                className="text-right border border-border rounded-xl p-4 bg-card hover:border-primary/40 hover:shadow-sm transition-all"
+                title="اضغط لعرض كشف الحساب"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={cn('flex items-center justify-center w-9 h-9 rounded-lg shrink-0', c.tone)}>
+                      <Icon className="size-4.5" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold truncate">{c.label}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">{c.hint} · <span className="font-mono">{c.code}</span></div>
+                    </div>
+                  </div>
+                  <div className="text-left shrink-0">
+                    <div className="text-lg font-bold tnum">{fmtNum(acc?.balance ?? 0)}</div>
+                    <div className="text-[10px] text-muted-foreground">ج.م</div>
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-2 print:hidden">
         <div className="flex items-center gap-2 min-w-0">
           <BookOpen className="size-5 text-muted-foreground shrink-0" />
@@ -184,9 +281,9 @@ export function AccountsModule() {
         )}
       </div>
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">شجرة الحسابات</CardTitle><CardDescription>مع أرصدة من القيود المرحّلة</CardDescription></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">شجرة الحسابات</CardTitle><CardDescription>الحسابات التفصيلية تحت مجموعاتها — مع أرصدة من القيود المرحّلة وضغط على أيقونة الكشف لعرض كشف الحساب</CardDescription></CardHeader>
         <CardContent className="p-0">
-          <DataTable rows={tree} columns={columns} loading={isLoading} getRowKey={(a: any) => a.id} minW={canManage ? 920 : 800} searchFn={(a, q) => (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالاسم أو الكود..." />
+          <DataTable rows={tree} columns={columns} loading={isLoading} getRowKey={(a: any) => a.id} minW={canManage ? 980 : 860} searchFn={(a, q) => (a.name || '').toLowerCase().includes(q) || (a.code || '').toLowerCase().includes(q)} searchPlaceholder="بحث بالاسم أو الكود..." />
         </CardContent>
       </Card>
       <EntityFormDialog open={open} onOpenChange={setOpen} title="إضافة حساب" fields={fields} initial={{}} onSubmit={submit} />
@@ -216,6 +313,63 @@ export function AccountsModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* حوار كشف الحساب — رصيد افتتاحي + حركات الفترة + رصيد متحرك */}
+      <Dialog open={!!stmtAcc} onOpenChange={(o) => !o && setStmtAcc(null)}>
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 flex-wrap">
+              <ScrollText className="size-4 text-primary" />
+              كشف الحساب{stmtAcc ? ` — ${stmtAcc.code} ${stmtAcc.name}` : ''}
+            </DialogTitle>
+            <DialogDescription>الحركات من القيود المرحّلة فقط مع الرصيد المتحرك — حدد الفترة لتصفية الكشف (الافتتاحي يُحسب من قبل الفترة).</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-end gap-2 flex-wrap py-1">
+            <div className="w-[150px]">
+              <label className="text-xs font-medium">من تاريخ</label>
+              <Input type="date" className="h-8 text-xs" value={stmtFrom} onChange={(e) => setStmtFrom(e.target.value)} />
+            </div>
+            <div className="w-[150px]">
+              <label className="text-xs font-medium">إلى تاريخ</label>
+              <Input type="date" className="h-8 text-xs" value={stmtTo} onChange={(e) => setStmtTo(e.target.value)} />
+            </div>
+            {(stmtFrom || stmtTo) && (
+              <Button variant="ghost" size="sm" className="h-8" onClick={() => { setStmtFrom(''); setStmtTo('') }}>
+                <X className="size-3.5" /> مسح الفترة
+              </Button>
+            )}
+            <div className="flex items-center gap-2 mr-auto text-xs tnum">
+              <Badge variant="outline" className="bg-muted/50">
+                افتتاحي: {fmtNum(stmtData?.opening ?? 0)}
+              </Badge>
+              {stmtData?.totals && (
+                <Badge variant="outline" className={cn('font-bold', Math.abs(stmtData.totals.closing) > 0.001 ? 'bg-primary/10 text-primary' : '')}>
+                  ختامي: {fmtNum(stmtData.totals.closing)}
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          <DataTable
+            rows={stmtData?.items ?? []}
+            columns={stmtColumns}
+            loading={stmtLoading}
+            getRowKey={(l: any) => l.id}
+            minW={900}
+            searchFn={(l, q) => (l.entryNo || '').toLowerCase().includes(q) || (l.description || '').toLowerCase().includes(q) || (l.lineDescription || '').toLowerCase().includes(q) || (l.party?.name || '').toLowerCase().includes(q)}
+            searchPlaceholder="بحث برقم القيد/البيان/الطرف..."
+          />
+
+          {stmtData?.totals && (
+            <div className="flex items-center justify-end gap-4 text-xs tnum border-t border-border pt-2">
+              <span className="text-muted-foreground">حركة الفترة — مدين: <b className="text-foreground">{fmtNum(stmtData.totals.debit)}</b></span>
+              <span className="text-muted-foreground">دائن: <b className="text-foreground">{fmtNum(stmtData.totals.credit)}</b></span>
+              <span className="text-muted-foreground">عدد الحركات: <b className="text-foreground">{stmtData.items?.length ?? 0}</b></span>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -227,8 +381,22 @@ export function JournalModule() {
   const { confirmDelete, confirm: confirmDialog } = useConfirm()
   const canManage = has('accounting.journal')
   const [open, setOpen] = React.useState(false)
+  // القيد الجاري تحريره (null = إنشاء جديد) — المسودات فقط قابلة للتعديل
+  const [editing, setEditing] = React.useState<any>(null)
+  // فلاتر موسّعة — الحالة/المصدر/الحساب/الفترة (تُطبق على الخادم)
   const [statusFilter, setStatusFilter] = React.useState<string>('all')
-  const { data, isLoading, mutate } = useSWR<{ items: any[] }>(`/api/journal?status=${statusFilter !== 'all' ? statusFilter : ''}`, fetcher, { refreshInterval: 30000 })
+  const [sourceFilter, setSourceFilter] = React.useState<string>('all')
+  const [accountFilter, setAccountFilter] = React.useState<string>('')
+  const [dateFrom, setDateFrom] = React.useState('')
+  const [dateTo, setDateTo] = React.useState('')
+
+  const jq = new URLSearchParams()
+  if (statusFilter !== 'all') jq.set('status', statusFilter)
+  if (sourceFilter !== 'all') jq.set('sourceType', sourceFilter)
+  if (accountFilter) jq.set('accountId', accountFilter)
+  if (dateFrom) jq.set('from', dateFrom)
+  if (dateTo) jq.set('to', dateTo)
+  const { data, isLoading, mutate } = useSWR<{ items: any[] }>(`/api/journal?${jq.toString()}`, fetcher, { refreshInterval: 30000 })
   const { data: accounts } = useSWR<{ items: any[] }>('/api/accounts', fetcher)
   const { data: parties } = useSWR<{ items: any[] }>('/api/parties', fetcher)
   const { data: branches } = useSWR<{ items: any[] }>('/api/branches', fetcher)
@@ -238,7 +406,8 @@ export function JournalModule() {
   const [err, setErr] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   React.useEffect(() => {
-    if (open) {
+    // إعادة التعيين عند فتح حوار الإنشاء فقط — التحرير يُملأ مسبقًا في openEdit
+    if (open && !editing) {
       setLines([{ accountId: '', debit: '', credit: '', description: '', partyId: '' }, { accountId: '', debit: '', credit: '', description: '', partyId: '' }])
       setHeader({ date: new Date().toISOString().slice(0, 10), description: '', reference: '', branchId: '', autoPost: false })
       setErr('')
@@ -262,16 +431,47 @@ export function JournalModule() {
   const addLine = () => setLines((arr) => [...arr, { accountId: '', debit: '', credit: '', description: '', partyId: '' }])
   const removeLine = (i: number) => setLines((arr) => arr.filter((_, idx) => idx !== i))
 
+  const closeDialog = () => { setOpen(false); setEditing(null) }
+
+  // فتح حوار تعديل مسودة — تعبئة مسبقة للترويسة والسطور من القيد الحالي
+  const openEdit = (e: any) => {
+    setEditing(e)
+    setHeader({
+      date: e.date ? String(e.date).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      description: e.description ?? '',
+      reference: e.reference ?? '',
+      branchId: e.branchId ?? '',
+      autoPost: false,
+    })
+    setLines((e.lines ?? []).map((l: any) => ({
+      accountId: l.accountId ?? '',
+      debit: l.debit ? String(l.debit) : '',
+      credit: l.credit ? String(l.credit) : '',
+      description: l.description ?? '',
+      partyId: l.partyId ?? '',
+    })))
+    setErr('')
+    setOpen(true)
+  }
+
   const submit = async () => {
     setLoading(true); setErr('')
     try {
       if (!isBalanced) throw new Error(`القيد غير متوازن — المدين ${totalDebit} ≠ الدائن ${totalCredit}`)
-      await apiPost('/api/journal', {
+      const payload = {
         ...header,
         date: header.date,
         lines: lines.map((l) => ({ accountId: l.accountId, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, description: l.description, partyId: l.partyId || null })),
-      })
-      toast({ title: 'تم إنشاء القيد' }); setOpen(false); mutate()
+      }
+      if (editing) {
+        // تعديل مسودة — استبدال كامل للترويسة والسطور على الخادم
+        await apiPatch(`/api/journal/${editing.id}`, payload)
+        toast({ title: 'تم تعديل القيد', description: editing.entryNo })
+      } else {
+        await apiPost('/api/journal', payload)
+        toast({ title: 'تم إنشاء القيد' })
+      }
+      closeDialog(); mutate()
     } catch (e: any) { setErr(e.message) } finally { setLoading(false) }
   }
 
@@ -351,6 +551,8 @@ export function JournalModule() {
     }
   }
 
+  const hasFilters = statusFilter !== 'all' || sourceFilter !== 'all' || !!accountFilter || !!dateFrom || !!dateTo
+
   const columns = [
     { key: 'no', header: 'رقم القيد', primary: true, align: 'center' as const, width: 'w-24', render: (e: any) => <span className="font-mono text-xs font-bold">{e.entryNo}</span> },
     { key: 'date', header: 'التاريخ', hideInCard: true, align: 'center' as const, width: 'w-32', render: (e: any) => <span className="text-xs tnum">{fmtDate(e.date)}</span> },
@@ -358,14 +560,27 @@ export function JournalModule() {
       key: 'desc', header: 'البيان', hideInCard: true,
       render: (e: any) => (
         <div className="min-w-0">
-          <div className="text-sm font-medium truncate-1">{e.description || '-'}</div>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-sm font-medium truncate-1 min-w-0">{e.description || '-'}</span>
+            {/* شارة مصدر القيد — يدوي/سند مالي/تسليم/بند إضافي/عكسي/افتتاحي */}
+            {e.sourceType && JOURNAL_SOURCES[e.sourceType] && (
+              <Badge variant="outline" className={cn('text-[9px] px-1 py-0 shrink-0 font-normal', JOURNAL_SOURCES[e.sourceType].tone)}>
+                {JOURNAL_SOURCES[e.sourceType].label}
+              </Badge>
+            )}
+          </div>
           {e.reference && <div className="text-[10px] text-muted-foreground">مرجع: {e.reference}</div>}
-          {/* سطور القيد — مع شارة الشحنة المرتبطة إن وُجدت */}
+          {/* سطور القيد — مع شارات الطرف والشحنة المرتبطة */}
           {(e.lines ?? []).length > 0 && (
             <div className="mt-1 space-y-0.5 max-h-20 overflow-y-auto no-scrollbar">
               {(e.lines ?? []).map((l: any) => (
                 <div key={l.id} className="flex items-center gap-1.5 text-[10px] text-muted-foreground min-w-0">
                   <span className="truncate-1 min-w-0">{[l.account?.code, l.description || l.account?.name].filter(Boolean).join(' · ')}</span>
+                  {l.party?.name && (
+                    <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 bg-primary/5 text-primary font-normal">
+                      {l.party.name}
+                    </Badge>
+                  )}
                   {l.shipmentNo && (
                     <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 bg-muted/50 text-muted-foreground font-normal">
                       شحنة: {l.shipmentNo}
@@ -402,7 +617,7 @@ export function JournalModule() {
       ),
     },
     {
-      key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-28', hideInCard: false,
+      key: 'actions', header: 'إجراءات', align: 'center' as const, width: 'w-32', hideInCard: false,
       render: (e: any) => {
         // عمليات القيود تتطلب صلاحية accounting.journal (الخادم يفرضها أيضًا)
         if (!canManage) return <span className="text-muted-foreground text-xs">—</span>
@@ -412,6 +627,9 @@ export function JournalModule() {
               <>
                 <Button variant="ghost" size="sm" onClick={() => post(e.id)} title="ترحيل القيد" aria-label={`ترحيل القيد ${e.entryNo}`}>
                   <Check className="size-3.5 text-emerald-600" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => openEdit(e)} title="تعديل القيد (مسودة)" aria-label={`تعديل القيد ${e.entryNo}`}>
+                  <SquarePen className="size-3.5 text-primary" />
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => voidEntry(e)} title="إلغاء القيد (يبقى في السجل)" aria-label={`إلغاء القيد ${e.entryNo}`}>
                   <Ban className="size-3.5 text-amber-600" />
@@ -435,7 +653,7 @@ export function JournalModule() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <FileText className="size-5 text-muted-foreground shrink-0" />
           <span className="text-sm text-muted-foreground tnum shrink-0">{data?.items.length ?? 0} قيد</span>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -447,6 +665,35 @@ export function JournalModule() {
               <SelectItem value="void">الملغية فقط</SelectItem>
             </SelectContent>
           </Select>
+          {/* فلتر مصدر القيد */}
+          <Select value={sourceFilter} onValueChange={setSourceFilter}>
+            <SelectTrigger className="w-32 sm:w-36 h-8 min-w-0"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">كل المصادر</SelectItem>
+              {Object.entries(JOURNAL_SOURCES).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {/* فلتر الحساب — قيود تلمس حسابًا معينًا */}
+          <Select value={accountFilter || '__'} onValueChange={(v) => setAccountFilter(v === '__' ? '' : v)}>
+            <SelectTrigger className="w-40 sm:w-48 h-8 min-w-0"><SelectValue placeholder="كل الحسابات" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__">كل الحسابات</SelectItem>
+              {detailAccounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.code} - {a.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {/* فلتر الفترة */}
+          <div className="flex items-center gap-1">
+            <Input type="date" className="h-8 w-[130px] text-xs" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="من تاريخ" />
+            <span className="text-muted-foreground text-xs">→</span>
+            <Input type="date" className="h-8 w-[130px] text-xs" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="إلى تاريخ" />
+          </div>
+          {hasFilters && (
+            <Button variant="ghost" size="sm" className="h-8" onClick={() => { setStatusFilter('all'); setSourceFilter('all'); setAccountFilter(''); setDateFrom(''); setDateTo('') }}>
+              <X className="size-3.5" /> مسح
+            </Button>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {canManage && (
@@ -457,7 +704,7 @@ export function JournalModule() {
             </Button>
           )}
           {canManage && (
-            <Button onClick={() => setOpen(true)} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">قيد جديد</span><span className="sm:hidden">جديد</span></Button>
+            <Button onClick={() => { setEditing(null); setOpen(true) }} size="sm" className="shrink-0"><Plus className="size-4" /> <span className="hidden sm:inline">قيد جديد</span><span className="sm:hidden">جديد</span></Button>
           )}
         </div>
       </div>
@@ -472,17 +719,21 @@ export function JournalModule() {
           (e.entryNo || '').toLowerCase().includes(q) ||
           (e.description || '').toLowerCase().includes(q) ||
           (e.reference || '').toLowerCase().includes(q) ||
-          (e.lines ?? []).some((l: any) => (l.shipmentNo || '').toLowerCase().includes(q))
+          (e.lines ?? []).some((l: any) => (l.shipmentNo || '').toLowerCase().includes(q) || (l.party?.name || '').toLowerCase().includes(q) || (l.account?.name || '').toLowerCase().includes(q))
         }
-        searchPlaceholder="بحث برقم القيد/البيان/الشحنة..."
+        searchPlaceholder="بحث برقم القيد/البيان/الشحنة/الطرف..."
       />
 
-      {/* Create journal entry dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      {/* Create/Edit journal entry dialog */}
+      <Dialog open={open} onOpenChange={(o) => { if (!o) closeDialog(); else setOpen(true) }}>
         <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>قيد يومية جديد</DialogTitle>
-            <DialogDescription>القيد المزدوج — يجب أن يكون المدين = الدائن. يُحفظ كمسودة ما لم تفعّل «ترحيل مباشر».</DialogDescription>
+            <DialogTitle>{editing ? `تعديل القيد المسودة — ${editing.entryNo}` : 'قيد يومية جديد'}</DialogTitle>
+            <DialogDescription>
+              {editing
+                ? 'التعديل متاح للمسودات فقط — سيُستبدل الترويسة والسطور بالكامل بعد التحقق من التوازن.'
+                : 'القيد المزدوج — يجب أن يكون المدين = الدائن. يُحفظ كمسودة ما لم تفعّل «ترحيل مباشر».'}
+            </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 py-2">
             <div><label className="text-xs font-medium">التاريخ</label><Input type="date" value={header.date} onChange={(e) => setHeader({ ...header, date: e.target.value })} /></div>
@@ -494,13 +745,15 @@ export function JournalModule() {
               </Select>
             </div>
             <div className="sm:col-span-3"><label className="text-xs font-medium">البيان</label><Input value={header.description} onChange={(e) => setHeader({ ...header, description: e.target.value })} placeholder="بيان القيد..." /></div>
-            <div className="sm:col-span-3 flex items-center gap-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg p-2.5">
-              <Switch id="autopost" checked={!!header.autoPost} onCheckedChange={(c) => setHeader({ ...header, autoPost: c })} />
-              <label htmlFor="autopost" className="text-xs cursor-pointer">
-                <span className="font-bold">ترحيل مباشر</span>
-                <span className="text-muted-foreground block text-[10px] mt-0.5">عند التفعيل، يُرحّل القيد فورًا بعد الحفظ (لا يمكن تعديله بعدها — استخدم قيدًا عكسيًا).</span>
-              </label>
-            </div>
+            {!editing && (
+              <div className="sm:col-span-3 flex items-center gap-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg p-2.5">
+                <Switch id="autopost" checked={!!header.autoPost} onCheckedChange={(c) => setHeader({ ...header, autoPost: c })} />
+                <label htmlFor="autopost" className="text-xs cursor-pointer">
+                  <span className="font-bold">ترحيل مباشر</span>
+                  <span className="text-muted-foreground block text-[10px] mt-0.5">عند التفعيل، يُرحّل القيد فورًا بعد الحفظ (لا يمكن تعديله بعدها — استخدم قيدًا عكسيًا).</span>
+                </label>
+              </div>
+            )}
           </div>
           {/* Lines — md+: جدول الإدخال كما هو (يظل هو المعروض في الطباعة) | الموبايل: بطاقات عمودية بالأسفل */}
           <div className="hidden md:block border border-border rounded-lg overflow-hidden">
@@ -617,8 +870,8 @@ export function JournalModule() {
           </div>
           {err && <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{err}</div>}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>إلغاء</Button>
-            <Button onClick={submit} disabled={loading || !isBalanced}>{loading ? 'جاري...' : 'حفظ القيد'}</Button>
+            <Button variant="outline" onClick={closeDialog}>إلغاء</Button>
+            <Button onClick={submit} disabled={loading || !isBalanced}>{loading ? 'جاري...' : editing ? 'حفظ التعديل' : 'حفظ القيد'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -16,6 +16,7 @@ import { QuickTourButton } from '@/components/dashboard/quick-tour'
 import { DarkModeToggle } from '@/components/dashboard/dark-mode-toggle'
 import { UserMenu } from '@/components/dashboard/user-menu'
 import { AuthProvider, useAuth } from '@/components/dashboard/auth-provider'
+import { ModuleErrorBoundary } from '@/components/dashboard/module-error-boundary'
 import { ConfirmProvider } from '@/components/ui/confirm-dialog'
 import { LoginScreen, AuthSplash } from '@/components/dashboard/login-screen'
 import { DashboardModule, type QuickAction } from '@/components/dashboard/modules/dashboard'
@@ -336,21 +337,22 @@ function DashboardShell() {
               subtitle={labels.subtitle}
               user={user?.name}
             />
-            <div key={tab} className="anim-fade-in">
-              {tab === 'overview' && (
-                <DashboardModule
-                  from={from || undefined}
-                  to={to || undefined}
-                  setFrom={setFrom}
-                  setTo={setTo}
-                  onQuickAction={handleQuickAction}
-                  quickCan={{
-                    'new-shipment': has('shipments.create'),
-                    'confirm-receipt': has('shipments.receipts') || has('shipments.view'),
-                    'new-payment': has('parties.extras.manage'),
-                  }}
-                />
-              )}
+            <ModuleErrorBoundary>
+              <div key={tab} className="anim-fade-in">
+                {tab === 'overview' && (
+                  <DashboardModule
+                    from={from || undefined}
+                    to={to || undefined}
+                    setFrom={setFrom}
+                    setTo={setTo}
+                    onQuickAction={handleQuickAction}
+                    quickCan={{
+                      'new-shipment': has('shipments.create'),
+                      'confirm-receipt': has('shipments.receipts') || has('shipments.view'),
+                      'new-payment': has('parties.extras.manage'),
+                    }}
+                  />
+                )}
               {tab === 'executive' && <ExecutiveModule />}
               {tab === 'shipments' && <ShipmentsModule />}
               {tab === 'receipts' && <ReceiptsModule />}
@@ -375,7 +377,8 @@ function DashboardShell() {
               {tab === 'lookups' && <LookupsModule />}
               {tab === 'settings' && <SettingsModule />}
               {tab === 'audit' && <AuditModule />}
-            </div>
+              </div>
+            </ModuleErrorBoundary>
             {/* تذييل التقرير — خانات التوقيع، تظهر فقط في الطباعة */}
             <PrintFooter />
           </div>

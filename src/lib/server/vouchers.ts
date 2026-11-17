@@ -81,6 +81,7 @@ type VoucherRow = Prisma.OpVoucherGetPayload<{
   include: {
     sourceBranch: true; destBranch: true; employee: { select: { id: true; name: true } }
     courier: { select: { id: true; name: true } }; party: { select: { id: true; name: true } }
+    cashAccount: { select: { id: true; code: true; name: true } }
     journalEntry: { select: { id: true; entryNo: true } }
     items: { include: { shipment: { include: { customer: { select: { id: true; name: true } } } } } }
     actions: { orderBy: { at: 'asc' } }
@@ -123,6 +124,8 @@ export function enrichVoucher(v: VoucherRow) {
     notes: v.notes,
     attachments: [] as any[],
     accountName: v.accountName,
+    cashAccountId: v.cashAccountId,
+    cashAccount: branchRef(v.cashAccount),
     vehicleNo: v.vehicleNo,
     driverName: v.driverName,
     journalEntryId: v.journalEntryId,
@@ -304,6 +307,9 @@ export async function createVoucher(user: SessionUser, body: any) {
   const type = body.type ?? 'receiving'
   const tdef = voucherTypeDef(type)
   if (!tdef) throw new ApiError(400, 'نوع الإذن غير معروف')
+  // السندات المالية (تحصيل/صرف/توريد/تسوية) تتطلب صلاحية رؤية المبالغ — حماية خادمية فعلية
+  // (كانت مخفية على الواجهة فقط فيمكن تجاوزها عبر API)
+  if (tdef.isFinancial) assertPerm(user, 'prices.view')
   const branchId = body.sourceBranchId || null
   const shipmentIds: string[] = Array.isArray(body.shipmentIds)
     ? body.shipmentIds
@@ -428,6 +434,8 @@ export async function patchVoucher(user: SessionUser, voucherId: string, body: a
   return db.$transaction(async (tx) => {
     const v = await loadVoucher(tx, voucherId)
     if (v.status !== 'draft' && v.status !== 'rejected') throw new ApiError(409, 'لا يمكن تعديل إذن بهذه الحالة')
+    // تعديل سند مالي (مبلغ/حساب الخزينة) يتطلب صلاحية رؤية المبالغ أيضًا
+    if (voucherTypeDef(v.type)?.isFinancial) assertPerm(user, 'prices.view')
     if (body.type && body.type !== v.type) throw new ApiError(400, 'لا يمكن تغيير نوع الإذن بعد الإنشاء')
     await assertVoucherRefs(tx, { partyId: body.partyId, courierId: body.courierId, employeeId: body.employeeId, destBranchId: body.destBranchId, cashAccountId: body.cashAccountId })
     const tdef = voucherTypeDef(v.type)
