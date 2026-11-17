@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'shipments.edit')
+    const user = await requirePerm(req, 'receipts.manage')
     const { id } = await params
     const body = await readBody(req)
     return updateDeliveryReceipt(user, id, body)
@@ -23,7 +23,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'shipments.delete')
+    const user = await requirePerm(req, 'receipts.manage')
     const { id } = await params
     if (!id) throw new ApiError(400, 'معرف الإذن مطلوب')
     return deleteDeliveryReceipt(user, id)

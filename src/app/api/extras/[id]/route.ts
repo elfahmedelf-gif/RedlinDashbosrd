@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.extras.manage')
+    const user = await requirePerm(req, 'extra_costs.create')
     const { id } = await params
     const body = await readBody(req)
     return updateExtraCost({ userId: user.userId, username: user.username }, id, body)
@@ -20,7 +20,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.extras.manage')
+    const user = await requirePerm(req, 'extra_costs.delete')
     const { id } = await params
     return deleteExtraCost({ userId: user.userId, username: user.username }, id)
   })

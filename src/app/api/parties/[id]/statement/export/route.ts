@@ -7,7 +7,8 @@
 import { NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
 import { ApiError } from '@/lib/server/http'
-import { requirePerm } from '@/lib/server/session'
+import { requireUser } from '@/lib/server/session'
+import { matchPermission } from '@/lib/permissions'
 import { ensureSeeded } from '@/lib/server/seed'
 import { getPartyStatement } from '@/lib/server/statement'
 
@@ -49,8 +50,11 @@ const CELL_CENTER = { horizontal: 'center' as const, vertical: 'middle' as const
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await ensureSeeded()
-    // كشف الحساب يكشف مبالغًا — نفس سياسة الشاشة: parties.view (المبالغ تُفرغ لغير أصحاب prices.view على الخادم)
-    await requirePerm(req, 'parties.view')
+    // كشف الحساب يكشف مبالغًا — يُسمح لمن يملك عرض الأطراف أو صلاحية تصدير/طباعة الكشوف
+    const u = await requireUser(req)
+    if (!matchPermission(u.permissions, 'parties.view') && !matchPermission(u.permissions, 'reports.export')) {
+      throw new ApiError(403, 'غير مصرح — هذه العملية تتطلب صلاحية "parties.view" أو "reports.export"')
+    }
     const { id } = await params
     const q = new URL(req.url).searchParams
     const from = q.get('from')

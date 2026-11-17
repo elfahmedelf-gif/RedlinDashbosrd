@@ -57,7 +57,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.manage')
+    const user = await requirePerm(req, 'parties.delete')
     const { id } = await params
 
     await db.$transaction(async (tx) => {

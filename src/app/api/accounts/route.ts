@@ -19,7 +19,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'accounting.journal')
+    const user = await requirePerm(req, 'accounting.accounts.manage')
     const b = await readBody(req)
     if (!b.name || !String(b.name).trim()) throw new ApiError(400, 'اسم الحساب مطلوب')
 
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'accounting.journal')
+    const user = await requirePerm(req, 'accounting.accounts.manage')
     const b = await readBody(req)
     if (!b.id) throw new ApiError(400, 'معرف الحساب مطلوب')
 
@@ -108,7 +108,7 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'accounting.journal')
+    const user = await requirePerm(req, 'accounting.accounts.manage')
     const b = await readBody(req)
     if (!b.id) throw new ApiError(400, 'معرف الحساب مطلوب')
 

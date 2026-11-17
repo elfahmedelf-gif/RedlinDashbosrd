@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.extras.view')
+    const user = await requirePerm(req, 'extra_costs.view')
     return listExtraCosts(new URL(req.url).searchParams, user)
   })
 }
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.extras.manage')
+    const user = await requirePerm(req, 'extra_costs.create')
     const body = await readBody(req)
     return withIdempotency(req, 'extra_cost:create', () =>
       createExtraCost({ userId: user.userId, username: user.username, permissions: user.permissions }, body),

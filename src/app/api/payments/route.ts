@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.extras.view')
+    const user = await requirePerm(req, 'payments.view')
     return listContractorPayments(new URL(req.url).searchParams, user)
   })
 }
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'vouchers.create')
+    const user = await requirePerm(req, 'payments.create')
     const body = await readBody(req)
     return recordContractorPayment(user, body)
   })

@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   try {
     await ensureSeeded()
-    const user = await requirePerm(req, 'settings.manage')
+    const user = await requirePerm(req, 'backup.export')
 
     // لقطة كاملة لكل جداول النظام — توازي (أسرع) ثم تُجمَّع في كائن واحد
     const [

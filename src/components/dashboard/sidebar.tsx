@@ -62,11 +62,11 @@ export const MODULES: ModuleDef[] = [
 /** الصلاحية المطلوبة لكل وحدة */
 export const MODULE_PERMISSIONS: Record<ModuleKey, string> = {
   overview: 'dashboard.view',
-  executive: 'dashboard.view',
+  executive: 'executive.view',
   shipments: 'shipments.view',
-  receipts: 'shipments.view',
-  'extra-costs': 'parties.extras.view',
-  'pending-returns': 'vouchers.view',
+  receipts: 'receipts.view',
+  'extra-costs': 'extra_costs.view',
+  'pending-returns': 'returns.view',
   customers: 'parties.view',
   contractors: 'parties.view',
   suppliers: 'parties.view',

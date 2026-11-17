@@ -16,6 +16,8 @@ interface AuthContextValue {
   logout: () => void
   /** فحص صلاحية — true دائمًا لو مفيش مستخدم (قبل تسجيل الدخول نستخدمها بحذر) */
   has: (permission: string) => boolean
+  /** إعادة تحميل الجلسة من الخادم — لتطبيق تعديلات الأدوار فورًا دون إعادة تسجيل دخول */
+  refresh: () => Promise<SessionUser | null>
 }
 
 const AuthContext = React.createContext<AuthContextValue | null>(null)
@@ -50,14 +52,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }, [user])
 
+  /** إعادة التحقق من الجلسة من الخادم — تلتقط أي تعديل صلاحيات حديث فورًا */
+  const refresh = React.useCallback(async () => {
+    const u = await restoreSession()
+    setUser(u)
+    return u
+  }, [])
+
   const has = React.useCallback(
     (permission: string) => (user ? matchPermission(user.permissions, permission) : false),
     [user],
   )
 
   const value = React.useMemo(
-    () => ({ user, loading, login, logout, has }),
-    [user, loading, login, logout, has],
+    () => ({ user, loading, login, logout, has, refresh }),
+    [user, loading, login, logout, has, refresh],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

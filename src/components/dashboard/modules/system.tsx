@@ -9,6 +9,7 @@ import useSWR from 'swr'
 import {
   Plus, Pencil, Trash2, UserCircle, Shield, Settings as SettingsIcon, History,
   Check, Save, KeyRound, ShieldCheck, ShieldOff, LogIn, LogOut, DatabaseBackup,
+  ListChecks, ListX,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -266,7 +267,7 @@ export function UsersModule() {
 // === Roles & Permissions ===
 // ============================================================================
 function PermissionMatrix({ selected, onChange, disabled }: { selected: string[]; onChange: (perms: string[]) => void; disabled?: boolean }) {
-  const set = new Set(selected)
+  const set = React.useMemo(() => new Set(selected), [selected])
   const toggle = (key: string) => {
     if (disabled) return
     const next = new Set(set)
@@ -274,54 +275,89 @@ function PermissionMatrix({ selected, onChange, disabled }: { selected: string[]
     else next.add(key)
     onChange(Array.from(next))
   }
-  const toggleGroup = (group: string) => {
+  /** تحديد الكل / إلغاء الكل لمجموعة وحدة — أزرار صريحة (وليس مجرد قلب الحالة) */
+  const setGroup = (group: string, on: boolean) => {
     if (disabled) return
     const keys = PERMISSION_CATALOG.filter((p) => p.group === group).map((p) => p.key)
-    const allOn = keys.every((k) => set.has(k))
     const next = new Set(set)
-    keys.forEach((k) => (allOn ? next.delete(k) : next.add(k)))
+    keys.forEach((k) => (on ? next.add(k) : next.delete(k)))
     onChange(Array.from(next))
   }
+  const toggleGroup = (group: string) => {
+    const keys = PERMISSION_CATALOG.filter((p) => p.group === group).map((p) => p.key)
+    setGroup(group, !keys.every((k) => set.has(k)))
+  }
+  /** تحديد الكل / إلغاء الكل للدور بالكامل */
+  const setAll = (on: boolean) => {
+    if (disabled) return
+    onChange(on ? PERMISSION_CATALOG.map((p) => p.key) : [])
+  }
+  const allOnCount = PERMISSION_CATALOG.filter((p) => set.has(p.key)).length
+  const everyOn = allOnCount === PERMISSION_CATALOG.length
 
   return (
-    <div className="space-y-3 max-h-[50vh] overflow-y-auto pl-1 scrollbar-thin">
-      {PERMISSION_GROUPS.map((group) => {
-        const defs = PERMISSION_CATALOG.filter((p) => p.group === group)
-        const onCount = defs.filter((d) => set.has(d.key)).length
-        const allOn = onCount === defs.length
-        return (
-          <div key={group} className="rounded-xl border border-border overflow-hidden">
-            <div className="flex items-center justify-between gap-2 bg-muted/50 px-3 py-2">
-              <div
-                onClick={() => toggleGroup(group)}
-                role="button"
-                tabIndex={disabled ? -1 : 0}
-                onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleGroup(group) } }}
-                className={cn('flex items-center gap-2 text-xs font-bold hover:text-primary transition-colors cursor-pointer', disabled && 'opacity-60 cursor-not-allowed')}
-              >
-                <Checkbox checked={allOn} disabled={disabled} onCheckedChange={() => toggleGroup(group)} aria-label={`تحديد كل صلاحيات ${group}`} />
-                <span>{group}</span>
+    <div className="space-y-3">
+      {/* شريط التحديد الشامل للدور */}
+      <div className="flex items-center justify-between gap-2 flex-wrap rounded-xl border border-primary/30 bg-primary/5 px-3 py-2">
+        <div className="flex items-center gap-2 text-xs font-bold">
+          <Checkbox checked={everyOn} disabled={disabled} onCheckedChange={(c) => setAll(!!c)} aria-label="تحديد كل صلاحيات النظام لهذا الدور" />
+          <span>كل الصلاحيات ({fmtNum(allOnCount)}/{fmtNum(PERMISSION_CATALOG.length)})</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => setAll(true)} className="h-7 text-[11px] px-2">
+            <ListChecks className="size-3" /> تحديد الكل
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => setAll(false)} className="h-7 text-[11px] px-2 text-destructive hover:text-destructive">
+            <ListX className="size-3" /> إلغاء الكل
+          </Button>
+        </div>
+      </div>
+      <div className="space-y-3 max-h-[50vh] overflow-y-auto pl-1 scrollbar-thin">
+        {PERMISSION_GROUPS.map((group) => {
+          const defs = PERMISSION_CATALOG.filter((p) => p.group === group)
+          const onCount = defs.filter((d) => set.has(d.key)).length
+          const allOn = onCount === defs.length
+          return (
+            <div key={group} className="rounded-xl border border-border overflow-hidden">
+              <div className="flex items-center justify-between gap-2 bg-muted/50 px-3 py-2 flex-wrap">
+                <div
+                  onClick={() => toggleGroup(group)}
+                  role="button"
+                  tabIndex={disabled ? -1 : 0}
+                  onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleGroup(group) } }}
+                  className={cn('flex items-center gap-2 text-xs font-bold hover:text-primary transition-colors cursor-pointer', disabled && 'opacity-60 cursor-not-allowed')}
+                >
+                  <Checkbox checked={allOn} disabled={disabled} onCheckedChange={() => toggleGroup(group)} aria-label={`تحديد كل صلاحيات ${group}`} />
+                  <span>{group}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Badge variant="secondary" className="text-[10px] tnum">{onCount}/{defs.length}</Badge>
+                  <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => setGroup(group, true)} className="h-6 text-[10px] px-1.5" aria-label={`تحديد الكل في ${group}`}>تحديد الكل</Button>
+                  <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => setGroup(group, false)} className="h-6 text-[10px] px-1.5 text-destructive hover:text-destructive" aria-label={`إلغاء الكل في ${group}`}>إلغاء الكل</Button>
+                </div>
               </div>
-              <Badge variant="secondary" className="text-[10px] tnum">{onCount}/{defs.length}</Badge>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 p-2.5">
+                {defs.map((d) => (
+                  <label key={d.key} className={cn('flex items-start gap-2 py-1 px-1.5 rounded-lg text-xs cursor-pointer hover:bg-muted/60', disabled && 'opacity-60 cursor-not-allowed')} title={d.key}>
+                    <Checkbox checked={set.has(d.key)} disabled={disabled} onCheckedChange={() => toggle(d.key)} className="mt-0.5" />
+                    <span className="flex-1 leading-tight">
+                      {d.label}
+                      <span className="block text-[9px] text-muted-foreground/70 font-mono" dir="ltr">{d.key}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 p-2.5">
-              {defs.map((d) => (
-                <label key={d.key} className={cn('flex items-center gap-2 py-1 px-1.5 rounded-lg text-xs cursor-pointer hover:bg-muted/60', disabled && 'opacity-60 cursor-not-allowed')}>
-                  <Checkbox checked={set.has(d.key)} disabled={disabled} onCheckedChange={() => toggle(d.key)} />
-                  <span className="flex-1 leading-tight">{d.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }
 
 export function RolesModule() {
   const { toast } = useToast()
-  const { user: me } = useAuth()
+  const { user: me, refresh } = useAuth()
   const { data, isLoading, mutate } = useSWR<{ items: any[] }>('/api/roles', fetcher)
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<any>(null)
@@ -367,6 +403,8 @@ export function RolesModule() {
         toast({ title: 'تمت إضافة الدور', description: `${v.permissions.length} صلاحية` })
       }
       setOpen(false); mutate()
+      // تحديث الجلسة الحالية فورًا — تعديلات الأدوار تظهر على الشاشات دون إعادة تسجيل دخول
+      await refresh()
     } catch (e: any) { setErr(e.message) } finally { setSaving(false) }
   }
 

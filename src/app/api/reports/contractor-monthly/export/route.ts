@@ -9,7 +9,8 @@
 import { NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
 import { ApiError } from '@/lib/server/http'
-import { requirePerm } from '@/lib/server/session'
+import { requireUser } from '@/lib/server/session'
+import { matchPermission } from '@/lib/permissions'
 import { ensureSeeded } from '@/lib/server/seed'
 import { report } from '@/lib/server/queries'
 
@@ -89,8 +90,11 @@ const CELL_CENTER = { horizontal: 'center' as const, vertical: 'middle' as const
 export async function GET(req: Request) {
   try {
     await ensureSeeded()
-    // التقرير يكشف أسعارًا ومبالغًا — نفس سياسة /api/reports/[type]: يتطلب prices.view
-    const user = await requirePerm(req, 'prices.view')
+    // التقرير يكشف أسعارًا ومبالغًا — يُسمح لمن يملك صلاحية تصدير التقارير أو رؤية الأسعار
+    const user = await requireUser(req)
+    if (!matchPermission(user.permissions, 'reports.export') && !matchPermission(user.permissions, 'prices.view')) {
+      throw new ApiError(403, 'غير مصرح — هذه العملية تتطلب صلاحية "reports.export" أو "prices.view"')
+    }
 
     const q = new URL(req.url).searchParams
     const contractorId = q.get('contractorId')

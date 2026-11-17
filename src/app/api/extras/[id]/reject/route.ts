@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.extras.approve')
+    const user = await requirePerm(req, 'extra_costs.approve')
     const { id } = await params
     const body = await readBody(req)
     return withIdempotency(req, `extra_cost:reject:${id}`, () =>

@@ -8,6 +8,7 @@ import path from 'node:path'
 import { db } from '@/lib/db'
 import { hashPassword, parsePerms } from './passwords'
 import { VOUCHER_TYPES } from '../voucher-catalog'
+import { syncPermissionsCatalog } from './perm-sync'
 
 let seedPromise: Promise<void> | null = null
 
@@ -19,24 +20,35 @@ let seedPromise: Promise<void> | null = null
 export async function ensureSeeded(): Promise<void> {
   if (seedPromise) return seedPromise
   seedPromise = (async () => {
-    if (await db.party.count() > 0) return
-    // محاولة اقتناء القفل — INSERT فريد: من ينجح يتولى البذر
-    try {
-      await db.seqCounter.create({ data: { key: '_seed_lock', value: 0 } })
-    } catch {
-      // آخر يشيّد الآن أو انتهى — انتظر اكتمال البيانات
-      for (let i = 0; i < 120; i++) {
-        if (await db.party.count() > 0) return
-        await new Promise((r) => setTimeout(r, 500))
+    if (await db.party.count() === 0) {
+      // محاولة اقتناء القفل — INSERT فريد: من ينجح يتولى البذر
+      try {
+        await db.seqCounter.create({ data: { key: '_seed_lock', value: 0 } })
+      } catch {
+        // آخر يشيّد الآن أو انتهى — انتظر اكتمال البيانات
+        for (let i = 0; i < 120; i++) {
+          if (await db.party.count() > 0) return
+          await new Promise((r) => setTimeout(r, 500))
+        }
+        throw new Error('انتهت مهلة انتظار تهيئة قاعدة البيانات')
       }
-      throw new Error('انتهت مهلة انتظار تهيئة قاعدة البيانات')
+      try {
+        await runSeed()
+      } catch (e) {
+        // أطلق القفل ليُعاد المحاولة لاحقًا
+        await db.seqCounter.deleteMany({ where: { key: '_seed_lock' } }).catch(() => {})
+        throw e
+      }
     }
+    // مزامنة كتالوج الصلاحيات مع قاعدة البيانات الحية — كل إقلاع خادم
+    // (idempotent: تضيف الصلاحيات الجديدة فقط ولا تمس أي تخصيصات قائمة)
     try {
-      await runSeed()
+      const r = await syncPermissionsCatalog()
+      if (r.rolesUpdated.length) {
+        console.log(`[perm-sync] تمت مزامنة الصلاحيات: ${r.rolesUpdated.join('، ')} (+${r.addedKeys} صلاحية)`)
+      }
     } catch (e) {
-      // أطلق القفل ليُعاد المحاولة لاحقًا
-      await db.seqCounter.deleteMany({ where: { key: '_seed_lock' } }).catch(() => {})
-      throw e
+      console.warn('[perm-sync] فشلت مزامنة الصلاحيات (ستُعاد في الإقلاع القادم):', (e as Error)?.message)
     }
   })()
   seedPromise.catch(() => { seedPromise = null })

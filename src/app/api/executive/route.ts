@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'dashboard.view')
+    const user = await requirePerm(req, 'executive.view')
     return executiveSummary(new URL(req.url).searchParams, user)
   })
 }

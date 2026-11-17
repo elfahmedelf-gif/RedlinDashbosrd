@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'vouchers.cancel')
+    const user = await requirePerm(req, 'payments.cancel')
     const { id } = await params
     const body = await readBody(req)
     return reverseContractorPayment(user, id, body)

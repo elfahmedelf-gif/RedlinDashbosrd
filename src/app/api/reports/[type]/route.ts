@@ -15,10 +15,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ type: st
     if (!user) {
       throw new ApiError(401, 'غير مصرح — سجّل الدخول أولًا')
     }
-    // تقرير المرتجعات يتطلب vouchers.view (تشغيلي)؛ بقية التقارير تتطلب reports.view
+    // تقرير المرتجعات يتطلب returns.view (توافقًا: vouchers.view القديمة تكافئه)؛ بقية التقارير تتطلب reports.view
     // التقارير التي تكشف أسعارًا (freight-margin, contractor-dues, customer-debts, shipments)
     // تتطلب أيضًا prices.view — يُفرض داخل report()
-    const perm = type === 'pending-returns' ? 'vouchers.view' : 'reports.view'
+    const perm = type === 'pending-returns' ? 'returns.view' : 'reports.view'
     if (!matchPermission(user.permissions, perm)) {
       throw new ApiError(403, `غير مصرح — هذه العملية تتطلب صلاحية "${perm}"`)
     }

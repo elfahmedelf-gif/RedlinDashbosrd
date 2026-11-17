@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'shipments.view')
+    const user = await requirePerm(req, 'receipts.view')
     const q = new URL(req.url).searchParams
     const [list, kpis] = await Promise.all([
       listReceipts(q, user),
@@ -27,7 +27,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'shipments.create')
+    const user = await requirePerm(req, 'receipts.manage')
     const body = await readBody(req)
     return createDeliveryReceipt(user, body)
   })
