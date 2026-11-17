@@ -85,7 +85,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-1 text-right min-w-0 max-w-full pe-10", className)}
+      className={cn("flex flex-col gap-1 text-right min-w-0 w-full pr-0 pl-10", className)}
       {...props}
     />
   )
@@ -111,7 +111,7 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("text-lg leading-tight font-semibold break-words min-w-0", className)}
+      className={cn("text-lg leading-relaxed font-semibold break-words min-w-0", className)}
       {...props}
     />
   )
@@ -124,7 +124,7 @@ function DialogDescription({
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn("text-muted-foreground text-sm break-words", className)}
+      className={cn("text-muted-foreground text-sm leading-relaxed break-words", className)}
       {...props}
     />
   )

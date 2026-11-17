@@ -102,15 +102,14 @@ export function UserMenu() {
       <DropdownMenu dir="rtl">
         <DropdownMenuTrigger asChild>
           <button
-            className="flex items-center gap-2 rounded-xl border border-border bg-card px-2 py-1.5 hover:bg-accent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex items-center gap-2 h-9 rounded-xl border border-border bg-card px-2 hover:bg-accent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="قائمة المستخدم"
           >
             <span className={cn('flex items-center justify-center size-7 rounded-full text-[11px] font-bold shrink-0', tone)}>
               {initial}
             </span>
-            <span className="hidden sm:flex flex-col items-start leading-tight min-w-0">
-              <span className="text-xs font-bold truncate max-w-[120px]">{user.name}</span>
-              <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">{user.roleLabel || 'بدون دور'}</span>
+            <span className="hidden sm:block text-xs font-bold leading-normal truncate max-w-[110px] 2xl:max-w-[140px]">
+              {user.name}
             </span>
             <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
           </button>

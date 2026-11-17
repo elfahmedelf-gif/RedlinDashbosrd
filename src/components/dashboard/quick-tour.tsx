@@ -80,13 +80,14 @@ export function QuickTourButton({ variant }: { variant?: 'desktop' | 'mobile' })
           type="button"
           variant="outline"
           size="sm"
-          className="h-9 gap-1.5"
+          className="h-9 gap-1.5 px-2.5 text-xs"
           onClick={() => setOpen(true)}
           title="دليل الاستخدام السريع"
           aria-label="دليل الاستخدام السريع"
         >
           <HelpCircle className="size-4" />
-          كيف أستخدم النظام؟
+          <span className="hidden xl:inline">كيف أستخدم النظام؟</span>
+          <span className="xl:hidden sr-only">كيف أستخدم النظام؟</span>
         </Button>
       )}
 

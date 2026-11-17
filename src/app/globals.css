@@ -381,6 +381,12 @@ input[type="date"] {
   max-width: 100%;
   padding-inline: 0.875rem;
 }
+/* حقول التاريخ المدمجة (الهيدر وفلاتر الوحدات) — عرض مضغوط يتجاوز min-width العام.
+   محدِّد أعلى تَخَصُّصًا (class + type) ليغلب القاعدة غير المُتقشَّرة أعلاه. */
+input[type="date"].date-input-compact {
+  min-width: 0;
+  padding-inline: 0.25rem;
+}
 input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
   margin-left: 0.35rem;

@@ -144,7 +144,7 @@ function MobileDateFilter({
           type="date"
           value={from}
           onChange={(e) => setFrom(e.target.value)}
-          className="text-[11px] bg-transparent border-0 outline-none px-0.5 py-1 w-[88px]"
+          className="date-input-compact text-[11px] bg-transparent border-0 outline-none px-0.5 py-1 w-[96px]"
           aria-label="من تاريخ"
         />
         <span className="text-muted-foreground text-xs shrink-0">→</span>
@@ -152,7 +152,7 @@ function MobileDateFilter({
           type="date"
           value={to}
           onChange={(e) => setTo(e.target.value)}
-          className="text-[11px] bg-transparent border-0 outline-none px-0.5 py-1 w-[88px]"
+          className="date-input-compact text-[11px] bg-transparent border-0 outline-none px-0.5 py-1 w-[96px]"
           aria-label="إلى تاريخ"
         />
       </div>

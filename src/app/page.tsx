@@ -151,46 +151,46 @@ function DashboardHeader({
   }
 
   return (
-    <header className="desktop-header-print-hide hidden lg:flex sticky top-0 z-20 h-auto min-h-16 px-4 sm:px-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 dark:supports-[backdrop-filter]:bg-slate-900/85 border-b border-slate-250 dark:border-slate-800 flex-wrap items-center justify-between gap-2 py-2 print:hidden">
+    <header className="desktop-header-print-hide hidden lg:flex sticky top-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 dark:supports-[backdrop-filter]:bg-slate-900/85 border-b border-slate-250 dark:border-slate-800 flex-col xl:flex-row items-stretch xl:items-center justify-start xl:justify-between gap-1.5 xl:gap-4 py-2.5 px-4 sm:px-6 min-h-[64px] print:hidden">
       {/* يمين: شارة المجموعة (breadcrumb) + الأيقونة + العنوان + الوصف */}
       <div className="flex items-center gap-3 min-w-0">
         {ActiveIcon && (
-          <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-primary/10 dark:bg-primary/20 text-primary border border-primary/20 dark:border-primary/30 shadow-sm shrink-0">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 dark:bg-primary/20 text-primary border border-primary/20 dark:border-primary/30 shadow-sm shrink-0">
             <ActiveIcon className="w-5 h-5" />
           </div>
         )}
-        <div className="flex flex-col justify-center min-w-0">
+        <div className="flex flex-col justify-center min-w-0 space-y-1">
           {/* breadcrumb: المجموعة ← الوحدة */}
           {groupLabel && (
-            <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70 mb-0.5 leading-none">
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80 leading-normal">
               <span className="truncate">{groupLabel}</span>
               <ChevronLeft className="size-2.5 shrink-0" />
               <span className="text-foreground/90 font-medium truncate">{labels.title}</span>
             </div>
           )}
-          <h1 className="text-base sm:text-lg font-bold text-slate-850 dark:text-white leading-tight truncate">
+          <h1 className="text-base font-bold text-slate-850 dark:text-white leading-normal truncate">
             {labels.title}
           </h1>
-          <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal truncate">
             {labels.subtitle}
           </span>
         </div>
       </div>
 
-      {/* يسار: دليل الاستخدام + شارة الأذونات المتأخرة + نطاق التاريخ (overview فقط) + ثيم + مستخدم */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      {/* يسار: شريط أدوات أفقي مضغوط — flex-nowrap بدون التفاف داخلي */}
+      <div className="flex flex-nowrap items-center justify-start xl:justify-end gap-2 min-h-9 shrink-0">
         <QuickTourButton variant="desktop" />
         <OverdueReceiptsBadge count={overdueCount} onNavigate={onOverdueClick} />
         {tab === 'overview' && (
-          <div className="hidden sm:flex items-center gap-1.5">
+          <div className="hidden sm:flex flex-nowrap items-center gap-1.5">
             {/* أزرار البريسيت السريعة */}
-            <div className="flex items-center gap-0.5 bg-secondary/60 rounded-lg p-0.5">
+            <div className="flex items-center gap-0.5 bg-secondary/60 rounded-lg p-0.5 shrink-0">
               {PRESETS.map((p) => (
                 <button
                   key={p.key}
                   onClick={() => applyPreset(p.key)}
                   className={cn(
-                    'text-[11px] font-medium px-2 py-1 rounded-md transition-all',
+                    'text-[11px] font-medium px-1.5 py-1 rounded-md transition-all whitespace-nowrap',
                     activePreset === p.key
                       ? 'bg-background text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground',
@@ -201,14 +201,14 @@ function DashboardHeader({
                 </button>
               ))}
             </div>
-            {/* نطاق مخصص */}
-            <div className="flex flex-wrap items-center gap-1.5 bg-card border border-border rounded-xl p-1 px-2 min-w-0">
+            {/* نطاق مخصص — يظهر من 1360px لحماية مساحة العنوان في الشاشات المتوسطة */}
+            <div className="hidden min-[1360px]:flex flex-nowrap items-center gap-1 bg-card border border-border rounded-xl p-1 px-1.5 min-w-0">
               <Calendar className="size-3.5 text-muted-foreground shrink-0" />
               <input
                 type="date"
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
-                className="text-xs bg-transparent border-0 outline-none px-1 py-1 min-w-0 w-24 sm:w-28"
+                className="date-input-compact text-xs bg-transparent border-0 outline-none px-0.5 py-1 min-w-0 w-[104px] 2xl:w-[112px]"
                 aria-label="من تاريخ"
               />
               <span className="text-muted-foreground text-xs shrink-0">→</span>
@@ -216,7 +216,7 @@ function DashboardHeader({
                 type="date"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                className="text-xs bg-transparent border-0 outline-none px-1 py-1 min-w-0 w-24 sm:w-28"
+                className="date-input-compact text-xs bg-transparent border-0 outline-none px-0.5 py-1 min-w-0 w-[104px] 2xl:w-[112px]"
                 aria-label="إلى تاريخ"
               />
               {(from || to) && activePreset !== 'all' && (

@@ -252,8 +252,8 @@ export function Sidebar({ active, onChange, counts, permissions, user, onLogout,
       <>
         {/* Header / brand */}
         <div className={cn(
-          'flex items-center gap-2.5 border-b border-sidebar-border h-16 shrink-0',
-          isCollapsed ? 'justify-center px-2' : 'px-4',
+          'flex items-center gap-2 border-b border-sidebar-border h-16 shrink-0',
+          isCollapsed ? 'justify-center px-2' : 'px-3',
         )}>
           <div className="relative flex items-center justify-center size-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-lg shrink-0">
             <Truck className="size-5" />
@@ -261,8 +261,8 @@ export function Sidebar({ active, onChange, counts, permissions, user, onLogout,
           </div>
           {!isCollapsed && (
             <div className="flex-1 min-w-0 anim-fade-in">
-              <h1 className="font-bold text-sm leading-tight truncate">شركة النقل والشحن</h1>
-              <p className="text-[10px] text-muted-foreground leading-tight truncate">نظام الإدارة المتكامل</p>
+              <h1 className="font-bold text-sm leading-snug truncate">شركة النقل والشحن</h1>
+              <p className="text-[10px] text-muted-foreground leading-snug truncate">نظام الإدارة المتكامل</p>
             </div>
           )}
           {/* زر الطي — ديسكتوب فقط */}
@@ -467,7 +467,7 @@ export function Sidebar({ active, onChange, counts, permissions, user, onLogout,
       <aside
         className={cn(
           'sidebar-print-hide hidden lg:flex shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground sticky top-0 h-screen z-30 transition-[width] duration-300 ease-out print:hidden',
-          collapsed ? 'w-[68px]' : 'w-56 xl:w-60',
+          collapsed ? 'w-[68px]' : 'w-60 xl:w-64',
         )}
       >
         {renderContent('desktop')}
@@ -619,8 +619,8 @@ export function MobileHeader({ title, subtitle, icon: Icon, onMenuClick, overdue
         {Icon ? <Icon className="size-5" /> : <Truck className="size-5" />}
       </div>
       <div className="flex-1 min-w-0">
-        <h1 className="font-bold text-sm leading-tight truncate">{title}</h1>
-        <p className="text-[11px] text-muted-foreground leading-tight truncate">{subtitle}</p>
+        <h1 className="font-bold text-sm leading-snug truncate">{title}</h1>
+        <p className="text-[11px] text-muted-foreground leading-snug truncate">{subtitle}</p>
       </div>
       {overdueCount > 0 && onOverdueClick && (
         <div className="shrink-0">

@@ -36,12 +36,12 @@ export function OverdueReceiptsBadge({ count, onNavigate, compact }: Props) {
         'group relative inline-flex items-center gap-1.5 rounded-full border border-rose-300 bg-rose-100 text-rose-700 shadow-sm transition-all',
         'hover:bg-rose-200 hover:shadow dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300 dark:hover:bg-rose-900/60',
         'animate-pulse-slow focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50',
-        compact ? 'h-8 px-2.5 text-[11px]' : 'h-9 px-3 text-xs font-semibold',
+        compact ? 'h-8 px-2.5 text-[11px]' : 'h-9 px-2.5 text-xs font-semibold',
       )}
     >
       <AlarmClock className={cn('shrink-0', compact ? 'size-3.5' : 'size-4')} />
       <span className="tnum font-bold leading-none">{count}</span>
-      {!compact && <span className="hidden xl:inline leading-none">إذن متأخر</span>}
+      {!compact && <span className="hidden 2xl:inline leading-none">إذن متأخر</span>}
       {/* نقطة تنبيه حمراء */}
       <span className="absolute -top-1 -left-1 flex size-3">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-500 opacity-60" />
