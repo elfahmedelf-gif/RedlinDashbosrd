@@ -20,7 +20,8 @@ export const dynamic = 'force-dynamic'
 const KIND_LABELS: Record<string, string> = {
   work: 'قيمة شغل شحنة',
   extra_taateeq: 'بند إضافي — تعتيق',
-  extra_mabeit: 'بند إضافي — مبيت (معتمد)',
+  // ملاحظة: مفتاح النوع في الكتالوج "mabeet" (بـ e) — مطابق لـ kind = `extra_${type}` في queries.ts
+  extra_mabeet: 'بند إضافي — مبيت (معتمد)',
   extra_return: 'بند إضافي — مرتجعات (معتمد)',
   payment: 'دفعة/عهدة صرفت',
   reversal: 'قيد عكسي',
@@ -44,7 +45,7 @@ interface MonthlyExportData {
     amount: number
     balance: number
   }[]
-  totals: { work: number; taateeq: number; mabeit: number; return: number; extrasTotal: number; payments: number; other: number; reversal: number; net: number }
+  totals: { work: number; taateeq: number; mabeet: number; return: number; extrasTotal: number; payments: number; other: number; reversal: number; net: number }
 }
 
 // ألوان موحدة بصيغة ARGB — أخضر للموجب (مستحقات) وأحمر للسالب (مسحوبات)
