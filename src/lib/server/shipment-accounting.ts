@@ -18,6 +18,8 @@ export interface JUser { userId: string; username: string }
 
 export const SHIPMENT_DELIVERY_SOURCE = 'shipment_delivery'
 export const SHIPMENT_RETURN_SOURCE = 'shipment_return_reversal'
+/** مستحقات المقاول المستقلة بعد الفوترة — تُفصل عن قيد التسليم لتفادي تكرار الإيراد */
+export const SHIPMENT_COST_SOURCE = 'shipment_cost'
 
 interface ShipmentFinancials {
   id: string
@@ -145,6 +147,45 @@ export async function postShipmentReturnReversal(
     status: 'posted',
     lines,
     user,
+  })
+  return { id: entry.id, entryNo: entry.entryNo }
+}
+
+/**
+ * إثبات مستحقات المقاول فقط (بلا إيراد) — يُستخدم عند إصدار فاتورة عميل
+ * بعد عكس قيد الاستحقاق المجمّع: مدين تكلفة النقل 5101 / دائن مقاولو النقل 2102.
+ * مرة واحدة فقط لكل شحنة (قيد نشط واحد بمصدر shipment_cost).
+ */
+export async function postShipmentCostOnlyJournal(
+  tx: Tx,
+  shipment: ShipmentFinancials,
+  user: JUser,
+): Promise<{ entryNo: string; id: string } | null> {
+  const cost = round2(Number(shipment.totalSuppliers ?? 0))
+  if (cost <= 0 || !shipment.contractorId) return null
+
+  // منع الترحيل المزدوج: قيد مستحقات مستقل نشط موجود = لا شيء
+  const active = await tx.journalEntry.findFirst({
+    where: { sourceType: SHIPMENT_COST_SOURCE, sourceId: shipment.id, status: 'posted', reversalOfId: null },
+    select: { id: true },
+  })
+  if (active) return null
+
+  const expense = await accountByCode(tx, '5101') // تكلفة النقل (النولون)
+  const contractors = await accountByCode(tx, ACC.CONTRACTORS)
+  const entry = await createJournal(tx, {
+    description: `مستحقات المقاول للشحنة ${shipment.shipmentNo ?? ''} — ${shipment.contractor?.name ?? 'مقاول'} (مستقلة بعد الفوترة)`,
+    reference: shipment.shipmentNo,
+    sourceType: SHIPMENT_COST_SOURCE,
+    sourceId: shipment.id,
+    status: 'posted',
+    lines: [
+      { accountId: expense.id, debit: cost, credit: 0, description: `تكلفة نقل الشحنة ${shipment.shipmentNo ?? ''}`, partyId: shipment.contractorId, shipmentId: shipment.id },
+      { accountId: contractors.id, debit: 0, credit: cost, description: `مستحقات المقاول — ${shipment.contractor?.name ?? 'مقاول'}`, partyId: shipment.contractorId, shipmentId: shipment.id },
+    ],
+    user,
+    preventDuplicateSource: true,
+    allowIfReversed: true,
   })
   return { id: entry.id, entryNo: entry.entryNo }
 }

@@ -90,6 +90,12 @@ export async function ensureSeeded(): Promise<void> {
     } catch (e) {
       console.warn('[seed] فشل تصحيح شجرة الحسابات:', (e as Error)?.message)
     }
+    // إعدادات النظام الأساسية (idempotent upserts — تنشئ ما ينقص فقط في كل إقلاع)
+    try {
+      await ensurePolicySetting()
+    } catch (e) {
+      console.warn('[seed] فشلت مزامنة إعدادات النظام:', (e as Error)?.message)
+    }
   })()
   seedPromise.catch(() => { seedPromise = null })
   return seedPromise
@@ -536,12 +542,18 @@ async function runSeed(): Promise<void> {
   console.log('[seed] تمت تهيئة قاعدة البيانات بنجاح ✓')
 }
 
-/** إعداد سياسة فصل المهام (منشئ الإذن لا يعتمده) — افتراضيًا ممنوع */
+/** إعدادات النظام الأساسية — idempotent (تُنشأ ما تنقص فقط عند كل إقلاع) */
 async function ensurePolicySetting() {
   await db.setting.upsert({
     where: { key: 'policy.self_approval' },
     update: {},
     create: { key: 'policy.self_approval', value: 'deny', label: 'سياسة اعتماد الإذن الذاتي (deny/allow)', category: 'policy' },
+  })
+  // بيانات الفاتورة الضريبية الرسمية — تظهر في ترويسة طباعة الفواتير
+  await db.setting.upsert({
+    where: { key: 'company_tax_number' },
+    update: {},
+    create: { key: 'company_tax_number', value: '', label: 'السجل الضريبي للشركة (يظهر في الفاتورة)', category: 'general' },
   })
 }
 

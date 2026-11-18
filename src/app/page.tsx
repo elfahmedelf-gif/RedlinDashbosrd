@@ -23,6 +23,7 @@ import { DashboardModule, type QuickAction } from '@/components/dashboard/module
 import { ShipmentsModule } from '@/components/dashboard/modules/shipments'
 import { ReceiptsModule } from '@/components/dashboard/modules/receipts'
 import { ExtraCostsModule } from '@/components/dashboard/modules/extra-costs'
+import { InvoicesModule } from '@/components/dashboard/modules/invoices'
 import { ExecutiveModule } from '@/components/dashboard/modules/executive'
 import { PartiesModule } from '@/components/dashboard/modules/parties'
 import { BranchesModule, WarehousesModule } from '@/components/dashboard/modules/structure'
@@ -48,6 +49,7 @@ const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
   shipments: { title: 'الشحنات', subtitle: 'سجّل النقلات الجديدة وتابع حالتها برقم الديليفري' },
   receipts: { title: 'أذونات التسليم', subtitle: 'ابحث برقم الديليفري واضغط علامة ✓ فور استلام الإذن الورقي من المقاول' },
   'extra-costs': { title: 'البنود الإضافية', subtitle: 'تعتيق ومبيت ومرتجعات ودفعات على حساب المقاول — تُعتمد من الشركة قبل ما تسمع في الحساب' },
+  invoices: { title: 'الفواتير', subtitle: 'فواتير العملاء الضريبية — إصدار وترحيل محاسبي وتحصيل وطباعة A4' },
   'pending-returns': { title: 'المرتجعات لم تُستلم', subtitle: 'تتبع عهدة المرتجعات مع المندوبين' },
   customers: { title: 'العملاء', subtitle: 'ملفات العملاء وأرصدتهم' },
   contractors: { title: 'المقاولون', subtitle: 'الناقلون وأداؤهم' },
@@ -161,8 +163,8 @@ function DashboardHeader({
           </div>
         )}
         <div className="flex flex-col justify-center min-w-0 space-y-1 leading-normal">
-          {/* breadcrumb: المجموعة ← الوحدة */}
-          {groupLabel && (
+          {/* breadcrumb: المجموعة ← الوحدة — تُخفى على الرئيسية لتفادي التكرار */}
+          {groupLabel && tab !== 'overview' && (
             <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80 leading-normal">
               <span className="truncate">{groupLabel}</span>
               <ChevronLeft className="size-2.5 shrink-0" />
@@ -247,12 +249,25 @@ function DashboardShell() {
   const { user, logout, has } = useAuth()
   // الوضع المبسّط: موظفو العمليات يرون شاشات الشغل اليومي فقط بدون مصطلحات محاسبية
   const simplified = isSimplifiedUser(user?.permissions)
-  const [tab, setTab] = React.useState<ModuleKey>('overview')
+  // آخر شاشة كان عليها المستخدم تُستعاد بعد تحديث الصفحة (مع تحقق الصلاحية أدناه)
+  const [tab, setTab] = React.useState<ModuleKey>(() => {
+    if (typeof window === 'undefined') return 'overview'
+    try {
+      const saved = window.localStorage.getItem('active-tab') as ModuleKey | null
+      if (saved && MODULES.some((m) => m.key === saved)) return saved
+    } catch { /* ignore */ }
+    return 'overview'
+  })
   const [from, setFrom] = React.useState('')
   const [to, setTo] = React.useState('')
   // حالة الدرج المنزلق للقائمة الجانبية على الشاشات < lg (موبايل + تابلت)
   const [navOpen, setNavOpen] = React.useState(false)
   const labels = labelsFor(tab, simplified)
+
+  // حفظ آخر شاشة — تعود المجموعة الجانبية نفسها مفتوحة بعد أي تحديث للصفحة
+  React.useEffect(() => {
+    try { window.localStorage.setItem('active-tab', tab) } catch { /* ignore */ }
+  }, [tab])
 
   // إعادة توجيه تلقائية إذا فقد المستخدم صلاحية التبويب الحالي
   React.useEffect(() => {
@@ -357,6 +372,7 @@ function DashboardShell() {
               {tab === 'shipments' && <ShipmentsModule />}
               {tab === 'receipts' && <ReceiptsModule />}
               {tab === 'extra-costs' && <ExtraCostsModule />}
+              {tab === 'invoices' && <InvoicesModule />}
               {tab === 'pending-returns' && <PendingReturnsModule />}
               {tab === 'customers' && <PartiesModule type="customer" title="عملاء" />}
               {/* في الوضع المبسّط: «حسابات المقاولين» = ملخص مبسط لكل مقاول (نفس شاشة متابعة الإدارة) */}

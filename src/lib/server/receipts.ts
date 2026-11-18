@@ -480,6 +480,14 @@ export async function deleteDeliveryReceipt(user: ReceiptActor, id: string) {
 
     if (s.collectionStatus === 'collected') throw new ApiError(409, 'لا يمكن حذف إذن تم تحصيله — عكس التحصيل أولًا وفق سياسة النظام')
 
+    // 0) الشحنة المفوترة بفاتورة نشطة — لا حذف (الفاتورة تُحاسَب على هذه الشحنة)
+    if (s.invoiceId) {
+      const inv = await tx.invoice.findUnique({ where: { id: s.invoiceId }, select: { invoiceNumber: true, status: true } })
+      if (inv && inv.status !== 'cancelled') {
+        throw new ApiError(409, `لا يمكن حذف الإذن — الشحنة مفوترة بفاتورة نشطة (${inv.invoiceNumber}) — ألغِ الفاتورة أولًا وفق سياسة النظام`)
+      }
+    }
+
     // 3) عكس القيود المحاسبية النشطة المرتبطة بالشحنة (قيد التسليم أو أي قيد آخر)
     const activeEntries = await tx.journalEntry.findMany({
       where: { status: 'posted', reversalOfId: null, lines: { some: { shipmentId: id } } },

@@ -52,6 +52,7 @@ model Party {
   courierVouchers       OpVoucher[]    @relation("OpVoucherCourier")
   partyVouchers         OpVoucher[]    @relation("OpVoucherParty")
   extraCosts            ExtraCost[]    @relation("ExtraCostContractor")
+  invoices              Invoice[]      @relation("InvoiceCustomer")
 }
 
 model Branch {
@@ -132,6 +133,9 @@ model Shipment {
   id            String    @id @default(cuid())
   shipmentNo    String?
   billNo        String?
+  // الفواتير: الشحنة المفوترة بفاتورة نشطة (يُفك الربط عند إلغاء الفاتورة)
+  // الحقل وحده يمنع الفوترة المزدوجة (قيمة واحدة لكل شحنة) + تحقق تطبيقي على الخادم
+  invoiceId     String?
   policyQty     Float?
   customerId    String?
   customer      Party?    @relation("CustomerShipments", fields: [customerId], references: [id])
@@ -192,8 +196,73 @@ model Shipment {
   journalLines  JournalLine[]
   opVoucherItems OpVoucherItem[]
   extraCosts    ExtraCost[]
+  invoice       Invoice?  @relation("ShipmentInvoice", fields: [invoiceId], references: [id])
+  invoiceItems  InvoiceItem[]
 
   @@index([contractorId, isReceiptDelivered])
+  @@index([invoiceId])
+}
+
+// ============================================================
+// الفواتير الرسمية للعملاء (S3) — فاتورة ضريبية على نولون الشحنات
+// دورة الحياة: draft (مسودة — لا قيد) ← issued (صادرة — قيد مزدوج:
+//   مدين العملاء 1103 بالإجمالي شامل الضريبة / دائن إيراد الشحن 4101
+//   بصافي القيمة / دائن ضريبة القيمة المضافة 2103 بقيمة الضريبة)
+//   ← partially_paid/paid (سندات قبض مرتبطة) — والإلغاء يُرحّل قيدًا عكسيًا
+//   ويفك ربط الشحنات لتُفوتر من جديد (الإيراد لا يُحتسب مرتين أبدًا:
+//   عند الإصدار يُعكس قيد استحقاق التسليم للشحنات المُدخلة ويُعاد
+//   إثبات مستحقات المقاول فقط بحساب مستقل)
+// ============================================================
+model Invoice {
+  id             String    @id @default(cuid())
+  invoiceNumber  String    @unique          // INV-0001 (تسلسلي آمن)
+  customerId     String
+  issueDate      DateTime  @default(now())
+  dueDate        DateTime?
+  status         String    @default("draft") // draft|issued|partially_paid|paid|cancelled
+  subtotal       Float     @default(0)      // إجمالي البنود قبل الخصم والضريبة
+  vatRate        Float     @default(14)     // نسبة ضريبة القيمة المضافة (14 أو 0)
+  vatAmount      Float     @default(0)      // قيمة الضريبة المحسوبة
+  discountAmount Float     @default(0)      // الخصم الممنوح
+  totalAmount    Float     @default(0)      // الإجمالي النهائي شامل الضريبة
+  paidAmount     Float     @default(0)      // المسدد من سندات القبض المرتبطة
+  notes          String?
+  journalEntryId String?   @unique          // قيد الإصدار (يُنشأ مرة واحدة عند الإصدار)
+  createdById    String?
+  createdByName  String?
+  issuedById     String?
+  issuedByName   String?
+  issuedAt       DateTime?
+  cancelledById  String?
+  cancelledByName String?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  customer    Party         @relation("InvoiceCustomer", fields: [customerId], references: [id])
+  journalEntry JournalEntry? @relation("InvoiceJournal", fields: [journalEntryId], references: [id])
+  items       InvoiceItem[]
+  payments    OpVoucher[]   @relation("OpVoucherInvoice")
+  shipments   Shipment[]    @relation("ShipmentInvoice")
+
+  @@index([customerId])
+  @@index([status])
+  @@index([issueDate])
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  shipmentId  String?             // بند مرتبط بشحنة (اختياري — يمنع الفوترة المزدوجة بالتحقق على الخادم)
+  description String
+  quantity    Float   @default(1)
+  unitPrice   Float   @default(0)
+  total       Float   @default(0)
+  invoice  Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  shipment Shipment? @relation(fields: [shipmentId], references: [id])
+
+  @@index([invoiceId])
+  @@index([shipmentId])
 }
 
 model ShipmentStatusHistory {
@@ -278,6 +347,7 @@ model JournalEntry {
   reversals  JournalEntry[]   @relation("JournalReversal")
   opVouchers OpVoucher[]
   extraCosts ExtraCost[]      @relation("ExtraCostJournal")
+  invoice    Invoice?         @relation("InvoiceJournal")
 }
 
 model JournalLine {
@@ -332,8 +402,12 @@ model OpVoucher {
   party         Party?        @relation("OpVoucherParty", fields: [partyId], references: [id])
   cashAccount   Account?      @relation("OpVoucherCashAccount", fields: [cashAccountId], references: [id])
   journalEntry  JournalEntry? @relation(fields: [journalEntryId], references: [id])
+  invoiceId     String?              // سند قبض مرتبط بفاتورة عميل (دفعة تحصيل)
+  invoice       Invoice?      @relation("OpVoucherInvoice", fields: [invoiceId], references: [id])
   items         OpVoucherItem[]
   actions       OpVoucherAction[]
+
+  @@index([invoiceId])
 
   @@index([type])
   @@index([status])

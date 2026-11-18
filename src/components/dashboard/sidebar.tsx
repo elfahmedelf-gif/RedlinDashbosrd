@@ -6,7 +6,7 @@ import {
   Warehouse as WarehouseIcon, Boxes, ArrowRightLeft, Receipt, BookOpen,
   FileText, Landmark, FileBarChart, Upload, UserCircle, Settings, History,
   ChevronRight, ChevronLeft, ChevronDown, PanelRightClose, PanelRightOpen,
-  LogOut, ListChecks, Shield, Undo2, Menu, X, ClipboardCheck, Layers, Eye, type LucideIcon,
+  LogOut, ListChecks, Shield, Undo2, Menu, X, ClipboardCheck, Layers, Eye, FilePlus2, type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { matchPermission } from '@/lib/permissions'
@@ -17,7 +17,7 @@ import { UserMenu } from './user-menu'
 import { QuickTourButton } from './quick-tour'
 
 export type ModuleKey =
-  | 'overview' | 'shipments' | 'receipts' | 'extra-costs' | 'executive' | 'pending-returns' | 'customers' | 'contractors' | 'suppliers'
+  | 'overview' | 'shipments' | 'receipts' | 'extra-costs' | 'invoices' | 'executive' | 'pending-returns' | 'customers' | 'contractors' | 'suppliers'
   | 'branches' | 'warehouses' | 'inventory' | 'movements' | 'freight'
   | 'accounts' | 'journal' | 'vouchers' | 'reports' | 'import'
   | 'users' | 'roles' | 'lookups' | 'settings' | 'audit'
@@ -38,6 +38,7 @@ export const MODULES: ModuleDef[] = [
   { key: 'shipments', label: 'الشحنات', simpleLabel: 'الشحنات اليومية', icon: PackageSearch, desc: 'سجل الشحنات', group: 'main' },
   { key: 'receipts', label: 'أذونات التسليم', simpleLabel: 'أذونات التسليم', icon: ClipboardCheck, desc: 'الديليفري لكل مقاول', group: 'main' },
   { key: 'extra-costs', label: 'البنود الإضافية', simpleLabel: 'المصاريف والبنود', icon: Layers, desc: 'تعتيق/مبيت/مرتجعات + الاعتماد', group: 'main' },
+  { key: 'invoices', label: 'الفواتير', simpleLabel: 'الفواتير', icon: FilePlus2, desc: 'فواتير العملاء الضريبية والتحصيل', group: 'main' },
   { key: 'pending-returns', label: 'المرتجعات لم تُستلم', icon: Undo2, desc: 'تتبع عهدة المرتجعات', group: 'main' },
   { key: 'customers', label: 'العملاء', icon: Users, desc: 'ملفات العملاء', group: 'parties' },
   { key: 'contractors', label: 'المقاولون', simpleLabel: 'حسابات المقاولين', icon: UserCog, desc: 'الناقلون', group: 'parties' },
@@ -66,6 +67,7 @@ export const MODULE_PERMISSIONS: Record<ModuleKey, string> = {
   shipments: 'shipments.view',
   receipts: 'receipts.view',
   'extra-costs': 'extra_costs.view',
+  invoices: 'invoices.view',
   'pending-returns': 'returns.view',
   customers: 'parties.view',
   contractors: 'parties.view',
@@ -193,17 +195,24 @@ export function Sidebar({ active, onChange, counts, permissions, user, onLogout,
       const saved = typeof window !== 'undefined' ? localStorage.getItem('sidebar-groups-expanded') : null
       if (saved) {
         const arr = JSON.parse(saved) as string[]
-        setExpanded(new Set(arr.slice(0, 1)))
-      } else {
-        const initial = activeGroup || 'main'
-        setExpanded(new Set([initial]))
+        const valid = arr.filter((g) => GROUP_META[g])
+        if (valid.length) {
+          setExpanded(new Set(valid.slice(0, 1)))
+          return
+        }
+      }
+      const initial = activeGroup || 'main'
+      setExpanded(new Set([initial]))
+      // حفظ الحالة الابتدائية فورًا — تعود المجموعة نفسها بعد أي تحديث للصفحة
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sidebar-groups-expanded', JSON.stringify([initial]))
       }
     } catch {
       setExpanded(new Set([activeGroup || 'main']))
     }
   }, [])
 
-  // Auto-expand the active group on navigation — accordion style.
+  // Auto-expand the active group on navigation — accordion style (persisted).
   React.useEffect(() => {
     if (!activeGroup) return
     setExpanded((prev) => {

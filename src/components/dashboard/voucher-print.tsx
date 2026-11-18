@@ -58,6 +58,18 @@ function tafqit(amount: number): string {
   return `فقط ${groups.join(' و')} جنيه مصري لا غير`
 }
 
+/** تفقيط شامل الكسور (قروش) — يُستخدم في الفواتير الضريبية */
+export function tafqitInvoice(amount: number): string {
+  const abs = Math.abs(Number(amount) || 0)
+  const pounds = Math.floor(abs)
+  const piasters = Math.round((abs - pounds) * 100)
+  if (piasters === 0) return tafqit(pounds)
+  const base = pounds === 0 ? '' : tafqit(pounds).replace(/^فقط /, '').replace(' جنيه مصري لا غير', '')
+  const pTxt = `${threeDigits(piasters)} قرشًا`
+  const joined = base ? `${base} جنيهًا و${pTxt}` : pTxt
+  return `فقط ${joined} لا غير`
+}
+
 interface VoucherPrintProps {
   voucher: any
   open: boolean

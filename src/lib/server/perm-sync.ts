@@ -20,25 +20,28 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, string[]> = {
   finance_manager: [
     'executive.view', 'receipts.view', 'payments.view', 'payments.cancel',
     'extra_costs.view', 'extra_costs.approve', 'returns.view', 'reports.export',
+    'invoices.view', 'invoices.create', 'invoices.issue', 'invoices.cancel',
   ],
   // مدير الفرع: إدارة أذونات التسليم والبنود والدفعات والمرتجعات + متابعة الإدارة
   branch_manager: [
     'executive.view', 'receipts.view', 'receipts.manage',
     'extra_costs.view', 'extra_costs.create', 'extra_costs.approve', 'extra_costs.delete',
     'payments.view', 'payments.create', 'returns.view', 'returns.manage', 'reports.export',
+    'invoices.view', 'invoices.create',
   ],
   // موظف العمليات: تسجيل أذونات التسليم ✓ والبنود الإضافية والمرتجعات + عرض الدفعات
   operations: [
     'receipts.view', 'receipts.manage',
     'extra_costs.view', 'extra_costs.create',
     'payments.view', 'returns.view', 'returns.manage',
+    'invoices.view', 'invoices.create',
   ],
   // كاتب الأذونات: عرض أذونات التسليم والبنود والمرتجعات
-  voucher_clerk: ['receipts.view', 'extra_costs.view', 'returns.view'],
+  voucher_clerk: ['receipts.view', 'extra_costs.view', 'returns.view', 'invoices.view'],
   // عارض (مشاهدة فقط): كل صلاحيات العرض فقط
   viewer: [
     'executive.view', 'receipts.view', 'extra_costs.view',
-    'payments.view', 'returns.view',
+    'payments.view', 'returns.view', 'invoices.view',
   ],
   // رؤية الأسعار (خاص): تصدير التقارير المالية المسوح بها
   prices_viewer: ['reports.export'],
@@ -46,6 +49,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, string[]> = {
   accountant: [
     'executive.view', 'receipts.view', 'payments.view', 'payments.cancel',
     'extra_costs.view', 'extra_costs.approve', 'returns.view', 'reports.export',
+    'invoices.view', 'invoices.create', 'invoices.issue', 'invoices.cancel',
   ],
   // موظف المخزن: عرض أذونات التسليم والبنود والمرتجعات
   warehouse_clerk: ['receipts.view', 'extra_costs.view', 'returns.view'],
@@ -61,6 +65,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, string[]> = {
   auditor: [
     'executive.view', 'receipts.view', 'extra_costs.view',
     'payments.view', 'returns.view', 'reports.view', 'reports.export',
+    'invoices.view',
   ],
 }
 

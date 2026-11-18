@@ -27,7 +27,7 @@ export async function GET(req: Request) {
       branchesCount, warehousesCount, itemsCount, movementsCount,
       freightCount, accountsCount, journalCount, vouchersCount,
       usersCount, auditCount, lookupsCount, pendingReturns,
-      receiptsPending, extrasPending, receiptsOverdue,
+      receiptsPending, extrasPending, receiptsOverdue, invoicesOpen,
     ] = await Promise.all([
       db.shipment.count(),
       db.party.count({ where: { isCustomer: true } }),
@@ -73,6 +73,8 @@ export async function GET(req: Request) {
           },
         })
       })(),
+      // الفواتير المفتوحة (صادرة/مسددة جزئيًا) — شارة وحدة الفواتير
+      db.invoice.count({ where: { status: { in: ['issued', 'partially_paid'] } } }),
     ])
 
     return {
@@ -82,6 +84,7 @@ export async function GET(req: Request) {
       receipts: receiptsPending,
       receiptsOverdue,
       'extra-costs': extrasPending,
+      invoices: invoicesOpen,
       customers: customersCount,
       contractors: contractorsCount,
       suppliers: suppliersCount,
