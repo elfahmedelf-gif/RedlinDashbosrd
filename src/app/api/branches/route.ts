@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'structure.manage')
+    const user = await requirePerm(req, 'branches.manage')
     const b = await readBody(req)
     const count = await db.branch.count()
     const br = await db.branch.create({ data: { code: b.code || `BR-${count + 1}`, name: b.name, nameEn: b.nameEn ?? null, manager: b.manager ?? null, phone: b.phone ?? null, address: b.address ?? null, region: b.region ?? null } })

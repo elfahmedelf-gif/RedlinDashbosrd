@@ -1,5 +1,6 @@
 import { ApiError, handle, round2 } from '@/lib/server/http'
-import { requirePerm } from '@/lib/server/session'
+import { requireUser } from '@/lib/server/session'
+import { matchPermission, partyViewKeys } from '@/lib/permissions'
 import { ensureSeeded } from '@/lib/server/seed'
 import { db } from '@/lib/db'
 import { canSeePrices } from '@/lib/server/prices'
@@ -29,9 +30,15 @@ const CONTROL_CODES = ['1103', '2101', '2102', '2104']
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.view')
-    const canPrices = canSeePrices(user)
+    const user = await requireUser(req)
     const { id } = await params
+    // صلاحية العرض حسب صفات الطرف الفعلية (عميل/مقاول/مورد) — المبالغ تُفرَّغ لغير أصحاب prices.view
+    const flags = await db.party.findUnique({ where: { id }, select: { isCustomer: true, isContractor: true, isSupplier: true } })
+    if (!flags) throw new ApiError(404, 'الطرف غير موجود')
+    if (!partyViewKeys(flags).some((k) => matchPermission(user.permissions, k))) {
+      throw new ApiError(403, `غير مصرح — هذه العملية تتطلب إحدى الصلاحيات: ${partyViewKeys(flags).map((k) => `"${k}"`).join(' أو ')}`)
+    }
+    const canPrices = canSeePrices(user)
     const q = new URL(req.url).searchParams
     const limit = Math.min(Math.max(Number(q.get('limit') ?? 30), 1), 100)
 

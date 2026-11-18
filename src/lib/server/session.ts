@@ -109,3 +109,15 @@ export async function requirePerm(req: Request, key: string): Promise<SessionUse
   }
   return user
 }
+
+/**
+ * يفرض «أيًا من» مجموعة صلاحيات — للكيانات ذات الصفات المتعددة
+ * (طرف يجمع عميل + مقاول + مورد في آن واحد).
+ */
+export async function requireAnyPerm(req: Request, keys: string[]): Promise<SessionUser> {
+  const user = await requireUser(req)
+  if (!keys.length || !keys.some((k) => matchPermission(user.permissions, k))) {
+    throw new ApiError(403, `غير مصرح — هذه العملية تتطلب إحدى الصلاحيات: ${keys.map((k) => `"${k}"`).join(' أو ')}`)
+  }
+  return user
+}

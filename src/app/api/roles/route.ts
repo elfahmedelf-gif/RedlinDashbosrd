@@ -1,6 +1,7 @@
 import { ApiError, handle, readBody } from '@/lib/server/http'
 import { requirePerm } from '@/lib/server/session'
 import { ensureSeeded } from '@/lib/server/seed'
+import { syncPermissionsCatalog } from '@/lib/server/perm-sync'
 import { logAudit } from '@/lib/server/audit'
 import { db } from '@/lib/db'
 
@@ -10,10 +11,13 @@ export async function GET(req: Request) {
   return handle(async () => {
     await ensureSeeded()
     await requirePerm(req, 'roles.manage')
+    // مزامنة الكتالوج عند فتح شاشة الصلاحيات — تضمن مطابقة قاعدة البيانات للكود 1:1
+    const sync = await syncPermissionsCatalog()
     const rows = await db.role.findMany({ include: { users: true }, orderBy: { createdAt: 'asc' } })
     return {
       items: rows.map((r) => ({ id: r.id, name: r.name, label: r.label, permissions: JSON.parse(r.permissions ?? '[]'), createdAt: r.createdAt, _count: { users: r.users.length } })),
       total: rows.length,
+      permissionsSynced: sync.permissionsSynced,
     }
   })
 }

@@ -530,6 +530,17 @@ model Role {
   users UserRole[]
 }
 
+/// كتالوج الصلاحيات المتزامن مع الكود (syncPermissionsCatalog) — مرآة قابلة للتدقيق
+model Permission {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  group     String
+  module    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model UserRole {
   userId String
   roleId String

@@ -26,7 +26,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'settings.manage')
+    const user = await requirePerm(req, 'lookups.manage')
     const b = await readBody(req)
     const cat = b.category
     const max = await db.lookupItem.aggregate({ where: { category: cat }, _max: { sortOrder: true } })

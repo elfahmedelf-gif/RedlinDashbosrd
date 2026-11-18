@@ -10,62 +10,77 @@ export interface PermissionDef {
   group: string
 }
 
-/** كتالوج الصلاحيات الكامل — يُستخدم في مصفوفة الصلاحيات ووحدة الأدوار */
+/**
+ * كتالوج الصلاحيات الكامل — مجموعة لكل موديول في الشريط الجانبي (1:1 بلا استثناء)
+ * الترتيب مطابق تمامًا لترتيب موديولات sidebar.tsx (MODULES) — 25 موديول.
+ * يُستخدم في مصفوفة الصلاحيات ووحدة الأدوار ويُمَرسَل لقاعدة البيانات عبر
+ * syncPermissionsCatalog() (جدول Permission) عند الإقلاع وعند فتح شاشة الصلاحيات.
+ */
 export const PERMISSION_CATALOG: PermissionDef[] = [
-  // الرئيسية
+  // 1) الرئيسية (overview)
   { key: 'dashboard.view', label: 'عرض لوحة المؤشرات', group: 'الرئيسية' },
-  // متابعة الإدارة — ملخص أرصدة المقاولين من دفتر الأستاذ 2102
+  // 2) متابعة الإدارة (executive)
   { key: 'executive.view', label: 'عرض لوحة متابعة الإدارة وملخص أرصدة المقاولين', group: 'متابعة الإدارة' },
-  // العمليات الرئيسية — الشحنات
-  { key: 'shipments.view', label: 'عرض الشحنات', group: 'العمليات الرئيسية' },
-  { key: 'shipments.create', label: 'إضافة شحنة', group: 'العمليات الرئيسية' },
-  { key: 'shipments.edit', label: 'تعديل شحنة', group: 'العمليات الرئيسية' },
-  { key: 'shipments.delete', label: 'حذف شحنة', group: 'العمليات الرئيسية' },
-  { key: 'shipments.status', label: 'تغيير حالة الشحنة', group: 'العمليات الرئيسية' },
-  { key: 'shipments.assign', label: 'تعيين مقاول', group: 'العمليات الرئيسية' },
-  { key: 'shipments.settle', label: 'تسوية COD', group: 'العمليات الرئيسية' },
-  { key: 'shipments.print', label: 'طباعة بوليصة', group: 'العمليات الرئيسية' },
-  { key: 'shipments.export', label: 'تصدير الشحنات', group: 'العمليات الرئيسية' },
-  // الأطراف — العملاء والمقاولون والموردون
-  { key: 'parties.view', label: 'عرض العملاء والمقاولين', group: 'الأطراف' },
-  { key: 'parties.manage', label: 'إضافة/تعديل الأطراف', group: 'الأطراف' },
-  { key: 'parties.delete', label: 'حذف طرف', group: 'الأطراف' },
-  // أذونات التسليم (الديليفري / POD)
+  // 3) الشحنات (shipments)
+  { key: 'shipments.view', label: 'عرض الشحنات', group: 'الشحنات' },
+  { key: 'shipments.create', label: 'إضافة شحنة', group: 'الشحنات' },
+  { key: 'shipments.edit', label: 'تعديل شحنة', group: 'الشحنات' },
+  { key: 'shipments.delete', label: 'حذف شحنة', group: 'الشحنات' },
+  { key: 'shipments.status', label: 'تغيير حالة الشحنة', group: 'الشحنات' },
+  { key: 'shipments.assign', label: 'تعيين مقاول', group: 'الشحنات' },
+  { key: 'shipments.settle', label: 'تسوية COD', group: 'الشحنات' },
+  { key: 'shipments.print', label: 'طباعة بوليصة', group: 'الشحنات' },
+  { key: 'shipments.export', label: 'تصدير الشحنات', group: 'الشحنات' },
+  // 4) أذونات التسليم (receipts) — الديليفري / POD
   { key: 'receipts.view', label: 'عرض أذونات التسليم والأذونات المتأخرة', group: 'أذونات التسليم' },
   { key: 'receipts.manage', label: 'التأشير بتسليم الإذن ✓ أو إلغاء التسليم', group: 'أذونات التسليم' },
-  // الفواتير الرسمية للعملاء — فاتورة ضريبية مرتبطة بالشحنات والقيد المزدوج
+  { key: 'receipts.print', label: 'طباعة أذونات التسليم', group: 'أذونات التسليم' },
+  // 5) الفواتير الرسمية للعملاء (invoices) — فاتورة ضريبية مرتبطة بالشحنات والقيد المزدوج
   { key: 'invoices.view', label: 'عرض الفواتير وتفاصيلها وتقاريرها', group: 'الفواتير' },
   { key: 'invoices.create', label: 'إنشاء وتعديل مسودات الفواتير وتسجيل دفعات التحصيل', group: 'الفواتير' },
   { key: 'invoices.issue', label: 'إصدار الفواتير (الاعتماد والترحيل المحاسبي)', group: 'الفواتير' },
   { key: 'invoices.cancel', label: 'إلغاء الفواتير وعكس دفعات التحصيل', group: 'الفواتير' },
-  // البنود الإضافية على حساب المقاولين (تعتيق/مبيت/مرتجعات)
+  { key: 'invoices.print', label: 'طباعة الفاتورة الضريبية A4', group: 'الفواتير' },
+  { key: 'invoices.export', label: 'تصدير الفواتير Excel', group: 'الفواتير' },
+  // 6) البنود الإضافية على حساب المقاولين (extra-costs) — تعتيق/مبيت/مرتجعات
   { key: 'extra_costs.view', label: 'عرض البنود الإضافية', group: 'البنود الإضافية' },
   { key: 'extra_costs.create', label: 'إضافة وتعديل البنود الإضافية', group: 'البنود الإضافية' },
   { key: 'extra_costs.approve', label: 'اعتماد أو رفض بنود المبيت والمرتجعات', group: 'البنود الإضافية' },
   { key: 'extra_costs.delete', label: 'حذف البنود الإضافية', group: 'البنود الإضافية' },
-  // دفعات وعهد المقاولين
-  { key: 'payments.view', label: 'عرض دفعات ومسحوبات المقاولين', group: 'دفعات المقاولين' },
-  { key: 'payments.create', label: 'تسجيل دفعة أو عهدة لمقاول', group: 'دفعات المقاولين' },
-  { key: 'payments.cancel', label: 'عكس أو إلغاء دفعة مقاول', group: 'دفعات المقاولين' },
-  // المرتجعات
+  // 7) المرتجعات لم تُستلم (pending-returns)
   { key: 'returns.view', label: 'عرض المرتجعات وحالة استلامها', group: 'المرتجعات' },
   { key: 'returns.manage', label: 'تسجيل واستلام المرتجعات', group: 'المرتجعات' },
-  // الهيكل
-  { key: 'structure.view', label: 'عرض الفروع والمخازن', group: 'الهيكل' },
-  { key: 'structure.manage', label: 'إدارة الفروع والمخازن', group: 'الهيكل' },
-  // المخزون
+  // 8) العملاء (customers)
+  { key: 'customers.view', label: 'عرض ملفات العملاء وكشوف حساباتهم', group: 'العملاء' },
+  { key: 'customers.manage', label: 'إضافة/تعديل عميل', group: 'العملاء' },
+  { key: 'customers.delete', label: 'حذف عميل', group: 'العملاء' },
+  // 9) المقاولون (contractors) — الناقلون
+  { key: 'contractors.view', label: 'عرض ملفات المقاولين وكشوف حساباتهم', group: 'المقاولون' },
+  { key: 'contractors.manage', label: 'إضافة/تعديل مقاول', group: 'المقاولون' },
+  { key: 'contractors.delete', label: 'حذف مقاول', group: 'المقاولون' },
+  // 10) الموردون (suppliers)
+  { key: 'suppliers.view', label: 'عرض ملفات الموردين وكشوف حساباتهم', group: 'الموردون' },
+  { key: 'suppliers.manage', label: 'إضافة/تعديل مورد', group: 'الموردون' },
+  { key: 'suppliers.delete', label: 'حذف مورد', group: 'الموردون' },
+  // 11) الفروع (branches)
+  { key: 'branches.view', label: 'عرض الفروع', group: 'الفروع' },
+  { key: 'branches.manage', label: 'إضافة/تعديل/حذف فرع', group: 'الفروع' },
+  // 12) المخازن (warehouses)
+  { key: 'warehouses.view', label: 'عرض المخازن', group: 'المخازن' },
+  { key: 'warehouses.manage', label: 'إضافة/تعديل/حذف مخزن', group: 'المخازن' },
+  // 13) المخزون — الأصناف (inventory)
   { key: 'inventory.view', label: 'عرض الأصناف والأرصدة', group: 'المخزون' },
-  { key: 'inventory.movements', label: 'تسجيل حركات المخزون', group: 'المخزون' },
-  { key: 'inventory.freight', label: 'إدارة أسعار النولون', group: 'المخزون' },
   { key: 'inventory.manage', label: 'إدارة الأصناف', group: 'المخزون' },
-  // المحاسبة — شجرة الحسابات والقيود والسندات المالية
-  { key: 'accounting.view', label: 'عرض شجرة الحسابات ودفتر الأستاذ', group: 'المحاسبة' },
-  { key: 'accounting.accounts.manage', label: 'إضافة/تعديل/حذف حسابات', group: 'المحاسبة' },
-  { key: 'accounting.journal', label: 'القيود اليومية والترحيل والعكس', group: 'المحاسبة' },
-  { key: 'accounting.vouchers', label: 'عرض الأذونات (السندات المالية)', group: 'المحاسبة' },
-  { key: 'accounting.vouchers.create', label: 'تسجيل إذن قبض/صرف مالي', group: 'المحاسبة' },
-  { key: 'accounting.vouchers.delete', label: 'حذف السندات المالية', group: 'المحاسبة' },
-  // الأذونات التشغيلية (Vouchers) — 12 صلاحية عمل + نطاق الفرع
+  // 14) حركة المخزون (movements)
+  { key: 'inventory.movements', label: 'تسجيل حركات المخزون', group: 'حركة المخزون' },
+  // 15) أسعار النولون (freight)
+  { key: 'inventory.freight', label: 'إدارة أسعار النولون', group: 'أسعار النولون' },
+  // 16) شجرة الحسابات (accounts)
+  { key: 'accounting.view', label: 'عرض شجرة الحسابات ودفتر الأستاذ', group: 'شجرة الحسابات' },
+  { key: 'accounting.accounts.manage', label: 'إضافة/تعديل/حذف حسابات', group: 'شجرة الحسابات' },
+  // 17) القيود اليومية (journal) — القيد المزدوج
+  { key: 'accounting.journal', label: 'القيود اليومية والترحيل والعكس', group: 'القيود اليومية' },
+  // 18) الأذونات التشغيلية (vouchers) — 12 صلاحية عمل + نطاق الفرع + رؤية الأسعار
   { key: 'vouchers.view', label: 'عرض الأذونات التشغيلية', group: 'الأذونات التشغيلية' },
   { key: 'vouchers.view.all', label: 'عرض أذونات كل الفروع', group: 'الأذونات التشغيلية' },
   { key: 'vouchers.create', label: 'إنشاء إذن تشغيلي', group: 'الأذونات التشغيلية' },
@@ -78,34 +93,80 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'vouchers.cancel', label: 'إلغاء إذن', group: 'الأذونات التشغيلية' },
   { key: 'vouchers.print', label: 'طباعة إذن', group: 'الأذونات التشغيلية' },
   { key: 'vouchers.export', label: 'تصدير الأذونات', group: 'الأذونات التشغيلية' },
-  // رؤية الأسعار/المبالغ — يُمنح فقط لمن يحق له رؤية التكلفة/البيع/التحصيل
   { key: 'prices.view', label: 'رؤية الأسعار والمبالغ (تكلفة/بيع/تحصيل)', group: 'الأذونات التشغيلية' },
-  // التقارير
+  // 19) التقارير (reports)
   { key: 'reports.view', label: 'عرض التقارير والتقرير الشهري الموحد', group: 'التقارير' },
   { key: 'reports.export', label: 'تصدير Excel وطباعة كشوف الحساب والتقارير', group: 'التقارير' },
-  // الإعدادات والنسخ الاحتياطي
-  { key: 'settings.manage', label: 'إدارة إعدادات النظام والقوائم', group: 'الإعدادات والنسخ الاحتياطي' },
-  { key: 'backup.export', label: 'تحميل نسخة احتياطية كاملة من قاعدة البيانات', group: 'الإعدادات والنسخ الاحتياطي' },
-  // النظام
-  { key: 'import.manage', label: 'استيراد البيانات', group: 'النظام' },
-  { key: 'users.manage', label: 'إدارة المستخدمين', group: 'النظام' },
-  { key: 'roles.manage', label: 'إدارة الصلاحيات والأدوار', group: 'النظام' },
-  { key: 'audit.view', label: 'عرض سجل التدقيق', group: 'النظام' },
+  // 20) استيراد البيانات (import)
+  { key: 'import.manage', label: 'استيراد البيانات (معاينة وتنفيذ)', group: 'استيراد البيانات' },
+  // 21) المستخدمون (users)
+  { key: 'users.manage', label: 'إدارة المستخدمين', group: 'المستخدمون' },
+  // 22) الصلاحيات والأدوار (roles)
+  { key: 'roles.manage', label: 'إدارة الصلاحيات والأدوار', group: 'الصلاحيات والأدوار' },
+  // 23) القوائم المنسدلة (lookups)
+  { key: 'lookups.manage', label: 'إدارة قوائم النظام المنسدلة', group: 'القوائم المنسدلة' },
+  // 24) الإعدادات (settings) + النسخ الاحتياطي
+  { key: 'settings.manage', label: 'إدارة إعدادات النظام', group: 'الإعدادات' },
+  { key: 'backup.export', label: 'تحميل نسخة احتياطية كاملة من قاعدة البيانات', group: 'الإعدادات' },
+  // 25) سجل التدقيق (audit)
+  { key: 'audit.view', label: 'عرض سجل التدقيق', group: 'سجل التدقيق' },
 ]
 
 export const PERMISSION_GROUPS: string[] = Array.from(
   new Set(PERMISSION_CATALOG.map((p) => p.group)),
 )
 
+/** مفتاح موديول الشريط الجانبي لكل مجموعة صلاحيات — لربط 1:1 مع MODULES في sidebar */
+export const GROUP_MODULE_KEY: Record<string, string> = {
+  'الرئيسية': 'overview',
+  'متابعة الإدارة': 'executive',
+  'الشحنات': 'shipments',
+  'أذونات التسليم': 'receipts',
+  'الفواتير': 'invoices',
+  'البنود الإضافية': 'extra-costs',
+  'المرتجعات': 'pending-returns',
+  'العملاء': 'customers',
+  'المقاولون': 'contractors',
+  'الموردون': 'suppliers',
+  'الفروع': 'branches',
+  'المخازن': 'warehouses',
+  'المخزون': 'inventory',
+  'حركة المخزون': 'movements',
+  'أسعار النولون': 'freight',
+  'شجرة الحسابات': 'accounts',
+  'القيود اليومية': 'journal',
+  'الأذونات التشغيلية': 'vouchers',
+  'التقارير': 'reports',
+  'استيراد البيانات': 'import',
+  'المستخدمون': 'users',
+  'الصلاحيات والأدوار': 'roles',
+  'القوائم المنسدلة': 'lookups',
+  'الإعدادات': 'settings',
+  'سجل التدقيق': 'audit',
+}
+
 /**
  * خريطة التوافق مع الصلاحيات القديمة — المفتاح الجديد ← الأنماط القديمة التي تكافئه.
- * تضمن أن الأدوار المحفوظة بالمفاتيح القديمة (parties.extras.manage …) تظل تعمل
- * بعد إعادة توجيه الحماية على المفاتيح الجديدة، دون فقدان أي وصول قائم.
+ * تضمن أن الأدوار المحفوظة بالمفاتيح القديمة (parties.view / structure.manage …) تظل
+ * تعمل بعد إعادة توجيه الحماية على المفاتيح الجديدة، دون فقدان أي وصول قائم.
  */
 export const LEGACY_PERMISSION_EQUIV: Record<string, string[]> = {
   'receipts.view': ['shipments.view'],
   'receipts.manage': ['shipments.receipts', 'shipments.edit', 'shipments.create'],
-  'parties.delete': ['parties.manage'],
+  'receipts.print': ['shipments.print', 'shipments.view'],
+  'customers.view': ['parties.view', 'parties.*'],
+  'customers.manage': ['parties.manage', 'parties.*'],
+  'customers.delete': ['parties.delete', 'parties.manage', 'parties.*'],
+  'contractors.view': ['parties.view', 'parties.*'],
+  'contractors.manage': ['parties.manage', 'parties.*'],
+  'contractors.delete': ['parties.delete', 'parties.manage', 'parties.*'],
+  'suppliers.view': ['parties.view', 'parties.*'],
+  'suppliers.manage': ['parties.manage', 'parties.*'],
+  'suppliers.delete': ['parties.delete', 'parties.manage', 'parties.*'],
+  'branches.view': ['structure.view', 'structure.*'],
+  'branches.manage': ['structure.manage', 'structure.*'],
+  'warehouses.view': ['structure.view', 'structure.*'],
+  'warehouses.manage': ['structure.manage', 'structure.*'],
   'extra_costs.view': ['parties.extras.view'],
   'extra_costs.create': ['parties.extras.manage'],
   'extra_costs.delete': ['parties.extras.manage'],
@@ -117,6 +178,16 @@ export const LEGACY_PERMISSION_EQUIV: Record<string, string[]> = {
   'returns.manage': ['parties.extras.manage'],
   'backup.export': ['settings.manage'],
   'accounting.accounts.manage': ['accounting.journal'],
+  'accounting.vouchers': ['vouchers.view'],
+  'accounting.vouchers.create': ['vouchers.create'],
+  'accounting.vouchers.delete': ['vouchers.delete'],
+  'invoices.print': ['invoices.view'],
+  'invoices.export': ['invoices.view'],
+  'lookups.manage': ['settings.manage'],
+  'import.manage': ['settings.manage'],
+  'users.manage': ['settings.manage'],
+  'roles.manage': ['settings.manage'],
+  'audit.view': ['settings.manage'],
 }
 
 /** تطبيع الأنماط القديمة (shipments.read / branch.read) إلى المفاتيح الجديدة */
@@ -162,6 +233,65 @@ export function matchPermission(patterns: string[] | null | undefined, key: stri
 
 export function hasAnyPermission(patterns: string[] | null | undefined): boolean {
   return !!patterns && patterns.length > 0
+}
+
+// ----------------------------------------------------------------------------
+// الأطراف: مفاتيح الصلاحية لكل نوع طرف (عميل / مقاول / مورد) —
+// الطرف الواحد قد يجمع أكثر من صفة، لذا تُعاد قوائم المفاتيح المحتملة
+// ويُكفي تحقق أيٍّ منها (any-of) عبر requireAnyPerm في الخادم.
+// ----------------------------------------------------------------------------
+export interface PartyFlags {
+  isCustomer?: boolean | null
+  isContractor?: boolean | null
+  isSupplier?: boolean | null
+}
+
+/** مفاتيح العرض المحتملة لطرف بحسب صفاته */
+export function partyViewKeys(p: PartyFlags): string[] {
+  const keys: string[] = []
+  if (p.isContractor) keys.push('contractors.view')
+  if (p.isSupplier) keys.push('suppliers.view')
+  if (p.isCustomer || !keys.length) keys.push('customers.view')
+  return keys
+}
+
+/** مفاتيح الإضافة/التعديل المحتملة لطرف بحسب صفاته المطلوبة */
+export function partyManageKeys(p: PartyFlags): string[] {
+  const keys: string[] = []
+  if (p.isContractor) keys.push('contractors.manage')
+  if (p.isSupplier) keys.push('suppliers.manage')
+  if (p.isCustomer || !keys.length) keys.push('customers.manage')
+  return keys
+}
+
+/** مفاتيح الحذف المحتملة لطرف بحسب صفاته */
+export function partyDeleteKeys(p: PartyFlags): string[] {
+  const keys: string[] = []
+  if (p.isContractor) keys.push('contractors.delete')
+  if (p.isSupplier) keys.push('suppliers.delete')
+  if (p.isCustomer || !keys.length) keys.push('customers.delete')
+  return keys
+}
+
+/** مفتاح العرض لكل نوع مطلوب في قائمة الأطراف (?type=customer|contractor|supplier) */
+export function partyTypeViewKey(type: string | null | undefined): string[] {
+  switch (type) {
+    case 'customer': return ['customers.view']
+    case 'contractor': return ['contractors.view']
+    case 'supplier': return ['suppliers.view']
+    default: return ['customers.view', 'contractors.view', 'suppliers.view']
+  }
+}
+
+/** مفتاح الإدارة لكل نوع مطلوب عند إنشاء طرف جديد */
+export function partyTypeManageKeys(type: string | null | undefined, flags?: PartyFlags): string[] {
+  if (flags && (flags.isCustomer || flags.isContractor || flags.isSupplier)) return partyManageKeys(flags)
+  switch (type) {
+    case 'customer': return ['customers.manage']
+    case 'contractor': return ['contractors.manage']
+    case 'supplier': return ['suppliers.manage']
+    default: return ['customers.manage', 'contractors.manage', 'suppliers.manage']
+  }
 }
 
 /** توسيع الأنماط إلى قائمة صلاحيات صريحة (للعرض في المصفوفة) */

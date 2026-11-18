@@ -11,7 +11,7 @@ const EDITABLE = ['name', 'manager', 'active'] as const
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'structure.manage')
+    const user = await requirePerm(req, 'warehouses.manage')
     const { id } = await params
     const b = await readBody(req)
 
@@ -46,7 +46,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'structure.manage')
+    const user = await requirePerm(req, 'warehouses.manage')
     const { id } = await params
     const w = await db.warehouse.findUnique({ where: { id } })
     if (!w) return null

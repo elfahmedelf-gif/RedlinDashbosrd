@@ -132,9 +132,11 @@ export function ReceiptsModule() {
   const { toast } = useToast()
   const { confirmDelete } = useConfirm()
   const canToggle = has('shipments.receipts')
-  const canAdd = has('shipments.create')
-  const canEdit = has('shipments.edit')
-  const canDelete = has('shipments.delete')
+  // إضافة/تعديل/حذف إذن التسليم → /api/receipts (POST/PATCH/DELETE) — صلاحية receipts.manage
+  const canAdd = has('receipts.manage')
+  const canEdit = has('receipts.manage')
+  const canDelete = has('receipts.manage')
+  const canPrint = has('receipts.print')
   const canPrices = has('prices.view')
 
   const todayISO = React.useMemo(() => new Date().toISOString().slice(0, 10), [])
@@ -433,9 +435,11 @@ export function ReceiptsModule() {
           <Button variant="outline" size="sm" onClick={exportCSV} disabled={!items.length} className="h-9">
             <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">تصدير</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={() => window.print()} disabled={!items.length} className="h-9">
-            <Printer className="size-4" /> <span className="hidden sm:inline">طباعة</span>
-          </Button>
+          {canPrint && (
+            <Button variant="outline" size="sm" onClick={() => window.print()} disabled={!items.length} className="h-9">
+              <Printer className="size-4" /> <span className="hidden sm:inline">طباعة</span>
+            </Button>
+          )}
         </div>
       </div>
 

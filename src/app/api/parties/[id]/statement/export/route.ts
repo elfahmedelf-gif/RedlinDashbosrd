@@ -8,8 +8,9 @@ import { NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
 import { ApiError } from '@/lib/server/http'
 import { requireUser } from '@/lib/server/session'
-import { matchPermission } from '@/lib/permissions'
+import { matchPermission, partyViewKeys } from '@/lib/permissions'
 import { ensureSeeded } from '@/lib/server/seed'
+import { db } from '@/lib/db'
 import { getPartyStatement } from '@/lib/server/statement'
 
 export const dynamic = 'force-dynamic'
@@ -50,12 +51,17 @@ const CELL_CENTER = { horizontal: 'center' as const, vertical: 'middle' as const
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await ensureSeeded()
-    // كشف الحساب يكشف مبالغًا — يُسمح لمن يملك عرض الأطراف أو صلاحية تصدير/طباعة الكشوف
-    const u = await requireUser(req)
-    if (!matchPermission(u.permissions, 'parties.view') && !matchPermission(u.permissions, 'reports.export')) {
-      throw new ApiError(403, 'غير مصرح — هذه العملية تتطلب صلاحية "parties.view" أو "reports.export"')
-    }
+    const user = await requireUser(req)
     const { id } = await params
+    // كشف الحساب يكشف مبالغًا — يُسمح لمن يملك عرض هذا الطرف (حسب صفاته)
+    // أو صلاحية تصدير/طباعة الكشوف
+    const flags = await db.party.findUnique({ where: { id }, select: { isCustomer: true, isContractor: true, isSupplier: true } })
+    if (!flags) throw new ApiError(404, 'الطرف غير موجود')
+    const allowed = partyViewKeys(flags).some((k) => matchPermission(user.permissions, k))
+      || matchPermission(user.permissions, 'reports.export')
+    if (!allowed) {
+      throw new ApiError(403, 'غير مصرح — هذه العملية تتطلب صلاحية عرض الطرف أو "reports.export"')
+    }
     const q = new URL(req.url).searchParams
     const from = q.get('from')
     const to = q.get('to')

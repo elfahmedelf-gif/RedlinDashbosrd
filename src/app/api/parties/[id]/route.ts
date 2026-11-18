@@ -1,5 +1,6 @@
 import { ApiError, handle, num, readBody } from '@/lib/server/http'
-import { requirePerm } from '@/lib/server/session'
+import { requireUser } from '@/lib/server/session'
+import { matchPermission, partyManageKeys, partyDeleteKeys } from '@/lib/permissions'
 import { ensureSeeded } from '@/lib/server/seed'
 import { logAudit } from '@/lib/server/audit'
 import { db } from '@/lib/db'
@@ -14,13 +15,17 @@ const FINANCIAL_ONLY_NEW = ['openingBalance', 'creditLimit', 'openingBalanceType
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.manage')
+    const user = await requireUser(req)
     const { id } = await params
     const b = await readBody(req)
 
     await db.$transaction(async (tx) => {
       const party = await tx.party.findUnique({ where: { id } })
       if (!party) throw new ApiError(404, 'الطرف غير موجود')
+      // صلاحية الإدارة حسب صفات الطرف الفعلية (عميل/مقاول/مورد)
+      if (!partyManageKeys(party).some((k) => matchPermission(user.permissions, k))) {
+        throw new ApiError(403, `غير مصرح — هذه العملية تتطلب إحدى الصلاحيات: ${partyManageKeys(party).map((k) => `"${k}"`).join(' أو ')}`)
+      }
       if (b.branchId && !(await tx.branch.findUnique({ where: { id: b.branchId } }))) throw new ApiError(400, 'الفرع المحدد غير موجود')
 
       const wantsFinancial = FINANCIAL_ONLY_NEW.some((k) => b[k] !== undefined)
@@ -57,12 +62,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.delete')
+    const user = await requireUser(req)
     const { id } = await params
 
     await db.$transaction(async (tx) => {
       const party = await tx.party.findUnique({ where: { id } })
       if (!party) return null
+      // صلاحية الحذف حسب صفات الطرف الفعلية (عميل/مقاول/مورد)
+      if (!partyDeleteKeys(party).some((k) => matchPermission(user.permissions, k))) {
+        throw new ApiError(403, `غير مصرح — هذه العملية تتطلب إحدى الصلاحيات: ${partyDeleteKeys(party).map((k) => `"${k}"`).join(' أو ')}`)
+      }
       const linked = await tx.shipment.findFirst({ where: { OR: [{ customerId: id }, { contractorId: id }] } })
       if (linked) throw new ApiError(409, 'لا يمكن حذف طرف مرتبط بشحنات — عالجه وفق سياسة التصحيح')
       const linkedVoucher = await tx.opVoucher.findFirst({ where: { OR: [{ partyId: id }, { courierId: id }] } })

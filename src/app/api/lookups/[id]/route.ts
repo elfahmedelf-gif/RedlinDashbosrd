@@ -12,7 +12,7 @@ const EDITABLE = ['label', 'labelEn', 'tone', 'icon', 'active', 'sortOrder'] as 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'settings.manage')
+    const user = await requirePerm(req, 'lookups.manage')
     const { id } = await params
     const b = await readBody(req)
 
@@ -51,7 +51,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'settings.manage')
+    const user = await requirePerm(req, 'lookups.manage')
     const { id } = await params
     await db.$transaction(async (tx) => {
       const lk = await tx.lookupItem.findUnique({ where: { id } })

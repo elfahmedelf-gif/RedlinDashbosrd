@@ -472,7 +472,7 @@ function InvoiceFormDialog({
 // ---------------------------------------------------------------------------
 function InvoiceDetailDialog({
   invoiceId, open, onOpenChange, onAction,
-  canIssue, canPay, canCancel,
+  canIssue, canPay, canCancel, canPrint,
 }: {
   invoiceId: string | null
   open: boolean
@@ -481,6 +481,7 @@ function InvoiceDetailDialog({
   canIssue: boolean
   canPay: boolean
   canCancel: boolean
+  canPrint: boolean
 }) {
   const { toast } = useToast()
   const { confirm } = useConfirm()
@@ -660,7 +661,7 @@ function InvoiceDetailDialog({
         <DialogFooter className="flex flex-wrap items-center justify-start gap-2 sm:justify-start">
           {d && (
             <>
-              <Button variant="outline" size="sm" onClick={() => onAction('print', d)}>
+              <Button variant="outline" size="sm" disabled={!canPrint} title={canPrint ? 'طباعة A4' : 'تحتاج صلاحية "طباعة الفاتورة الضريبية A4"'} onClick={() => onAction('print', d)}>
                 <Printer className="size-3.5" /> طباعة A4
               </Button>
               {canIssue && d.status === 'draft' && (
@@ -855,6 +856,8 @@ export function InvoicesModule() {
   const canCreate = has('invoices.create')
   const canIssue = has('invoices.issue')
   const canCancel = has('invoices.cancel')
+  const canPrint = has('invoices.print')
+  const canExport = has('invoices.export')
 
   const [status, setStatus] = React.useState('all')
   const [customerId, setCustomerId] = React.useState('all')
@@ -1005,9 +1008,11 @@ export function InvoicesModule() {
           <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => openDetail(r)} title="عرض التفاصيل">
             <Eye className="size-3.5" /> عرض
           </Button>
-          <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => openPrint(r)} title="طباعة A4">
-            <Printer className="size-3.5" />
-          </Button>
+          {canPrint && (
+            <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => openPrint(r)} title="طباعة A4">
+              <Printer className="size-3.5" />
+            </Button>
+          )}
           {r.status === 'draft' && canIssue && (
             <Button size="sm" variant="ghost" className="h-8 px-2 text-primary hover:text-primary" onClick={() => issueInvoice(r)} title="إصدار وترحيل القيد">
               <CheckCheck className="size-3.5" /> إصدار
@@ -1062,9 +1067,11 @@ export function InvoicesModule() {
                   <Plus className="size-4" /> فاتورة جديدة
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={exportExcel} disabled={!rows.length}>
-                <FileDown className="size-4" /> تصدير Excel
-              </Button>
+              {canExport && (
+                <Button size="sm" variant="outline" onClick={exportExcel} disabled={!rows.length}>
+                  <FileDown className="size-4" /> تصدير Excel
+                </Button>
+              )}
             </div>
           </div>
           <div className="flex flex-col lg:flex-row lg:items-center gap-2 flex-wrap">
@@ -1142,6 +1149,7 @@ export function InvoicesModule() {
         canIssue={canIssue}
         canPay={canCreate}
         canCancel={canCancel}
+        canPrint={canPrint}
         onAction={(action, row) => {
           if (action === 'issue') issueInvoice(row as unknown as InvoiceRow)
           else if (action === 'pay') { setDetailOpen(false); setPayInvoice(row as unknown as InvoiceRow) }

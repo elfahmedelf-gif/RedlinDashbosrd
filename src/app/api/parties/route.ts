@@ -1,6 +1,7 @@
 import { ApiError, handle, num, readBody, round2 } from '@/lib/server/http'
-import { requirePerm } from '@/lib/server/session'
+import { requireAnyPerm } from '@/lib/server/session'
 import { ensureSeeded } from '@/lib/server/seed'
+import { partyTypeViewKey, partyTypeManageKeys } from '@/lib/permissions'
 import { logAudit, nextSeq } from '@/lib/server/audit'
 import { db } from '@/lib/db'
 import { listParties } from '@/lib/server/queries'
@@ -10,7 +11,9 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.view')
+    // صلاحية عرض حسب نوع الطرف المطلوب (عميل/مقاول/مورد) — 1:1 مع بطاقات الصلاحيات
+    const type = new URL(req.url).searchParams.get('type')
+    const user = await requireAnyPerm(req, partyTypeViewKey(type))
     return listParties(new URL(req.url).searchParams, user)
   })
 }
@@ -19,8 +22,12 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'parties.manage')
-    const b = await readBody(req)
+    const b0 = await readBody(req)
+    // صلاحية الإدارة حسب صفات الطرف المطلوب إنشاؤه
+    const user = await requireAnyPerm(req, partyTypeManageKeys(b0?.type, {
+      isCustomer: !!b0?.isCustomer, isContractor: !!b0?.isContractor, isSupplier: !!b0?.isSupplier,
+    }))
+    const b = b0
     if (!b.name || !String(b.name).trim()) throw new ApiError(400, 'اسم الطرف مطلوب')
 
     const result = await db.$transaction(async (tx) => {

@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   return handle(async () => {
     await ensureSeeded()
-    const user = await requirePerm(req, 'structure.manage')
+    const user = await requirePerm(req, 'warehouses.manage')
     const b = await readBody(req)
     if (!b.branchId) throw new ApiError(400, 'اختر الفرع التابع له المخزن')
     const count = await db.warehouse.count()
