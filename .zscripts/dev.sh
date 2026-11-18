@@ -15,12 +15,13 @@ PID_FILE="$PROJECT_DIR/.zscripts/dev.pid"
 #
 # 背景：next dev 会现场编译大模块（vouchers / reports / import-wizard...），
 # preview 浏览器会碰到 net::ERR_CONNECTION_RESET。生产构建已存在时改用
-# npm run start（standalone 产物：响应瞬时、内存占用低）。
-# 判定标准：.next/standalone/server.js + .next/BUILD_ID 同时存在。
+# npm run start（标准构建 + next start：响应瞬时、内存占用低，与云部署
+# 完全同一条启动链路）。
+# 判定标准：.next/BUILD_ID 存在（标准构建产物，`next start` 可直接使用）。
 # 构建缺失时自动先跑一次 npm run build 再启动生产服务器。
 # ---------------------------------------------------------------------------
 is_prod_build() {
-        [ -f "$PROJECT_DIR/.next/standalone/server.js" ] && [ -f "$PROJECT_DIR/.next/BUILD_ID" ]
+        [ -f "$PROJECT_DIR/.next/BUILD_ID" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -72,15 +73,14 @@ start_dev_server() {
         # لا تشغيل أثناء بناء جارٍ — انتظر حتى ينتهي (يمنع تحميل chunk قديم في الذاكرة)
         wait_build_quiet
         # setsid：让 server 成为独立会话/进程组首进程（PGID == PID），
-        # 停止时可以整组杀掉（bun run dev|start | tee 是一条管道，包含多个子进程）。
-        # 不重定向到日志文件：package.json 的 dev/start 脚本自带 `| tee dev.log / server.log`，
-        # 这里再重定向会双写同一个文件（曾造成日志交错）。
+        # 停止时可以整组杀掉（npm run start 是一条 shell 链，包含多个子进程）。
+        # 服务器输出不重定向：由外层（/start.sh → dev-sh.log）统一收集。
         if is_prod_build; then
-                echo "[SERVER] Production build detected — starting Next.js PRODUCTION server (npm run start → .next/standalone/server.js)"
-                setsid bun run start < /dev/null &
+                echo "[SERVER] Production build detected — starting Next.js PRODUCTION server (npm run start → db-sync + next start)"
+                setsid npm run start < /dev/null &
         else
                 echo "[SERVER] No production build — starting Next.js dev server (npm run dev)"
-                setsid bun run dev < /dev/null &
+                setsid npm run dev < /dev/null &
         fi
         DEV_PID=$!
         echo "$DEV_PID" > "$PID_FILE"
@@ -202,13 +202,13 @@ log_step_end "bun run db:push"
 
 # ---------------------------------------------------------------------------
 # 启动前确保存在生产构建：
-# - 已有 .next/standalone 产物 → 直接 npm run start（瞬时启动，无现场编译）
-# - 没有产物 → 先 npm run build 一次（生成 standalone），之后重启/watchdog 拉起
-#   都走 npm run start。注意：若之后修改了源码，需要重新 npm run build 才会生效。
+# - 已有 .next/BUILD_ID 产物 → 直接 npm run start（瞬时启动，无现场编译）
+# - 没有产物 → 先 npm run build 一次，之后重启/watchdog 拉起都走 npm run start。
+#   注意：若之后修改了源码，需要重新 npm run build 才会生效。
 # ---------------------------------------------------------------------------
 if is_prod_build; then
         log_step_start "Production build check"
-        echo "[BUILD] Existing production build found (.next/standalone) — skipping npm run build"
+        echo "[BUILD] Existing production build found (.next/BUILD_ID) — skipping npm run build"
         log_step_end "Production build check"
 else
         log_step_start "npm run build (production, one-time)"
