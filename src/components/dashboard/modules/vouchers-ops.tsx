@@ -1329,7 +1329,7 @@ export function VouchersModule() {
                   <DetailItem label="الفرع المصدر" value={detailData.sourceBranch?.name ?? '—'} />
                   <DetailItem label="فرع الاستلام" value={detailData.destBranch?.name ?? '—'} />
                   {/* الحساب والقيمة المالية — فقط لمن يملك صلاحية الأسعار */}
-                  {canPrices && <DetailItem label="الخزينة" value={detailData.cashAccount ? `${detailData.cashAccount.code} - ${detailData.cashAccount.name}` : (detailData.accountName ?? '—')} />}
+                  {canPrices && <DetailItem label="الخزينة" value={detailData.cashAccount ? [detailData.cashAccount.code, detailData.cashAccount.name].filter(Boolean).join(' - ') : (detailData.accountName ?? '—')} />}
                   {canPrices && <DetailItem label="القيمة" value={`${fmtNum(detailData.totalValue ?? 0)} ج.م`} />}
                   <DetailItem label="القيد" value={detailData.journalEntryNo ?? '—'} mono />
                   <DetailItem label="عدد الشحنات" value={`${detailData.itemCount ?? 0}`} />

@@ -125,7 +125,8 @@ export function enrichVoucher(v: VoucherRow) {
     attachments: [] as any[],
     accountName: v.accountName,
     cashAccountId: v.cashAccountId,
-    cashAccount: branchRef(v.cashAccount),
+    // الخزينة تحتاج الكود للعرض ("1101 - الصندوق") — branchRef لا يتضمن الكود
+    cashAccount: v.cashAccount ? { id: v.cashAccount.id, code: v.cashAccount.code ?? null, name: v.cashAccount.name } : null,
     vehicleNo: v.vehicleNo,
     driverName: v.driverName,
     journalEntryId: v.journalEntryId,
