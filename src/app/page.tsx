@@ -160,7 +160,7 @@ function DashboardHeader({
             <ActiveIcon className="w-5 h-5" />
           </div>
         )}
-        <div className="flex flex-col justify-center min-w-0 space-y-1">
+        <div className="flex flex-col justify-center min-w-0 space-y-1 leading-normal">
           {/* breadcrumb: المجموعة ← الوحدة */}
           {groupLabel && (
             <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80 leading-normal">
@@ -179,7 +179,7 @@ function DashboardHeader({
       </div>
 
       {/* يسار: شريط أدوات أفقي مضغوط — flex-nowrap بدون التفاف داخلي */}
-      <div className="flex flex-nowrap items-center justify-start xl:justify-end gap-2 min-h-9 shrink-0">
+      <div className="flex flex-nowrap items-center justify-start xl:justify-end gap-2 h-9 text-xs shrink-0">
         <QuickTourButton variant="desktop" />
         <OverdueReceiptsBadge count={overdueCount} onNavigate={onOverdueClick} />
         {tab === 'overview' && (
