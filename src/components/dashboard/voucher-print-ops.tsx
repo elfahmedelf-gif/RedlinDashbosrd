@@ -67,7 +67,7 @@ function VoucherOpsContent({ voucher }: { voucher: any }) {
   return (
     <div className="p-6" dir="rtl">
       {/* ترويسة الإذن */}
-      <div className="flex items-start justify-between gap-4 border-b-[3px] border-slate-800 pb-3">
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4 border-b-[3px] border-slate-800 pb-3">
         <div className="flex items-start gap-3">
           <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-slate-900 text-white shrink-0">
             <Truck className="w-6 h-6" />
@@ -233,7 +233,7 @@ export function VoucherOpsPrint({ voucher, open, onOpenChange }: VoucherOpsPrint
           <DialogHeader>
             <DialogTitle>طباعة الإذن — {voucher.voucherNo}</DialogTitle>
           </DialogHeader>
-          <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[70vh] overflow-y-auto">
+          <div className="border border-slate-200 rounded-lg bg-white max-h-[70vh] overflow-y-auto overflow-x-auto">
             <VoucherOpsContent voucher={voucher} />
           </div>
           <div className="flex items-center justify-between gap-2 mt-2 print:hidden">

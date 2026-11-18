@@ -109,9 +109,9 @@ function WaybillContent({ shipment }: { shipment: any }) {
   const statusLabel = shipment.status ? (SHIPMENT_STATUS_LABELS[shipment.status] ?? shipment.status) : '—'
 
   return (
-    <div className="p-6" dir="rtl">
+    <div className="p-4 sm:p-6 min-w-0" dir="rtl">
       {/* ============ ترويسة البوليصة (Header) ============ */}
-      <div className="flex items-start justify-between gap-4 border-b-[3px] border-slate-800 pb-3">
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4 border-b-[3px] border-slate-800 pb-3">
         {/* يمين: الشركة + الشعار + بيانات الفرع */}
         <div className="flex items-start gap-3">
           <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-slate-900 text-white shrink-0">
@@ -315,7 +315,7 @@ export function WaybillPrint({ shipment, open, onOpenChange }: WaybillProps) {
             <DialogTitle>طباعة بوليصة الشحن — {shipment.shipmentNo}</DialogTitle>
           </DialogHeader>
           {/* معاينة البوليصة على الشاشة (نفس المحتوى) */}
-          <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[70vh] overflow-y-auto">
+          <div className="border border-slate-200 rounded-lg bg-white max-h-[70vh] overflow-y-auto overflow-x-auto">
             <WaybillContent shipment={shipment} />
           </div>
           {/* أزرار التحكم — تُخفى في الطباعة */}

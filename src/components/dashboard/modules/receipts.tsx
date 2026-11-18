@@ -131,7 +131,7 @@ export function ReceiptsModule() {
   const { has } = useAuth()
   const { toast } = useToast()
   const { confirmDelete } = useConfirm()
-  const canToggle = has('shipments.receipts')
+  const canToggle = has('receipts.manage')  // (توافقًا: المفتاح القديم shipments.receipts يمنحه عبر خريطة التوافق)
   // إضافة/تعديل/حذف إذن التسليم → /api/receipts (POST/PATCH/DELETE) — صلاحية receipts.manage
   const canAdd = has('receipts.manage')
   const canEdit = has('receipts.manage')

@@ -42,11 +42,14 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'invoices.cancel', label: 'إلغاء الفواتير وعكس دفعات التحصيل', group: 'الفواتير' },
   { key: 'invoices.print', label: 'طباعة الفاتورة الضريبية A4', group: 'الفواتير' },
   { key: 'invoices.export', label: 'تصدير الفواتير Excel', group: 'الفواتير' },
-  // 6) البنود الإضافية على حساب المقاولين (extra-costs) — تعتيق/مبيت/مرتجعات
+  // 6) البنود الإضافية على حساب المقاولين (extra-costs) — تعتيق/مبيت/مرتجعات + دفعات وعهد المقاولين
   { key: 'extra_costs.view', label: 'عرض البنود الإضافية', group: 'البنود الإضافية' },
   { key: 'extra_costs.create', label: 'إضافة وتعديل البنود الإضافية', group: 'البنود الإضافية' },
   { key: 'extra_costs.approve', label: 'اعتماد أو رفض بنود المبيت والمرتجعات', group: 'البنود الإضافية' },
   { key: 'extra_costs.delete', label: 'حذف البنود الإضافية', group: 'البنود الإضافية' },
+  { key: 'payments.view', label: 'عرض دفعات وعهد المقاولين', group: 'البنود الإضافية' },
+  { key: 'payments.create', label: 'تسجيل دفعة/عهدة لمقاول (نقدي أو بنكي)', group: 'البنود الإضافية' },
+  { key: 'payments.cancel', label: 'إرجاع/عكس دفعة مسجلة للمقاول', group: 'البنود الإضافية' },
   // 7) المرتجعات لم تُستلم (pending-returns)
   { key: 'returns.view', label: 'عرض المرتجعات وحالة استلامها', group: 'المرتجعات' },
   { key: 'returns.manage', label: 'تسجيل واستلام المرتجعات', group: 'المرتجعات' },

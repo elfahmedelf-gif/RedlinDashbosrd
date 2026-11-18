@@ -106,8 +106,8 @@ export function ExtraCostsModule() {
   const { has } = useAuth()
   const { toast } = useToast()
   const { confirm: confirmDialog } = useConfirm()
-  const canManage = has('parties.extras.manage')
-  const canApprove = has('parties.extras.approve')
+  const canManage = has('extra_costs.create')
+  const canApprove = has('extra_costs.approve')
   const canPrices = has('prices.view')
 
   const [contractorId, setContractorId] = React.useState('all')
@@ -133,8 +133,8 @@ export function ExtraCostsModule() {
   const [rejectNotes, setRejectNotes] = React.useState('')
 
   // ── دفعات وعهد المقاولين (قيد فوري: مدين 2102 / دائن الصندوق أو البنك) ──
-  const canPay = has('vouchers.create')
-  const canReverse = has('vouchers.cancel')
+  const canPay = has('payments.create')
+  const canReverse = has('payments.cancel')
   const [payOpen, setPayOpen] = React.useState(false)
   const [pContractor, setPContractor] = React.useState('')
   const [pAmount, setPAmount] = React.useState('')

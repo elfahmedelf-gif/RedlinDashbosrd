@@ -69,9 +69,9 @@ function InvoiceSheet({ invoice, companyName, taxNumber }: { invoice: InvoicePri
   const issue = fmtDate(invoice.issueDate)
   const due = fmtDate(invoice.dueDate)
   return (
-    <div className="p-8 bg-white text-slate-900" dir="rtl" style={{ fontFamily: "'Tahoma','Arial',sans-serif" }}>
+    <div className="p-4 sm:p-8 bg-white text-slate-900 min-w-0" dir="rtl" style={{ fontFamily: "'Tahoma','Arial',sans-serif" }}>
       {/* ===== ترويسة الشركة ===== */}
-      <div className="flex items-start justify-between gap-6 border-b-[3px] border-slate-900 pb-4">
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-4 sm:gap-6 border-b-[3px] border-slate-900 pb-4">
         <div className="flex items-start gap-3">
           <div className="flex items-center justify-center w-14 h-14 rounded-xl bg-slate-900 text-white shrink-0">
             <Truck className="w-7 h-7" />
@@ -169,7 +169,7 @@ function InvoiceSheet({ invoice, companyName, taxNumber }: { invoice: InvoicePri
       </table>
 
       {/* ===== الإجماليات + التفقيط ===== */}
-      <div className="grid grid-cols-2 gap-4 mt-4 items-start">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 items-start">
         <div className="border-2 border-slate-800 rounded-md px-3 py-2.5 bg-slate-50">
           <span className="text-[11px] font-bold text-slate-500 block mb-0.5">الإجمالي كتابةً</span>
           <span className="font-extrabold text-[13px] leading-relaxed">{tafqitInvoice(invoice.totalAmount)}</span>
@@ -251,9 +251,9 @@ export function InvoicePrint({ invoiceId, open, onOpenChange }: { invoiceId: str
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-4xl max-h-[95vh] overflow-y-auto voucher-dialog" dir="rtl" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>معاينة طباعة الفاتورة الضريبية {data?.invoiceNumber ?? ''}</DialogTitle>
+            <DialogTitle>معاينة طباعة الفاتورة الضريبية <span dir="ltr" className="whitespace-nowrap inline-block">{data?.invoiceNumber ?? ''}</span></DialogTitle>
           </DialogHeader>
-          <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[62vh] overflow-y-auto">
+          <div className="border border-slate-200 rounded-lg bg-white max-h-[62vh] overflow-y-auto overflow-x-auto">
             {sheet}
           </div>
           <div className="flex items-center justify-between gap-2 mt-2 print:hidden">

@@ -23,6 +23,29 @@ is_prod_build() {
         [ -f "$PROJECT_DIR/.next/standalone/server.js" ] && [ -f "$PROJECT_DIR/.next/BUILD_ID" ]
 }
 
+# ---------------------------------------------------------------------------
+# هل يجري بناء إنتاجي الآن؟ (next build) — لا يجوز تشغيل الخادم أثناء البناء:
+# 上一事故：看门狗在构建进行中拉起服务器 → 进程把「旧构建」的 chunk 读进内存，
+# 新构建完成后运行中的服务器仍是旧代码（且无法通过重启修复，除非再次重启）。
+# ---------------------------------------------------------------------------
+build_running() {
+        pgrep -f "next build" >/dev/null 2>&1 || pgrep -f "npm run build" >/dev/null 2>&1
+}
+
+# انتظار هدوء البناء — يُستدعى قبل أي تشغيل/إعادة تشغيل للخادم
+wait_build_quiet() {
+        local waited=0
+        while build_running; do
+                echo "[BUILD] A production build is in progress — delaying server start (waited ${waited}s)..."
+                sleep 5
+                waited=$((waited + 5))
+                if [ "$waited" -ge 900 ]; then
+                        echo "[BUILD] WARNING: build still running after ${waited}s — starting anyway"
+                        break
+                fi
+        done
+}
+
 log_step_start() {
         local step_name="$1"
         echo "=========================================="
@@ -46,6 +69,8 @@ log_step_end() {
 
 start_dev_server() {
         cd "$PROJECT_DIR"
+        # لا تشغيل أثناء بناء جارٍ — انتظر حتى ينتهي (يمنع تحميل chunk قديم في الذاكرة)
+        wait_build_quiet
         # setsid：让 server 成为独立会话/进程组首进程（PGID == PID），
         # 停止时可以整组杀掉（bun run dev|start | tee 是一条管道，包含多个子进程）。
         # 不重定向到日志文件：package.json 的 dev/start 脚本自带 `| tee dev.log / server.log`，
