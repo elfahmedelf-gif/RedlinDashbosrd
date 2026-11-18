@@ -360,7 +360,7 @@ async function runSeed(): Promise<void> {
           ],
         },
         {
-          entryNo: J(3), date: d(15), description: 'صرف مستحقات مقاولي النقل', reference: 'PAY-CONTR', status: 'posted',
+          entryNo: J(3), date: d(15), description: 'إثبات مستحقات مقاولي النقل — استحقاق شغل منفَّذ', reference: 'ACC-CONTR', status: 'posted',
           lines: [
             { code: '5101', debit: 250000, credit: 0, description: 'تكلفة نقل مستحقة', partyId: partyByName('السيد ربيع')?.id ?? null },
             { code: '2102', debit: 0, credit: 250000, description: 'مستحقات المقاولين', partyId: partyByName('السيد ربيع')?.id ?? null },
@@ -435,26 +435,55 @@ async function runSeed(): Promise<void> {
           },
         })
       }
+      // السندات المالية: كل سند له قيده المزدوج الخاص المطابق تمامًا لمبلغه
+      // (نفس قواعد postFinancialVoucherJournal: قبض 1101/1103 — صرف 2102/1101)
       const finDefs = [
-        { type: 'collection', party: party('ADEL HASSAN'), amount: 5000, day: 8, notes: 'تحصيل دفعة نولون', je: J(2) },
-        { type: 'cash_disbursement', party: partyByName('السيد ربيع')?.id ?? null, amount: 120000, day: 15, notes: 'دفعة مستحقات نقل', je: J(3) },
-        { type: 'collection', party: party('Abd al hakeim'), amount: 3500, day: 17, notes: 'تحصيل جزئي', je: null },
-        { type: 'cash_disbursement', party: partyByName('المنسي')?.id ?? null, amount: 80000, day: 19, notes: 'دفعة مستحقات نقل', je: null },
-        { type: 'collection', party: party('Abdelaziz'), amount: 2500, day: 24, notes: 'تحصيل نولون شحنات', je: null },
-        { type: 'cash_disbursement', party: partyByName('جعلص')?.id ?? null, amount: 50000, day: 26, notes: 'دفعة على الحساب', je: null },
+        { type: 'collection', party: party('ADEL HASSAN'), amount: 5000, day: 8, notes: 'تحصيل دفعة نولون' },
+        { type: 'cash_disbursement', party: partyByName('السيد ربيع')?.id ?? null, amount: 120000, day: 15, notes: 'دفعة مستحقات نقل' },
+        { type: 'collection', party: party('Abd al hakeim'), amount: 3500, day: 17, notes: 'تحصيل جزئي' },
+        { type: 'cash_disbursement', party: partyByName('المنسي')?.id ?? null, amount: 80000, day: 19, notes: 'دفعة مستحقات نقل' },
+        { type: 'collection', party: party('Abdelaziz'), amount: 2500, day: 24, notes: 'تحصيل نولون شحنات' },
+        { type: 'cash_disbursement', party: partyByName('جعلص')?.id ?? null, amount: 50000, day: 26, notes: 'دفعة على الحساب' },
       ]
+      const JE_ACC = {
+        AR: accByCode('1103').id, CASH: accByCode('1101').id, CONTRACTORS: accByCode('2102').id,
+      }
+      const finLabels: Record<string, string> = { collection: 'إذن تحصيل نقدية', cash_disbursement: 'إذن صرف نقدية' }
+      let jeSeq = entryDefs.length // JE-0004 آخر قيد في entryDefs (الافتتاحية + السردية)
       let typeSeqAcc: Record<string, number> = {}
       for (const f of finDefs) {
         typeSeqAcc[f.type] = (typeSeqAcc[f.type] ?? 0) + 1
         const td = tdef(f.type)
         const no = `${td.prefix}-${String(typeSeqAcc[f.type]).padStart(4, '0')}`
-        const je = f.je ? await tx.journalEntry.findUnique({ where: { entryNo: f.je } }) : null
+        jeSeq += 1
+        const entryNo = J(jeSeq)
+        const partyId = f.party ?? null
+        const partyName = raw.parties.find((p: any) => p.id === partyId)?.name ?? ''
+        // القيد المزدوج الدقيق للسند (مدين/دائن متوازنان على نفس المبلغ)
+        const lines = f.type === 'collection'
+          ? [
+              { accountId: JE_ACC.CASH, debit: f.amount, credit: 0, description: 'نقدية محصلة', partyId },
+              { accountId: JE_ACC.AR, debit: 0, credit: f.amount, description: 'تحصيل من العميل', partyId },
+            ]
+          : [
+              { accountId: JE_ACC.CONTRACTORS, debit: f.amount, credit: 0, description: 'صرف مستحقات مقاول', partyId },
+              { accountId: JE_ACC.CASH, debit: 0, credit: f.amount, description: 'نقدية مدفوعة', partyId },
+            ]
+        const je = await tx.journalEntry.create({
+          data: {
+            entryNo, date: d(f.day), description: `${finLabels[f.type]} ${no}${partyName ? ` — ${partyName}` : ''}${f.notes ? ` — ${f.notes}` : ''}`,
+            reference: no, branchId: mainBranch, status: 'posted', sourceType: 'op_voucher',
+            totalDebit: f.amount, totalCredit: f.amount,
+            userId: adminId, userName: 'admin', postedAt: d(f.day), postedByUserName: 'admin',
+            lines: { create: lines },
+          },
+        })
         await tx.opVoucher.create({
           data: {
             id: `seed-ovc-fin-${typeSeqAcc[f.type]}-${f.type}`, voucherNo: no, type: f.type, status: 'completed',
-            sourceBranchId: mainBranch, partyId: f.party ?? null, employeeId: adminId,
+            sourceBranchId: mainBranch, partyId, employeeId: adminId,
             amount: f.amount, totalValue: f.amount, notes: f.notes, accountName: 'الصندوق',
-            journalEntryId: je?.id ?? null,
+            journalEntryId: je.id,
             userId: adminId, userName: 'admin', createdAt: d(f.day), updatedAt: d(f.day),
             actions: { create: mkActions([f.day, f.day, f.day, f.day, f.day]) },
           },
@@ -485,7 +514,7 @@ async function runSeed(): Promise<void> {
       })
 
       // ---------- العدادات التسلسلية (استمرار الأرقام بعد البذور) ----------
-      const counterUpdates: Record<string, number> = { journal: 4 }
+      const counterUpdates: Record<string, number> = { journal: entryDefs.length + finDefs.length }
       // أذونات البذرة التشغيلية: عداد لكل نوع = عددها
       for (const sv of seedVouchers) counterUpdates[`voucher:${sv.type}`] = (counterUpdates[`voucher:${sv.type}`] ?? 0) + 1
       // السندات المالية: أقصى رقم تسلسلي مستخدم لكل نوع (ترقيم لكل نوع)
