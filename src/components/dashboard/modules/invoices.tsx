@@ -279,12 +279,12 @@ function InvoiceFormDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-1">
-          {/* العميل */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label className="text-xs font-medium">العميل *</Label>
+          {/* العميل + تاريخ الاستحقاق — شبكة 12 عمودًا مع min-w-0 لمنع أي تداخل في RTL */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+            <div className="sm:col-span-8 min-w-0">
+              <Label className="text-xs font-medium mb-1.5 block whitespace-nowrap">العميل *</Label>
               <Select value={customerId} onValueChange={(v) => { setCustomerId(v); setShowShipments(false) }} disabled={isEdit || busy}>
-                <SelectTrigger><SelectValue placeholder="اختر عميلًا..." /></SelectTrigger>
+                <SelectTrigger className="w-full overflow-hidden"><SelectValue placeholder="اختر عميلًا..." /></SelectTrigger>
                 <SelectContent className="max-h-64">
                   {customers.map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.name}{c.code ? ` (${c.code})` : ''}</SelectItem>
@@ -292,9 +292,9 @@ function InvoiceFormDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">تاريخ الاستحقاق</Label>
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} disabled={busy} />
+            <div className="sm:col-span-4 min-w-0">
+              <Label className="text-xs font-medium mb-1.5 block whitespace-nowrap">تاريخ الاستحقاق</Label>
+              <Input type="date" className="w-full" value={dueDate} onChange={(e) => setDueDate(e.target.value)} disabled={busy} />
             </div>
           </div>
 
@@ -415,32 +415,34 @@ function InvoiceFormDialog({
             )}
           </div>
 
-          {/* الضريبة والخصم + الإجماليات */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">نسبة ضريبة القيمة المضافة</Label>
-                <Select value={vatRate} onValueChange={setVatRate} disabled={busy}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="14">14% — خاضعة للضريبة</SelectItem>
-                    <SelectItem value="0">0% — معفاة</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">الخصم (ج.م)</Label>
-                <Input type="number" min="0" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0" className="tnum" disabled={busy} />
-              </div>
+          {/* الضريبة والخصم — صف مستقل بعمودين متساويين مع min-w-0 (بلا تداخل) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+            <div className="min-w-0">
+              <Label className="text-xs font-medium mb-1.5 block whitespace-nowrap">نسبة ضريبة القيمة المضافة</Label>
+              <Select value={vatRate} onValueChange={setVatRate} disabled={busy}>
+                <SelectTrigger className="w-full overflow-hidden"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="14">14% — خاضعة للضريبة</SelectItem>
+                  <SelectItem value="0">0% — معفاة</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 space-y-1.5 text-xs">
+            <div className="min-w-0">
+              <Label className="text-xs font-medium mb-1.5 block whitespace-nowrap">الخصم (ج.م)</Label>
+              <Input type="number" min="0" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0" className="tnum w-full" disabled={busy} />
+            </div>
+          </div>
+
+          {/* ملخص الإجماليات — بطاقة كاملة العرض أسفل الحقلين */}
+          <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 space-y-1.5 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5">
               <div className="flex justify-between"><span className="text-muted-foreground">الإجمالي قبل الضريبة</span><b className="tnum">{money(subtotal)} ج.م</b></div>
               {discountVal > 0 && <div className="flex justify-between text-amber-600"><span>الخصم</span><b className="tnum">- {money(discountVal)} ج.م</b></div>}
               <div className="flex justify-between"><span className="text-muted-foreground">الصافي</span><b className="tnum">{money(net)} ج.م</b></div>
               <div className="flex justify-between"><span className="text-muted-foreground">الضريبة ({vatRate}%)</span><b className="tnum">{money(vatVal)} ج.م</b></div>
-              <Separator />
-              <div className="flex justify-between text-sm"><span>الإجمالي النهائي</span><b className="tnum text-primary">{money(totalVal)} ج.م</b></div>
             </div>
+            <Separator />
+            <div className="flex justify-between text-sm"><span>الإجمالي النهائي</span><b className="tnum text-primary">{money(totalVal)} ج.م</b></div>
           </div>
 
           <div className="space-y-1.5">
