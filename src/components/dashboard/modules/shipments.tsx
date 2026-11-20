@@ -810,41 +810,6 @@ export function ShipmentsModule() {
                 </td></tr>
               )}
             </tbody>
-            {/* ── صف الإجمالي النقلة — إجماليات كل النتائج المطابقة (مش الصفحة بس) ──
-                colSpan ديناميكي = عدد الأعمدة الظاهرة في الكتلة الأولى (select + shipmentNo + customer + destination)
-                ثم خلية لكل عمود ظاهر بعدها (pieces/loadType/contractor/date/status + extras + prices + actions) */}
-            {totals && data && data.items.length > 0 && (() => {
-              const headerSpan = 1 /* select */ + (cols.shipmentNo ? 1 : 0) + (cols.customer ? 1 : 0) + (cols.destination ? 1 : 0)
-              return (
-                <tfoot className="border-t-2 border-border bg-muted/60 font-semibold text-sm">
-                  <tr>
-                    <td colSpan={headerSpan} className="px-4 py-3 text-primary whitespace-nowrap">
-                      الإجمالي النقلة
-                      <span className="block text-[10px] font-medium text-muted-foreground">لـ {fmtNum(totals.shipments)} شحنة (كل النتائج المطابقة)</span>
-                    </td>
-                    {cols.pieces && <td className="px-4 py-3 text-center tnum num-ltr" title="إجمالي القطع">{fmtNum(totals.pieces)}</td>}
-                    {cols.loadType && <td className="px-4 py-3 text-center text-[11px] font-medium text-muted-foreground">—</td>}
-                    {cols.contractor && <td className="px-4 py-3 text-[11px] font-medium text-muted-foreground">—</td>}
-                    {cols.date && <td className="px-4 py-3 text-center text-[11px] font-medium text-muted-foreground">—</td>}
-                    {cols.status && (
-                      <td className="px-4 py-3 text-center text-[10px] font-medium leading-relaxed text-muted-foreground whitespace-nowrap">
-                        محمّلة: {fmtNum(totals.loaded)}
-                        <span className="block">مش محمّلة: {fmtNum(totals.notLoaded)}</span>
-                      </td>
-                    )}
-                    {cols.aging && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.aging ?? 0)}</td>}
-                    {cols.overnight && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.overnight ?? 0)}</td>}
-                    {cols.transfer && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.transfer ?? 0)}</td>}
-                    {cols.drop && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.drop ?? 0)}</td>}
-                    {cols.freight && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.freight ?? 0)}</td>}
-                    {cols.suppliers && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.suppliers ?? 0)}</td>}
-                    {cols.margin && <td className={cn('px-4 py-3 text-left tnum num-ltr', (totals.margin ?? 0) >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>{fmtNum(totals.margin ?? 0)}</td>}
-                    {cols.grand && <td className="px-4 py-3 text-left font-bold text-primary tnum num-ltr">{fmtNum(totals.grand ?? 0)}</td>}
-                    {cols.actions && <td className="px-4 py-3 print:hidden" />}
-                  </tr>
-                </tfoot>
-              )
-            })()}
           </table>
         </div>
         {/* Pagination — flush footer of the table card (server-side) */}
