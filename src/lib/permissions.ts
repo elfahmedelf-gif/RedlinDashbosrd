@@ -32,6 +32,28 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'shipments.print', label: 'طباعة بوليصة', group: 'الشحنات' },
   { key: 'shipments.export', label: 'تصدير الشحنات', group: 'الشحنات' },
   { key: 'shipments.extras.view', label: 'رؤية بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب) — دون الأسعار', group: 'الشحنات' },
+  // 3ب) أعمدة جدول الشحنات — صلاحيات مستقلة لكل عمود (إظهار/إخفاء لكل دور)
+  // المدير (admin عبر '*') يرى الكل. الأدوار الأخرى تُمنح لها الأعمدة الأساسية افتراضيًا
+  // عبر الهجرة أحادية المرة (syncPermissionsCatalog)؛ باقي الأعمدة يتحكم فيها المدير صراحةً.
+  // ملاحظة: أعمدة المبالغ (نولون/هامش/إجمالي) تتطلب أيضًا prices.view لكي يمرّر الخادم القيم.
+  //         أعمدة البنود الإضافية تتطلب أيضًا shipments.extras.view لكي يمرّر الخادم القيم.
+  { key: 'shipments.cols.shipmentNo', label: 'عمود: رقم الشحنة', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.customer', label: 'عمود: العميل / المستلم', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.destination', label: 'عمود: الجهة', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.pieces', label: 'عمود: القطع (كام قطعة)', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.loadType', label: 'عمود: أدوات التحميل', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.contractor', label: 'عمود: المقاول', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.date', label: 'عمود: التاريخ', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.status', label: 'عمود: الحالة', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.aging', label: 'عمود: التعتيق', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.overnight', label: 'عمود: المبيت', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.transfer', label: 'عمود: التحويلة', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.drop', label: 'عمود: الدروب', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.freight', label: 'عمود: نولون العميل', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.suppliers', label: 'عمود: نولون المقاول', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.margin', label: 'عمود: هامش الربح', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.grand', label: 'عمود: الإجمالي النقلة', group: 'أعمدة جدول الشحنات' },
+  { key: 'shipments.cols.actions', label: 'عمود: إجراءات', group: 'أعمدة جدول الشحنات' },
   // 4) أذونات التسليم (receipts) — الديليفري / POD
   { key: 'receipts.view', label: 'عرض أذونات التسليم والأذونات المتأخرة', group: 'أذونات التسليم' },
   { key: 'receipts.manage', label: 'التأشير بتسليم الإذن ✓ أو إلغاء التسليم', group: 'أذونات التسليم' },
@@ -125,6 +147,7 @@ export const GROUP_MODULE_KEY: Record<string, string> = {
   'الرئيسية': 'overview',
   'متابعة الإدارة': 'executive',
   'الشحنات': 'shipments',
+  'أعمدة جدول الشحنات': 'shipments',
   'أذونات التسليم': 'receipts',
   'الفواتير': 'invoices',
   'البنود الإضافية': 'extra-costs',

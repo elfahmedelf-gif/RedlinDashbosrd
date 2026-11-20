@@ -119,3 +119,102 @@ export function usePerms(...keys: string[]): Record<string, boolean> {
   for (const k of keys) out[k] = has(k)
   return out
 }
+
+// ============================================================================
+// أعمدة جدول الشحنات — رؤية مستقلة لكل عمود (صلاحية shipments.cols.<col>)
+// + قيد الفئة: أعمدة البنود الإضافية تتطلب shipments.extras.view،
+//              وأعمدة المبالغ تتطلب prices.view (لأن الخادم يفرّغ القيم بدونه).
+// المدير (admin عبر '*') يرى الكل. الأدوار الأخرى يتحكم المدير في كل عمود صراحةً.
+// ============================================================================
+
+export interface ShipmentColsVisibility {
+  /** عمود تحديد (checkbox) — دائمًا ظاهر، لا يُتحكم فيه */
+  select: boolean
+  shipmentNo: boolean
+  customer: boolean
+  destination: boolean
+  pieces: boolean
+  loadType: boolean
+  contractor: boolean
+  date: boolean
+  status: boolean
+  aging: boolean
+  overnight: boolean
+  transfer: boolean
+  drop: boolean
+  freight: boolean
+  suppliers: boolean
+  margin: boolean
+  grand: boolean
+  actions: boolean
+  /** عدد الأعمدة الظاهرة في جدول سطح المكتب (يشمل تحديد) — يُستعمل في colSpan */
+  count: number
+  /** عدد أعمدة البنود الإضافية الظاهرة */
+  extrasCount: number
+  /** عدد أعمدة المبالغ الظاهرة */
+  pricesCount: number
+}
+
+/**
+ * يُعيد حالة رؤية كل عمود في جدول الشحنات للمستخدم الحالي.
+ * القاعدة:
+ *  - الأعمدة الأساسية (shipmentNo/customer/destination/pieces/loadType/contractor/date/status/actions):
+ *    ظاهرة iff المستخدم يملك صلاحية العمود (shipments.cols.<col>).
+ *  - أعمدة البنود الإضافية (aging/overnight/transfer/drop):
+ *    ظاهرة iff المستخدم يملك صلاحية العمود AND shipments.extras.view
+ *    (الخادم يفرّغ القيم بدون extras.view فلا فائدة من إظهار عمود فارغ).
+ *  - أعمدة المبالغ (freight/suppliers/margin/grand):
+ *    ظاهرة iff المستخدم يملك صلاحية العمود AND prices.view
+ *    (الخادم يفرّغ القيم بدون prices.view).
+ *  - تحديد (select): دائمًا ظاهر.
+ */
+export function useShipmentCols(): ShipmentColsVisibility {
+  const { has } = useAuth()
+  const canPrices = has('prices.view')
+  const canExtras = has('shipments.extras.view')
+  const c = (k: string) => has(k)
+  const base = (k: string) => c(k)
+  const extras = (k: string) => c(k) && canExtras
+  const prices = (k: string) => c(k) && canPrices
+  const v = {
+    select: true,
+    shipmentNo: base('shipments.cols.shipmentNo'),
+    customer: base('shipments.cols.customer'),
+    destination: base('shipments.cols.destination'),
+    pieces: base('shipments.cols.pieces'),
+    loadType: base('shipments.cols.loadType'),
+    contractor: base('shipments.cols.contractor'),
+    date: base('shipments.cols.date'),
+    status: base('shipments.cols.status'),
+    aging: extras('shipments.cols.aging'),
+    overnight: extras('shipments.cols.overnight'),
+    transfer: extras('shipments.cols.transfer'),
+    drop: extras('shipments.cols.drop'),
+    freight: prices('shipments.cols.freight'),
+    suppliers: prices('shipments.cols.suppliers'),
+    margin: prices('shipments.cols.margin'),
+    grand: prices('shipments.cols.grand'),
+    actions: base('shipments.cols.actions'),
+  }
+  const extrasArr = [v.aging, v.overnight, v.transfer, v.drop]
+  const pricesArr = [v.freight, v.suppliers, v.margin, v.grand]
+  const count =
+    (v.select ? 1 : 0) +
+    (v.shipmentNo ? 1 : 0) +
+    (v.customer ? 1 : 0) +
+    (v.destination ? 1 : 0) +
+    (v.pieces ? 1 : 0) +
+    (v.loadType ? 1 : 0) +
+    (v.contractor ? 1 : 0) +
+    (v.date ? 1 : 0) +
+    (v.status ? 1 : 0) +
+    extrasArr.filter(Boolean).length +
+    pricesArr.filter(Boolean).length +
+    (v.actions ? 1 : 0)
+  return {
+    ...v,
+    count,
+    extrasCount: extrasArr.filter(Boolean).length,
+    pricesCount: pricesArr.filter(Boolean).length,
+  }
+}

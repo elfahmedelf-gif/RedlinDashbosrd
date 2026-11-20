@@ -25,7 +25,7 @@ import { fmtNum, fmtDate, fmtDateTime } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import { useLookup } from '@/lib/lookups'
 import { cn } from '@/lib/utils'
-import { useAuth, useCanExtras, useCanPrices } from '../auth-provider'
+import { useAuth, useCanExtras, useCanPrices, useShipmentCols } from '../auth-provider'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { bus, BUS_EVENTS, consumeIntent } from '@/lib/bus'
 // كتالوج آلة حالات الشحنة الصارمة — مصدر واحد للخادم والواجهة
@@ -94,6 +94,8 @@ export function ShipmentsModule() {
   const canPrices = useCanPrices()
   // صلاحية رؤية بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب) — تشغيلية منفصلة عن الأسعار
   const canExtras = useCanExtras()
+  // رؤية مستقلة لكل عمود في جدول الشحنات — يتحكم فيها المدير من شاشة الصلاحيات
+  const cols = useShipmentCols()
   const { confirm: confirmDialog } = useConfirm()
   // Dynamic shipment status options from the lookup table
   const { items: statusItems } = useLookup('shipment_status')
@@ -168,8 +170,8 @@ export function ShipmentsModule() {
   const hasFilters = debouncedQ || status !== 'all' || destination !== 'all' || contractor !== 'all' || province !== 'all' || !!dateFilter || stoppedOnly
 
   // عدد أعمدة جدول سطح المكتب (يُستخدم في colSpan للهياكل/الفراغ)
-  // الأساس: تحديد/رقم/عميل/جهة/قطع/أدوات تحميل/مقاول/تاريخ/حالة/إجراءات = 10
-  const colCount = 10 + (canExtras ? 4 : 0) + (canPrices ? 4 : 0)
+  // محسوب من رؤية الأعمدة الفعلية (cols.count يشمل عمود التحديد + كل الأعمدة الظاهرة)
+  const colCount = cols.count
 
   // شريط الإجراءات: إعادة جدولة شحنة متوقفة (بتقف تاني يوم) لليوم — تفرخ تحميلها
   const [reschedulingId, setReschedulingId] = React.useState<string | null>(null)
@@ -279,19 +281,39 @@ export function ShipmentsModule() {
       toast({ title: 'لا توجد بيانات للتصدير' })
       return
     }
-    const rows = pageItems.map((s) => ({
-      'رقم الشحنة': s.shipmentNo, 'رقم البوليصة': s.billNo, 'العميل': s.customer?.name || s.recipientName,
-      'المستلم': s.recipientName, 'الوجهة': s.destination, 'الوجهة EN': s.destinationEn,
-      'كود الخط': s.routeCode, 'النوع': s.loadType, 'المقاول': s.contractor?.name,
-      'الفرع': s.branch?.name, 'الحالة': STATUS_LABEL[s.status]?.label || s.status,
-      'تاريخ الشحن': s.date ? fmtDate(s.date) : '',
-      // المبالغ تُصدّر فقط لمن يملك صلاحية الأسعار
-      ...(canPrices ? {
-        'نولون العميل': s.freightTotal ?? s.freightCost, 'نولون المقاول': s.totalSuppliers ?? 0,
-        'هامش الربح': (s.freightTotal ?? 0) - (s.totalSuppliers ?? 0),
-      } : {}),
-      'الكمية (سياسات)': s.policyQty,
-    }))
+    // كل عمود يُصدّر فقط إذا كان ظاهرًا للمستخدم (cols) — ضمان عدم تسرّب نولون العميل لمن لا يراه
+    const rows = pageItems.map((s) => {
+      const r: Record<string, any> = {}
+      if (cols.shipmentNo) {
+        r['رقم الشحنة'] = s.shipmentNo
+        r['رقم البوليصة'] = s.billNo
+      }
+      if (cols.customer) {
+        r['العميل'] = s.customer?.name || s.recipientName
+        r['المستلم'] = s.recipientName
+      }
+      if (cols.destination) {
+        r['الوجهة'] = s.destination
+        r['الوجهة EN'] = s.destinationEn
+        r['كود الخط'] = s.routeCode
+      }
+      if (cols.pieces) r['الكمية (سياسات)'] = s.policyQty
+      if (cols.loadType) r['النوع'] = s.loadType
+      if (cols.contractor) r['المقاول'] = s.contractor?.name
+      r['الفرع'] = s.branch?.name // الفرع دائمًا — معلومة لوجستية غير مالية
+      if (cols.date) r['تاريخ الشحن'] = s.date ? fmtDate(s.date) : ''
+      if (cols.status) r['الحالة'] = STATUS_LABEL[s.status]?.label || s.status
+      // المبالغ — صلاحية العمود + prices.view
+      if (cols.freight) r['نولون العميل'] = s.freightTotal ?? s.freightCost
+      if (cols.suppliers) r['نولون المقاول'] = s.totalSuppliers ?? 0
+      if (cols.margin) r['هامش الربح'] = (s.freightTotal ?? 0) - (s.totalSuppliers ?? 0)
+      // بنود النقلة الإضافية — صلاحية العمود + extras.view
+      if (cols.aging) r['تعتيق'] = s.aging
+      if (cols.overnight) r['مبيت'] = s.overnight
+      if (cols.transfer) r['تحويلة'] = s.transfer
+      if (cols.drop) r['دروب'] = s.drop
+      return r
+    })
     exportToCSV(rows, `shipments-${new Date().toISOString().slice(0, 10)}.csv`)
     toast({ title: `تم تصدير ${rows.length} شحنة` })
   }
@@ -387,19 +409,27 @@ export function ShipmentsModule() {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
             <span className="font-bold text-foreground">جدول الصباح:</span>
             <span className="tnum">الشحنات: <b className="text-foreground">{fmtNum(totals.shipments)}</b></span>
-            <span className="tnum">القطع: <b className="text-foreground">{fmtNum(totals.pieces)}</b></span>
-            <span className="text-emerald-700 tnum dark:text-emerald-400">محمّلة: <b>{fmtNum(totals.loaded)}</b></span>
-            <span className="text-amber-700 tnum dark:text-amber-400">مش محمّلة: <b>{fmtNum(totals.notLoaded)}</b></span>
-            {totals.stopped > 0 && <button onClick={() => { setStoppedOnly(true); setPage(1) }} className="text-rose-700 tnum underline decoration-dotted underline-offset-2 dark:text-rose-400 hover:no-underline">متوقفة (بتقف تاني يوم): <b>{fmtNum(totals.stopped)}</b></button>}
-            {totals.mabeit > 0 && <button onClick={() => { setStatus('mabeit'); setPage(1) }} className="text-amber-700 tnum underline decoration-dotted underline-offset-2 dark:text-amber-400 hover:no-underline">مبيت: <b>{fmtNum(totals.mabeit)}</b></button>}
-            {totals.taateeq > 0 && <button onClick={() => { setStatus('taateeq'); setPage(1) }} className="text-sky-700 tnum underline decoration-dotted underline-offset-2 dark:text-sky-400 hover:no-underline">تعتيق: <b>{fmtNum(totals.taateeq)}</b></button>}
-            {totals.postponed > 0 && <span className="text-yellow-700 tnum dark:text-yellow-400">مؤجلة: <b>{fmtNum(totals.postponed)}</b></span>}
-            {totals.returned > 0 && <span className="text-rose-700 tnum dark:text-rose-400">مرتجعة: <b>{fmtNum(totals.returned)}</b></span>}
-            {totals.delivered > 0 && <span className="text-emerald-700 tnum dark:text-emerald-400">مُسلّمة: <b>{fmtNum(totals.delivered)}</b></span>}
-            {canExtras && (totals.aging || totals.overnight || totals.transfer || totals.drop) ? (
-              <span className="tnum text-muted-foreground">بنود النقلة: تعتيق <b className="text-foreground">{fmtNum(totals.aging ?? 0)}</b> • مبيت <b className="text-foreground">{fmtNum(totals.overnight ?? 0)}</b> • تحويلة <b className="text-foreground">{fmtNum(totals.transfer ?? 0)}</b> • دروب <b className="text-foreground">{fmtNum(totals.drop ?? 0)}</b></span>
+            {cols.pieces && <span className="tnum">القطع: <b className="text-foreground">{fmtNum(totals.pieces)}</b></span>}
+            {cols.status && <>
+              <span className="text-emerald-700 tnum dark:text-emerald-400">محمّلة: <b>{fmtNum(totals.loaded)}</b></span>
+              <span className="text-amber-700 tnum dark:text-amber-400">مش محمّلة: <b>{fmtNum(totals.notLoaded)}</b></span>
+              {totals.stopped > 0 && <button onClick={() => { setStoppedOnly(true); setPage(1) }} className="text-rose-700 tnum underline decoration-dotted underline-offset-2 dark:text-rose-400 hover:no-underline">متوقفة (بتقف تاني يوم): <b>{fmtNum(totals.stopped)}</b></button>}
+              {totals.mabeit > 0 && <button onClick={() => { setStatus('mabeit'); setPage(1) }} className="text-amber-700 tnum underline decoration-dotted underline-offset-2 dark:text-amber-400 hover:no-underline">مبيت: <b>{fmtNum(totals.mabeit)}</b></button>}
+              {totals.taateeq > 0 && <button onClick={() => { setStatus('taateeq'); setPage(1) }} className="text-sky-700 tnum underline decoration-dotted underline-offset-2 dark:text-sky-400 hover:no-underline">تعتيق: <b>{fmtNum(totals.taateeq)}</b></button>}
+              {totals.postponed > 0 && <span className="text-yellow-700 tnum dark:text-yellow-400">مؤجلة: <b>{fmtNum(totals.postponed)}</b></span>}
+              {totals.returned > 0 && <span className="text-rose-700 tnum dark:text-rose-400">مرتجعة: <b>{fmtNum(totals.returned)}</b></span>}
+              {totals.delivered > 0 && <span className="text-emerald-700 tnum dark:text-emerald-400">مُسلّمة: <b>{fmtNum(totals.delivered)}</b></span>}
+            </>}
+            {(cols.aging || cols.overnight || cols.transfer || cols.drop) && (totals.aging || totals.overnight || totals.transfer || totals.drop) ? (
+              <span className="tnum text-muted-foreground">
+                بنود النقلة:
+                {cols.aging && <> تعتيق <b className="text-foreground">{fmtNum(totals.aging ?? 0)}</b></>}
+                {cols.overnight && <> • مبيت <b className="text-foreground">{fmtNum(totals.overnight ?? 0)}</b></>}
+                {cols.transfer && <> • تحويلة <b className="text-foreground">{fmtNum(totals.transfer ?? 0)}</b></>}
+                {cols.drop && <> • دروب <b className="text-foreground">{fmtNum(totals.drop ?? 0)}</b></>}
+              </span>
             ) : null}
-            {canPrices && totals.grand != null && (
+            {cols.grand && totals.grand != null && (
               <span className="ms-auto rounded-lg bg-primary/10 px-2.5 py-1 font-bold text-primary tnum" title="الإجمالي النقلة = نولون العميل + التعتيق + المبيت + التحويلة + الدروب">
                 الإجمالي النقلة: {fmtNum(totals.grand)} ج.م
               </span>
@@ -436,86 +466,98 @@ export function ShipmentsModule() {
                       {isSel && <CheckSquare className="size-3.5" />}
                     </button>
                     <button onClick={() => setSelected(s.id)} className="min-w-0 flex-1 text-right">
-                      <div className="font-mono text-xs font-bold truncate-1">{s.shipmentNo}</div>
-                      {s.deliveryNumber && s.deliveryNumber !== s.shipmentNo && (
+                      {cols.shipmentNo && <div className="font-mono text-xs font-bold truncate-1">{s.shipmentNo}</div>}
+                      {cols.shipmentNo && s.deliveryNumber && s.deliveryNumber !== s.shipmentNo && (
                         <div className="text-[10px] text-muted-foreground tnum truncate-1">ديليفري: {s.deliveryNumber}</div>
                       )}
-                      <div className="font-semibold text-sm truncate-1 mt-0.5" title={s.customer?.name || s.recipientName || ''}>
-                        {s.customer?.name || s.recipientName || '-'}
-                      </div>
-                      {s.billNo && <div className="text-[10px] text-muted-foreground tnum truncate-1">بوليصة: {s.billNo}</div>}
+                      {cols.customer && (
+                        <div className="font-semibold text-sm truncate-1 mt-0.5" title={s.customer?.name || s.recipientName || ''}>
+                          {s.customer?.name || s.recipientName || '-'}
+                        </div>
+                      )}
+                      {cols.shipmentNo && s.billNo && <div className="text-[10px] text-muted-foreground tnum truncate-1">بوليصة: {s.billNo}</div>}
                     </button>
                   </div>
-                  <Badge variant="outline" className={sMeta.tone + ' shrink-0'}>{sMeta.label}</Badge>
+                  {cols.status && <Badge variant="outline" className={sMeta.tone + ' shrink-0'}>{sMeta.label}</Badge>}
                 </div>
-                {s.stopped && (
+                {s.stopped && cols.status && (
                   <Badge variant="outline" className="w-full justify-center font-bold bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-900/60">
                     بتقف تاني يوم — لم تُحمّل في يومها
                   </Badge>
                 )}
-                {/* Meta grid: الجهة + القطع + أدوات التحميل + المقاول + التاريخ */}
+                {/* Meta grid — كل حقل يُعرض فقط إذا كان عموده ظاهرًا */}
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-1 border-t border-border/60">
-                  <div className="min-w-0">
-                    <div className="text-[10px] text-muted-foreground/70">الجهة</div>
-                    <div className="text-xs font-medium truncate-1">{s.destination ?? '-'}</div>
-                    {s.destinationEn && <div className="text-[10px] text-muted-foreground/80 truncate-1 num-ltr" dir="ltr">{s.destinationEn}</div>}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[10px] text-muted-foreground/70">القطع (كام قطعة)</div>
-                    <div className="text-xs font-medium tnum num-ltr">{s.policyQty != null ? fmtNum(s.policyQty) : '-'}</div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[10px] text-muted-foreground/70">أدوات التحميل</div>
-                    <Badge variant="outline" className={cn('font-bold', sizeTone)}>{size}</Badge>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[10px] text-muted-foreground/70">المقاول</div>
-                    <div className="text-xs font-medium truncate-1">{s.contractor?.name ?? '-'}</div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[10px] text-muted-foreground/70">التاريخ</div>
-                    <div className="text-xs font-medium tnum truncate-1">{fmtDate(s.date)}</div>
-                  </div>
-                  {/* بنود النقلة الإضافية — صلاحية shipments.extras.view */}
-                  {canExtras && (
+                  {cols.destination && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">الجهة</div>
+                      <div className="text-xs font-medium truncate-1">{s.destination ?? '-'}</div>
+                      {s.destinationEn && <div className="text-[10px] text-muted-foreground/80 truncate-1 num-ltr" dir="ltr">{s.destinationEn}</div>}
+                    </div>
+                  )}
+                  {cols.pieces && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">القطع (كام قطعة)</div>
+                      <div className="text-xs font-medium tnum num-ltr">{s.policyQty != null ? fmtNum(s.policyQty) : '-'}</div>
+                    </div>
+                  )}
+                  {cols.loadType && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">أدوات التحميل</div>
+                      <Badge variant="outline" className={cn('font-bold', sizeTone)}>{size}</Badge>
+                    </div>
+                  )}
+                  {cols.contractor && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">المقاول</div>
+                      <div className="text-xs font-medium truncate-1">{s.contractor?.name ?? '-'}</div>
+                    </div>
+                  )}
+                  {cols.date && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">التاريخ</div>
+                      <div className="text-xs font-medium tnum truncate-1">{fmtDate(s.date)}</div>
+                    </div>
+                  )}
+                  {/* بنود النقلة الإضافية — صلاحية العمود + shipments.extras.view */}
+                  {cols.aging && (
                     <div className="min-w-0">
                       <div className="text-[10px] text-muted-foreground/70">تعتيق</div>
                       <div className="text-xs font-medium tnum num-ltr">{s.aging != null ? fmtNum(s.aging) : '-'}</div>
                     </div>
                   )}
-                  {canExtras && (
+                  {cols.overnight && (
                     <div className="min-w-0">
                       <div className="text-[10px] text-muted-foreground/70">مبيت</div>
                       <div className="text-xs font-medium tnum num-ltr">{s.overnight != null ? fmtNum(s.overnight) : '-'}</div>
                     </div>
                   )}
-                  {canExtras && (
+                  {cols.transfer && (
                     <div className="min-w-0">
                       <div className="text-[10px] text-muted-foreground/70">تحويلة</div>
                       <div className="text-xs font-medium tnum num-ltr">{s.transfer != null ? fmtNum(s.transfer) : '-'}</div>
                     </div>
                   )}
-                  {canExtras && (
+                  {cols.drop && (
                     <div className="min-w-0">
                       <div className="text-[10px] text-muted-foreground/70">دروب</div>
                       <div className="text-xs font-medium tnum num-ltr">{s.drop != null ? fmtNum(s.drop) : '-'}</div>
                     </div>
                   )}
-                  {/* النولون يُعرض فقط لمن يملك صلاحية الأسعار */}
-                  {canPrices && (
+                  {/* المبالغ — صلاحية العمود + prices.view */}
+                  {cols.freight && (
                     <div className="min-w-0">
                       <div className="text-[10px] text-muted-foreground/70">نولون العميل</div>
                       <div className="text-xs font-bold tnum num-ltr">{fmtNum(s.freightTotal ?? s.freightCost)} ج.م</div>
                     </div>
                   )}
-                  {canPrices && (
+                  {cols.suppliers && (
                     <div className="min-w-0">
                       <div className="text-[10px] text-muted-foreground/70">نولون المقاول</div>
                       <div className="text-xs font-bold tnum num-ltr">{fmtNum(s.totalSuppliers ?? 0)} ج.م</div>
                     </div>
                   )}
                   {/* إجمالي النقلة لهذا الصف — نولون العميل + بنود النقلة */}
-                  {canPrices && (
+                  {cols.grand && (
                     <div className="min-w-0">
                       <div className="text-[10px] text-muted-foreground/70">الإجمالي</div>
                       <div className="text-xs font-bold tnum num-ltr text-primary">
@@ -525,24 +567,26 @@ export function ShipmentsModule() {
                   )}
                 </div>
                 {/* ذيل البطاقة: أزرار الإجراءات بحجم مناسب للمس */}
-                <div className="flex items-center gap-2 pt-2 border-t border-border/60">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 min-h-[40px]"
-                    onClick={() => setSelected(s.id)}
-                  >
-                    <PackageSearch className="size-4" /> عرض التفاصيل
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 min-h-[40px]"
-                    onClick={() => setWaybillShipment(s)}
-                  >
-                    <Printer className="size-4" /> بوليصة
-                  </Button>
-                </div>
+                {cols.actions && (
+                  <div className="flex items-center gap-2 pt-2 border-t border-border/60">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 min-h-[40px]"
+                      onClick={() => setSelected(s.id)}
+                    >
+                      <PackageSearch className="size-4" /> عرض التفاصيل
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 min-h-[40px]"
+                      onClick={() => setWaybillShipment(s)}
+                    >
+                      <Printer className="size-4" /> بوليصة
+                    </Button>
+                  </div>
+                )}
                 {s.stopped && has('shipments.edit') && (
                   <Button
                     variant="outline"
@@ -563,7 +607,7 @@ export function ShipmentsModule() {
       {/* Desktop (md+): table view */}
       <Card className="gap-0 overflow-hidden py-0 hidden md:block print:hidden">
         <div className="w-full overflow-x-auto">
-          <table className="w-full table-fixed text-sm text-right" style={{ minWidth: 1880 }}>
+          <table className="w-full table-fixed text-sm text-right" style={{ minWidth: cols.count >= 14 ? 1880 : 1280 }}>
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
                 <th className="font-medium px-2 py-3 text-center w-12 print:hidden">
@@ -571,26 +615,26 @@ export function ShipmentsModule() {
                     {allOnPageSelected && <CheckSquare className="size-3.5" />}
                   </button>
                 </th>
-                <th className="font-medium px-4 py-3 text-center w-28">رقم الشحنة</th>
-                <th className="font-medium px-4 py-3">العميل / المستلم</th>
-                <th className="font-medium px-4 py-3 w-36">الجهة</th>
-                <th className="font-medium px-4 py-3 text-center w-20" title="كام قطعة">القطع</th>
-                <th className="font-medium px-4 py-3 text-center w-24" title="أدوات التحميل / نوع الحمولة">أدوات التحميل</th>
-                <th className="font-medium px-4 py-3 w-28">المقاول</th>
-                <th className="font-medium px-4 py-3 text-center w-28">التاريخ</th>
-                <th className="font-medium px-4 py-3 text-center w-32">الحالة</th>
-                {/* بنود النقلة الإضافية — صلاحية shipments.extras.view (العمليات/المالي) */}
-                {canExtras && <th className="font-medium px-4 py-3 text-left w-20" title="التعتيق">تعتيق</th>}
-                {canExtras && <th className="font-medium px-4 py-3 text-left w-20" title="المبيت">مبيت</th>}
-                {canExtras && <th className="font-medium px-4 py-3 text-left w-20" title="التحويلة">تحويلة</th>}
-                {canExtras && <th className="font-medium px-4 py-3 text-left w-20" title="الدروب">دروب</th>}
-                {/* أعمدة المبالغ — تُعرض فقط لمن يملك صلاحية الأسعار */}
-                {canPrices && <th className="font-medium px-4 py-3 text-left w-24">نولون العميل</th>}
-                {canPrices && <th className="font-medium px-4 py-3 text-left w-24">نولون المقاول</th>}
-                {canPrices && <th className="font-medium px-4 py-3 text-left w-24">هامش الربح</th>}
+                {cols.shipmentNo && <th className="font-medium px-4 py-3 text-center w-28">رقم الشحنة</th>}
+                {cols.customer && <th className="font-medium px-4 py-3">العميل / المستلم</th>}
+                {cols.destination && <th className="font-medium px-4 py-3 w-36">الجهة</th>}
+                {cols.pieces && <th className="font-medium px-4 py-3 text-center w-20" title="كام قطعة">القطع</th>}
+                {cols.loadType && <th className="font-medium px-4 py-3 text-center w-24" title="أدوات التحميل / نوع الحمولة">أدوات التحميل</th>}
+                {cols.contractor && <th className="font-medium px-4 py-3 w-28">المقاول</th>}
+                {cols.date && <th className="font-medium px-4 py-3 text-center w-28">التاريخ</th>}
+                {cols.status && <th className="font-medium px-4 py-3 text-center w-32">الحالة</th>}
+                {/* بنود النقلة الإضافية — صلاحية العمود + shipments.extras.view */}
+                {cols.aging && <th className="font-medium px-4 py-3 text-left w-20" title="التعتيق">تعتيق</th>}
+                {cols.overnight && <th className="font-medium px-4 py-3 text-left w-20" title="المبيت">مبيت</th>}
+                {cols.transfer && <th className="font-medium px-4 py-3 text-left w-20" title="التحويلة">تحويلة</th>}
+                {cols.drop && <th className="font-medium px-4 py-3 text-left w-20" title="الدروب">دروب</th>}
+                {/* أعمدة المبالغ — صلاحية العمود + prices.view */}
+                {cols.freight && <th className="font-medium px-4 py-3 text-left w-24">نولون العميل</th>}
+                {cols.suppliers && <th className="font-medium px-4 py-3 text-left w-24">نولون المقاول</th>}
+                {cols.margin && <th className="font-medium px-4 py-3 text-left w-24">هامش الربح</th>}
                 {/* إجمالي النقلة لكل صف — نولون العميل + بنود النقلة الإضافية */}
-                {canPrices && <th className="font-semibold px-4 py-3 text-left w-26 text-primary">الإجمالي النقلة</th>}
-                <th className="font-medium px-4 py-3 text-center w-24 print:hidden">إجراءات</th>
+                {cols.grand && <th className="font-semibold px-4 py-3 text-left w-26 text-primary">الإجمالي النقلة</th>}
+                {cols.actions && <th className="font-medium px-4 py-3 text-center w-24 print:hidden">إجراءات</th>}
               </tr>
             </thead>
             <tbody>
@@ -622,106 +666,124 @@ export function ShipmentsModule() {
                           {isSel && <CheckSquare className="size-3.5" />}
                         </button>
                       </td>
-                      <td className="px-4 py-3 align-middle text-center cursor-pointer" onClick={() => setSelected(s.id)}>
-                        <div className="font-mono text-xs font-bold truncate-1">{s.shipmentNo}</div>
-                        {s.deliveryNumber && s.deliveryNumber !== s.shipmentNo && (
-                          <div className="text-[10px] text-muted-foreground tnum truncate-1">ديليفري: {s.deliveryNumber}</div>
-                        )}
-                        {s.billNo && <div className="text-[10px] text-muted-foreground tnum truncate-1">بوليصة: {s.billNo}</div>}
-                      </td>
-                      <td className="px-4 py-3 align-middle cursor-pointer" onClick={() => setSelected(s.id)}>
-                        <div className="font-medium truncate-1" title={s.customer?.name || s.recipientName || ''}>
-                          {s.customer?.name || s.recipientName || '-'}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 align-middle cursor-pointer" onClick={() => setSelected(s.id)}>
-                        <div className="font-medium truncate-1">{s.destination ?? '-'}</div>
-                        {s.destinationEn
-                          ? <div className="text-[10px] text-muted-foreground truncate-1 num-ltr" dir="ltr">{s.destinationEn}</div>
-                          : s.routeCode && <div className="text-[10px] text-muted-foreground truncate-1">كود: {s.routeCode}</div>}
-                      </td>
+                      {cols.shipmentNo && (
+                        <td className="px-4 py-3 align-middle text-center cursor-pointer" onClick={() => setSelected(s.id)}>
+                          <div className="font-mono text-xs font-bold truncate-1">{s.shipmentNo}</div>
+                          {s.deliveryNumber && s.deliveryNumber !== s.shipmentNo && (
+                            <div className="text-[10px] text-muted-foreground tnum truncate-1">ديليفري: {s.deliveryNumber}</div>
+                          )}
+                          {s.billNo && <div className="text-[10px] text-muted-foreground tnum truncate-1">بوليصة: {s.billNo}</div>}
+                        </td>
+                      )}
+                      {cols.customer && (
+                        <td className="px-4 py-3 align-middle cursor-pointer" onClick={() => setSelected(s.id)}>
+                          <div className="font-medium truncate-1" title={s.customer?.name || s.recipientName || ''}>
+                            {s.customer?.name || s.recipientName || '-'}
+                          </div>
+                        </td>
+                      )}
+                      {cols.destination && (
+                        <td className="px-4 py-3 align-middle cursor-pointer" onClick={() => setSelected(s.id)}>
+                          <div className="font-medium truncate-1">{s.destination ?? '-'}</div>
+                          {s.destinationEn
+                            ? <div className="text-[10px] text-muted-foreground truncate-1 num-ltr" dir="ltr">{s.destinationEn}</div>
+                            : s.routeCode && <div className="text-[10px] text-muted-foreground truncate-1">كود: {s.routeCode}</div>}
+                        </td>
+                      )}
                       {/* كام قطعة — عمود مستقل في جدول الصباح */}
-                      <td className="px-4 py-3 align-middle text-center tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="كام قطعة">
-                        <span className="num-ltr">{s.policyQty != null ? fmtNum(s.policyQty) : '-'}</span>
-                      </td>
+                      {cols.pieces && (
+                        <td className="px-4 py-3 align-middle text-center tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="كام قطعة">
+                          <span className="num-ltr">{s.policyQty != null ? fmtNum(s.policyQty) : '-'}</span>
+                        </td>
+                      )}
                       {/* أدوات التحميل / نوع الحمولة */}
-                      <td className="px-4 py-3 align-middle text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="أدوات التحميل">
-                        <Badge variant="outline" className={cn('font-bold', sizeTone)}>{size}</Badge>
-                      </td>
-                      <td className="px-4 py-3 align-middle text-xs cursor-pointer" onClick={() => setSelected(s.id)}><span className="truncate-1 block">{s.contractor?.name ?? '-'}</span></td>
-                      <td className="px-4 py-3 align-middle text-xs tnum text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>{fmtDate(s.date)}</td>
-                      <td className="px-4 py-3 align-middle text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
-                        <Badge variant="outline" className={sMeta.tone}>{sMeta.label}</Badge>
-                        {s.stopped && (
-                          <Badge variant="outline" className="mt-1 font-bold bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-900/60" title="لم تُحمّل في يومها — متوقفة عن التحميل (بتقف تاني يوم)">
-                            بتقف تاني يوم
-                          </Badge>
-                        )}
-                      </td>
-                      {canExtras && (
+                      {cols.loadType && (
+                        <td className="px-4 py-3 align-middle text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="أدوات التحميل">
+                          <Badge variant="outline" className={cn('font-bold', sizeTone)}>{size}</Badge>
+                        </td>
+                      )}
+                      {cols.contractor && (
+                        <td className="px-4 py-3 align-middle text-xs cursor-pointer" onClick={() => setSelected(s.id)}><span className="truncate-1 block">{s.contractor?.name ?? '-'}</span></td>
+                      )}
+                      {cols.date && (
+                        <td className="px-4 py-3 align-middle text-xs tnum text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>{fmtDate(s.date)}</td>
+                      )}
+                      {cols.status && (
+                        <td className="px-4 py-3 align-middle text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
+                          <Badge variant="outline" className={sMeta.tone}>{sMeta.label}</Badge>
+                          {s.stopped && (
+                            <Badge variant="outline" className="mt-1 font-bold bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-900/60" title="لم تُحمّل في يومها — متوقفة عن التحميل (بتقف تاني يوم)">
+                              بتقف تاني يوم
+                            </Badge>
+                          )}
+                        </td>
+                      )}
+                      {cols.aging && (
                         <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="التعتيق">
                           <span className="num-ltr">{s.aging != null ? fmtNum(s.aging) : '-'}</span>
                         </td>
                       )}
-                      {canExtras && (
+                      {cols.overnight && (
                         <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="المبيت">
                           <span className="num-ltr">{s.overnight != null ? fmtNum(s.overnight) : '-'}</span>
                         </td>
                       )}
-                      {canExtras && (
+                      {cols.transfer && (
                         <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="التحويلة">
                           <span className="num-ltr">{s.transfer != null ? fmtNum(s.transfer) : '-'}</span>
                         </td>
                       )}
-                      {canExtras && (
+                      {cols.drop && (
                         <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="الدروب">
                           <span className="num-ltr">{s.drop != null ? fmtNum(s.drop) : '-'}</span>
                         </td>
                       )}
-                      {canPrices && (
+                      {cols.freight && (
                         <td className="px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
                           <span className="num-ltr">{fmtNum(s.freightTotal ?? s.freightCost)}</span>
                         </td>
                       )}
-                      {canPrices && (
+                      {cols.suppliers && (
                         <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
                           <span className="num-ltr">{fmtNum(s.totalSuppliers ?? 0)}</span>
                         </td>
                       )}
-                      {canPrices && (
+                      {cols.margin && (
                         <td className={cn('px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap', margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>
                           <span className="num-ltr">{fmtNum(margin)}</span>
                         </td>
                       )}
-                      {canPrices && (
+                      {cols.grand && (
                         <td className="px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap text-primary" onClick={() => setSelected(s.id)} title="إجمالي النقلة: نولون العميل + التعتيق + المبيت + التحويلة + الدروب">
                           <span className="num-ltr">{fmtNum(rowTotal)}</span>
                         </td>
                       )}
-                      <td className="px-4 py-3 align-middle text-center whitespace-nowrap print:hidden">
-                        <div className="flex items-center justify-center gap-0.5">
-                          {s.stopped && has('shipments.edit') && (
+                      {cols.actions && (
+                        <td className="px-4 py-3 align-middle text-center whitespace-nowrap print:hidden">
+                          <div className="flex items-center justify-center gap-0.5">
+                            {s.stopped && has('shipments.edit') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-2 text-[11px] font-bold text-rose-700 border-rose-300 hover:bg-rose-50 dark:text-rose-300 dark:border-rose-900/60 dark:hover:bg-rose-950/40"
+                                disabled={reschedulingId === s.id}
+                                onClick={(e) => { e.stopPropagation(); reschedule(s.id) }}
+                                title="إعادة الجدولة لليوم — إلغاء الإيقاف وترخيص التحميل"
+                              >
+                                جدولة لليوم
+                              </Button>
+                            )}
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
-                              className="h-8 px-2 text-[11px] font-bold text-rose-700 border-rose-300 hover:bg-rose-50 dark:text-rose-300 dark:border-rose-900/60 dark:hover:bg-rose-950/40"
-                              disabled={reschedulingId === s.id}
-                              onClick={(e) => { e.stopPropagation(); reschedule(s.id) }}
-                              title="إعادة الجدولة لليوم — إلغاء الإيقاف وترخيص التحميل"
+                              onClick={(e) => { e.stopPropagation(); setWaybillShipment(s) }}
+                              title="طباعة بوليصة الشحن"
                             >
-                              جدولة لليوم
+                              <Printer className="size-3.5" />
                             </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => { e.stopPropagation(); setWaybillShipment(s) }}
-                            title="طباعة بوليصة الشحن"
-                          >
-                            <Printer className="size-3.5" />
-                          </Button>
-                        </div>
-                      </td>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   )
                 })
@@ -748,34 +810,41 @@ export function ShipmentsModule() {
                 </td></tr>
               )}
             </tbody>
-            {/* ── صف الإجمالي النقلة — إجماليات كل النتائج المطابقة (مش الصفحة بس) ── */}
-            {totals && data && data.items.length > 0 && (
-              <tfoot className="border-t-2 border-border bg-muted/60 font-semibold text-sm">
-                <tr>
-                  <td colSpan={4} className="px-4 py-3 text-primary whitespace-nowrap">
-                    الإجمالي النقلة
-                    <span className="block text-[10px] font-medium text-muted-foreground">لـ {fmtNum(totals.shipments)} شحنة (كل النتائج المطابقة)</span>
-                  </td>
-                  <td className="px-4 py-3 text-center tnum num-ltr" title="إجمالي القطع">{fmtNum(totals.pieces)}</td>
-                  <td className="px-4 py-3 text-center text-[11px] font-medium text-muted-foreground">—</td>
-                  <td className="px-4 py-3 text-[11px] font-medium text-muted-foreground">—</td>
-                  <td className="px-4 py-3 text-center text-[11px] font-medium text-muted-foreground">—</td>
-                  <td className="px-4 py-3 text-center text-[10px] font-medium leading-relaxed text-muted-foreground whitespace-nowrap">
-                    محمّلة: {fmtNum(totals.loaded)}
-                    <span className="block">مش محمّلة: {fmtNum(totals.notLoaded)}</span>
-                  </td>
-                  {canExtras && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.aging ?? 0)}</td>}
-                  {canExtras && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.overnight ?? 0)}</td>}
-                  {canExtras && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.transfer ?? 0)}</td>}
-                  {canExtras && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.drop ?? 0)}</td>}
-                  {canPrices && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.freight ?? 0)}</td>}
-                  {canPrices && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.suppliers ?? 0)}</td>}
-                  {canPrices && <td className={cn('px-4 py-3 text-left tnum num-ltr', (totals.margin ?? 0) >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>{fmtNum(totals.margin ?? 0)}</td>}
-                  {canPrices && <td className="px-4 py-3 text-left font-bold text-primary tnum num-ltr">{fmtNum(totals.grand ?? 0)}</td>}
-                  <td className="px-4 py-3 print:hidden" />
-                </tr>
-              </tfoot>
-            )}
+            {/* ── صف الإجمالي النقلة — إجماليات كل النتائج المطابقة (مش الصفحة بس) ──
+                colSpan ديناميكي = عدد الأعمدة الظاهرة في الكتلة الأولى (select + shipmentNo + customer + destination)
+                ثم خلية لكل عمود ظاهر بعدها (pieces/loadType/contractor/date/status + extras + prices + actions) */}
+            {totals && data && data.items.length > 0 && (() => {
+              const headerSpan = 1 /* select */ + (cols.shipmentNo ? 1 : 0) + (cols.customer ? 1 : 0) + (cols.destination ? 1 : 0)
+              return (
+                <tfoot className="border-t-2 border-border bg-muted/60 font-semibold text-sm">
+                  <tr>
+                    <td colSpan={headerSpan} className="px-4 py-3 text-primary whitespace-nowrap">
+                      الإجمالي النقلة
+                      <span className="block text-[10px] font-medium text-muted-foreground">لـ {fmtNum(totals.shipments)} شحنة (كل النتائج المطابقة)</span>
+                    </td>
+                    {cols.pieces && <td className="px-4 py-3 text-center tnum num-ltr" title="إجمالي القطع">{fmtNum(totals.pieces)}</td>}
+                    {cols.loadType && <td className="px-4 py-3 text-center text-[11px] font-medium text-muted-foreground">—</td>}
+                    {cols.contractor && <td className="px-4 py-3 text-[11px] font-medium text-muted-foreground">—</td>}
+                    {cols.date && <td className="px-4 py-3 text-center text-[11px] font-medium text-muted-foreground">—</td>}
+                    {cols.status && (
+                      <td className="px-4 py-3 text-center text-[10px] font-medium leading-relaxed text-muted-foreground whitespace-nowrap">
+                        محمّلة: {fmtNum(totals.loaded)}
+                        <span className="block">مش محمّلة: {fmtNum(totals.notLoaded)}</span>
+                      </td>
+                    )}
+                    {cols.aging && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.aging ?? 0)}</td>}
+                    {cols.overnight && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.overnight ?? 0)}</td>}
+                    {cols.transfer && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.transfer ?? 0)}</td>}
+                    {cols.drop && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.drop ?? 0)}</td>}
+                    {cols.freight && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.freight ?? 0)}</td>}
+                    {cols.suppliers && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.suppliers ?? 0)}</td>}
+                    {cols.margin && <td className={cn('px-4 py-3 text-left tnum num-ltr', (totals.margin ?? 0) >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>{fmtNum(totals.margin ?? 0)}</td>}
+                    {cols.grand && <td className="px-4 py-3 text-left font-bold text-primary tnum num-ltr">{fmtNum(totals.grand ?? 0)}</td>}
+                    {cols.actions && <td className="px-4 py-3 print:hidden" />}
+                  </tr>
+                </tfoot>
+              )
+            })()}
           </table>
         </div>
         {/* Pagination — flush footer of the table card (server-side) */}
@@ -821,31 +890,37 @@ export function ShipmentsModule() {
         <div className="md:hidden rounded-2xl border border-border bg-muted/40 elev-sm p-3 print:hidden">
           <div className="text-xs font-bold text-foreground mb-2">الإجمالي النقلة — لـ {fmtNum(totals.shipments)} شحنة</div>
           <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
-              <div className="text-[10px] text-muted-foreground">القطع</div>
-              <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.pieces)}</div>
-            </div>
-            {canExtras && (
-              <>
-                <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
-                  <div className="text-[10px] text-muted-foreground">تعتيق</div>
-                  <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.aging ?? 0)}</div>
-                </div>
-                <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
-                  <div className="text-[10px] text-muted-foreground">مبيت</div>
-                  <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.overnight ?? 0)}</div>
-                </div>
-                <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
-                  <div className="text-[10px] text-muted-foreground">تحويلة</div>
-                  <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.transfer ?? 0)}</div>
-                </div>
-                <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
-                  <div className="text-[10px] text-muted-foreground">دروب</div>
-                  <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.drop ?? 0)}</div>
-                </div>
-              </>
+            {cols.pieces && (
+              <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
+                <div className="text-[10px] text-muted-foreground">القطع</div>
+                <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.pieces)}</div>
+              </div>
             )}
-            {canPrices && totals.grand != null && (
+            {cols.aging && (
+              <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
+                <div className="text-[10px] text-muted-foreground">تعتيق</div>
+                <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.aging ?? 0)}</div>
+              </div>
+            )}
+            {cols.overnight && (
+              <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
+                <div className="text-[10px] text-muted-foreground">مبيت</div>
+                <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.overnight ?? 0)}</div>
+              </div>
+            )}
+            {cols.transfer && (
+              <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
+                <div className="text-[10px] text-muted-foreground">تحويلة</div>
+                <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.transfer ?? 0)}</div>
+              </div>
+            )}
+            {cols.drop && (
+              <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
+                <div className="text-[10px] text-muted-foreground">دروب</div>
+                <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.drop ?? 0)}</div>
+              </div>
+            )}
+            {cols.grand && totals.grand != null && (
               <div className="rounded-lg bg-primary/10 px-2 py-1.5 border border-primary/30">
                 <div className="text-[10px] text-primary/80">الإجمالي النقلة</div>
                 <div className="text-xs font-bold text-primary tnum num-ltr">{fmtNum(totals.grand)} ج.م</div>

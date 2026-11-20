@@ -5,11 +5,42 @@
 //      — يضيف الجديد ويحدّث التسميات ولا يمسح الصلاحيات المرجعية القديمة (مرجع تدقيقي).
 //   2) الأدوار المعروفة: تُمنح إضافاتها الافتراضية فوق صلاحياتها الحالية (لا تُطرح أبدًا).
 //   3) دور admin: يُمنح 100% من الصلاحيات عبر النمط الشامل '*'.
+//   4) هجرة أحادية المرة (cols.v1): تمنح كل دور أعمدة جدول الشحنات المناسبة
+//      بناءً على صلاحيات الفئة (shipments.view / shipments.extras.view / prices.view)
+//      — حتى لا تنكسر الواجهة الحالية للأدوار القائمة. تُشغَّل مرة واحدة فقط
+//      (محمية بعلم Setting `perms.cols.v1`)؛ بعدها يتحكم المدير صراحةً في كل عمود.
 // ============================================================================
 import { db } from '@/lib/db'
 import { parsePerms } from './passwords'
 import { logAudit } from './audit'
-import { PERMISSION_CATALOG, GROUP_MODULE_KEY } from '@/lib/permissions'
+import { PERMISSION_CATALOG, GROUP_MODULE_KEY, matchPermission } from '@/lib/permissions'
+
+/** مفاتيح أعمدة جدول الشحنات — مُسطّرة هنا للاستخدام في الهجرة */
+export const SHIPMENTS_COL_KEYS_BASELINE = [
+  'shipments.cols.shipmentNo',
+  'shipments.cols.customer',
+  'shipments.cols.destination',
+  'shipments.cols.pieces',
+  'shipments.cols.loadType',
+  'shipments.cols.contractor',
+  'shipments.cols.date',
+  'shipments.cols.status',
+  'shipments.cols.actions',
+] as const
+
+export const SHIPMENTS_COL_KEYS_EXTRAS = [
+  'shipments.cols.aging',
+  'shipments.cols.overnight',
+  'shipments.cols.transfer',
+  'shipments.cols.drop',
+] as const
+
+export const SHIPMENTS_COL_KEYS_PRICES = [
+  'shipments.cols.freight',
+  'shipments.cols.suppliers',
+  'shipments.cols.margin',
+  'shipments.cols.grand',
+] as const
 
 /**
  * الإضافات الافتراضية لكل دور معروف — تُضاف فوق صلاحياته الحالية (لا تُطرح أبدًا).
@@ -90,6 +121,7 @@ export interface PermSyncResult {
   rolesUpdated: string[]
   addedKeys: number
   permissionsSynced: number
+  colsMigrated: boolean
 }
 
 /**
@@ -148,5 +180,97 @@ export async function syncPermissionsCatalog(): Promise<PermSyncResult> {
     }
   }
 
-  return { rolesChecked: roles.length, rolesUpdated: updatedNames, addedKeys, permissionsSynced }
+  // 3) هجرة أحادية المرة لأعمدة جدول الشحنات — تجري بعد تطبيق الإضافات الافتراضية
+  //    حتى تستقر صلاحيات الفئة (shipments.view / extras.view / prices.view) للأدوار المعروفة
+  //    (تعيد قراءة الأدوار من DB لالتقاط صلاحيات الفئة المُضافة للتو)
+  const colsMigration = await migrateShipmentColumnsOnce()
+  if (colsMigration.migrated) {
+    updatedNames.push(...colsMigration.rolesUpdated)
+    addedKeys += colsMigration.addedKeys
+  }
+
+  return { rolesChecked: roles.length, rolesUpdated: updatedNames, addedKeys, permissionsSynced, colsMigrated: colsMigration.migrated }
+}
+
+/**
+ * هجرة أحادية المرة لمنح أعمدة جدول الشحنات للأدوار القائمة بناءً على صلاحيات الفئة.
+ * تُحمى بعلم Setting `perms.cols.v1` — تُشغَّل مرة واحدة فقط ثم لا تُعاد أبدًا
+ * (حتى لو حذف المدير عمودًا من دور، لا تُعاد إضافته — يبقى التحكم صراحةً بيد المدير).
+ *
+ * القواعد:
+ *  - دور admin (name === 'admin'): لا يُلمس — يرى الكل عبر '*'.
+ *  - أي دور يملك shipments.view (أو shipments.* أو *): يُمنح الأعمدة الأساسية الـ9.
+ *  - أي دور يملك shipments.extras.view (أو extra_costs.view عبر التوافق): يُمنح أعمدة البنود الإضافية الـ4.
+ *  - أي دور يملك prices.view (أو *): يُمنح أعمدة المبالغ الـ4.
+ *
+ * تُعاد القيمة migrated=true إذا تمت إضافة أي صلاحية عمود جديدة.
+ */
+async function migrateShipmentColumnsOnce(): Promise<{ migrated: boolean; rolesUpdated: string[]; addedKeys: number }> {
+  // علم الهجرة — يمنع إعادة التشغيل
+  const flag = await db.setting.findUnique({ where: { key: 'perms.cols.v1' } }).catch(() => null)
+  if (flag) return { migrated: false, rolesUpdated: [], addedKeys: 0 }
+
+  // إعادة قراءة الأدوار من DB لالتقاط أي صلاحيات فئة أُضيفت للتو في مرحلة الإضافات الافتراضية
+  const roles = await db.role.findMany({ select: { id: true, name: true, label: true, permissions: true } })
+
+  const rolesUpdated: string[] = []
+  let addedKeys = 0
+  let anyChange = false
+
+  for (const role of roles) {
+    // admin لا يُلمس — صلاحياته الشاملة '*' تغطي كل الأعمدة تلقائيًا
+    if (role.name === 'admin') continue
+
+    const current = parsePerms(role.permissions)
+    const set = new Set(current)
+    let changed = false
+
+    const grant = (keys: readonly string[]) => {
+      for (const k of keys) {
+        if (!set.has(k)) {
+          set.add(k)
+          changed = true
+          addedKeys++
+        }
+      }
+    }
+
+    // الأعمدة الأساسية — لكل من يرى الشحنات
+    if (matchPermission(current, 'shipments.view')) {
+      grant(SHIPMENTS_COL_KEYS_BASELINE)
+    }
+    // أعمدة البنود الإضافية — لمن يرى بنود النقلة
+    if (matchPermission(current, 'shipments.extras.view')) {
+      grant(SHIPMENTS_COL_KEYS_EXTRAS)
+    }
+    // أعمدة المبالغ — لمن يرى الأسعار
+    if (matchPermission(current, 'prices.view')) {
+      grant(SHIPMENTS_COL_KEYS_PRICES)
+    }
+
+    if (changed) {
+      anyChange = true
+      await db.role.update({
+        where: { id: role.id },
+        data: { permissions: JSON.stringify(Array.from(set)) },
+      })
+      rolesUpdated.push(role.label || role.name)
+      await logAudit(db, {
+        action: 'update',
+        entity: 'role',
+        entityId: role.id,
+        notes: `هجرة أعمدة جدول الشحنات (cols.v1) — إضافة ${SHIPMENTS_COL_KEYS_BASELINE.length + SHIPMENTS_COL_KEYS_EXTRAS.length + SHIPMENTS_COL_KEYS_PRICES.length} صلاحية عمود محتملة للدور "${role.label || role.name}"`,
+        user: { userId: 'system', username: 'permissions-cols-migrate' },
+      }).catch(() => {})
+    }
+  }
+
+  // ضبط علم الهجرة دائمًا (حتى لو لم يحدث تغيير — يثبت أن الهجرة جرت)
+  await db.setting.upsert({
+    where: { key: 'perms.cols.v1' },
+    update: { value: 'done' },
+    create: { key: 'perms.cols.v1', value: 'done', label: 'هجرة أعمدة جدول الشحنات v1', category: 'permissions' },
+  }).catch(() => {})
+
+  return { migrated: anyChange, rolesUpdated, addedKeys }
 }
