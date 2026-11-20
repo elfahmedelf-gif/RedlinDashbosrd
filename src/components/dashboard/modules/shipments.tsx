@@ -150,25 +150,11 @@ export function ShipmentsModule() {
 
   const hasFilters = debouncedQ || status !== 'all' || destination !== 'all' || contractor !== 'all' || province !== 'all'
 
-  // عدد أعمدة جدول سطح المكتب (يُستخدم في colSpan للهياكل/الفراغ/الإجمالي)
-  const colCount = 9 + (canExtras ? 4 : 0) + (canPrices ? 3 : 0)
+  // عدد أعمدة جدول سطح المكتب (يُستخدم في colSpan للهياكل/الفراغ)
+  const colCount = 9 + (canExtras ? 4 : 0) + (canPrices ? 4 : 0)
 
   // ---- bulk selection helpers ----
   const pageItems = data?.items ?? []
-
-  // مجاميع الصفحة الحالية — صف الإجمالي أسفل الجدول (إجمالي النقلة وبنودها)
-  const totals = React.useMemo(() => {
-    const sum = (f: (s: Shipment) => number | null | undefined) => pageItems.reduce((acc, s) => acc + (Number(f(s)) || 0), 0)
-    return {
-      aging: sum((s) => s.aging),
-      overnight: sum((s) => s.overnight),
-      transfer: sum((s) => s.transfer),
-      drop: sum((s) => s.drop),
-      freight: sum((s) => s.freightTotal ?? s.freightCost),
-      suppliers: sum((s) => s.totalSuppliers),
-      margin: sum((s) => (Number(s.freightTotal ?? s.freightCost ?? 0) || 0) - (Number(s.totalSuppliers ?? 0) || 0)),
-    }
-  }, [pageItems])
   const pageIds = pageItems.map((s) => s.id)
   const allOnPageSelected = pageItems.length > 0 && pageIds.every((id) => selectedIds.has(id))
   const someSelected = pageIds.some((id) => selectedIds.has(id))
@@ -446,6 +432,15 @@ export function ShipmentsModule() {
                       <div className="text-xs font-bold tnum num-ltr">{fmtNum(s.totalSuppliers ?? 0)} ج.م</div>
                     </div>
                   )}
+                  {/* إجمالي النقلة لهذا الصف — نولون العميل + بنود النقلة */}
+                  {canPrices && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">الإجمالي</div>
+                      <div className="text-xs font-bold tnum num-ltr text-primary">
+                        {fmtNum((Number(s.freightTotal ?? s.freightCost ?? 0) || 0) + (Number(s.aging ?? 0) || 0) + (Number(s.overnight ?? 0) || 0) + (Number(s.transfer ?? 0) || 0) + (Number(s.drop ?? 0) || 0))} ج.م
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {/* ذيل البطاقة: أزرار الإجراءات بحجم مناسب للمس */}
                 <div className="flex items-center gap-2 pt-2 border-t border-border/60">
@@ -475,7 +470,7 @@ export function ShipmentsModule() {
       {/* Desktop (md+): table view */}
       <Card className="gap-0 overflow-hidden py-0 hidden md:block print:hidden">
         <div className="w-full overflow-x-auto">
-          <table className="w-full table-fixed text-sm text-right" style={{ minWidth: 1680 }}>
+          <table className="w-full table-fixed text-sm text-right" style={{ minWidth: 1760 }}>
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
                 <th className="font-medium px-2 py-3 text-center w-12 print:hidden">
@@ -499,6 +494,8 @@ export function ShipmentsModule() {
                 {canPrices && <th className="font-medium px-4 py-3 text-left w-24">نولون العميل</th>}
                 {canPrices && <th className="font-medium px-4 py-3 text-left w-24">نولون المقاول</th>}
                 {canPrices && <th className="font-medium px-4 py-3 text-left w-24">هامش الربح</th>}
+                {/* إجمالي النقلة لكل صف — نولون العميل + بنود النقلة الإضافية */}
+                {canPrices && <th className="font-semibold px-4 py-3 text-left w-24 text-primary">الإجمالي</th>}
                 <th className="font-medium px-4 py-3 text-center w-20 print:hidden">إجراءات</th>
               </tr>
             </thead>
@@ -513,6 +510,12 @@ export function ShipmentsModule() {
                     : 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
                   const sMeta = STATUS_LABEL[s.status] || { label: shipmentStatusLabel(s.status), tone: shipmentStatusDef(s.status)?.tone || '' }
                   const margin = (s.freightTotal ?? 0) - (s.totalSuppliers ?? 0)
+                  // إجمالي النقلة لهذا الصف فقط — نولون العميل + التعتيق + المبيت + التحويلة + الدروب
+                  const rowTotal = (Number(s.freightTotal ?? s.freightCost ?? 0) || 0)
+                    + (Number(s.aging ?? 0) || 0)
+                    + (Number(s.overnight ?? 0) || 0)
+                    + (Number(s.transfer ?? 0) || 0)
+                    + (Number(s.drop ?? 0) || 0)
                   const isSel = selectedIds.has(s.id)
                   return (
                     <tr key={s.id} className={cn('border-t border-border hover:bg-muted/40', i % 2 ? 'bg-card' : 'bg-muted/15', isSel && 'bg-primary/10')}>
@@ -587,6 +590,11 @@ export function ShipmentsModule() {
                           <span className="num-ltr">{fmtNum(margin)}</span>
                         </td>
                       )}
+                      {canPrices && (
+                        <td className="px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap text-primary" onClick={() => setSelected(s.id)} title="إجمالي النقلة: نولون العميل + التعتيق + المبيت + التحويلة + الدروب">
+                          <span className="num-ltr">{fmtNum(rowTotal)}</span>
+                        </td>
+                      )}
                       <td className="px-4 py-3 align-middle text-center whitespace-nowrap print:hidden">
                         <Button
                           variant="ghost"
@@ -623,52 +631,6 @@ export function ShipmentsModule() {
                 </td></tr>
               )}
             </tbody>
-            {/* صف الإجمالي — مجموع بنود النقلة للصفحة الحالية (إجمالي النقلة آخر الجدول) */}
-            {data && data.items.length > 0 && (
-              <tfoot className="border-t-2 border-border bg-muted/40 text-xs font-bold">
-                <tr>
-                  <td colSpan={8} className="px-4 py-2.5 text-muted-foreground">
-                    الإجمالي — <span className="tnum num-ltr">{data.items.length}</span> نقلة (الصفحة الحالية من {data.total})
-                  </td>
-                  {canExtras && (
-                    <td className="px-4 py-2.5 text-left tnum" title="إجمالي التعتيق">
-                      <span className="num-ltr">{fmtNum(totals.aging)}</span>
-                    </td>
-                  )}
-                  {canExtras && (
-                    <td className="px-4 py-2.5 text-left tnum" title="إجمالي المبيت">
-                      <span className="num-ltr">{fmtNum(totals.overnight)}</span>
-                    </td>
-                  )}
-                  {canExtras && (
-                    <td className="px-4 py-2.5 text-left tnum" title="إجمالي التحويلة">
-                      <span className="num-ltr">{fmtNum(totals.transfer)}</span>
-                    </td>
-                  )}
-                  {canExtras && (
-                    <td className="px-4 py-2.5 text-left tnum" title="إجمالي الدروب">
-                      <span className="num-ltr">{fmtNum(totals.drop)}</span>
-                    </td>
-                  )}
-                  {canPrices && (
-                    <td className="px-4 py-2.5 text-left tnum text-primary" title="إجمالي النقلة (نولون العميل)">
-                      <span className="num-ltr">{fmtNum(totals.freight)}</span>
-                    </td>
-                  )}
-                  {canPrices && (
-                    <td className="px-4 py-2.5 text-left tnum" title="إجمالي نولون المقاول">
-                      <span className="num-ltr">{fmtNum(totals.suppliers)}</span>
-                    </td>
-                  )}
-                  {canPrices && (
-                    <td className={cn('px-4 py-2.5 text-left tnum', totals.margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')} title="إجمالي هامش الربح">
-                      <span className="num-ltr">{fmtNum(totals.margin)}</span>
-                    </td>
-                  )}
-                  <td className="px-4 py-2.5 print:hidden" />
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
         {/* Pagination — flush footer of the table card (server-side) */}
