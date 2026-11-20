@@ -141,7 +141,7 @@ export async function listShipments(q: URLSearchParams, user?: { permissions: st
   })
   if (search) {
     rows = rows.filter((s) =>
-      [s.shipmentNo, s.deliveryNumber, s.billNo, s.recipientName, s.destination, s.destinationEn, s.routeCode, s.deliveryPhones]
+      [s.shipmentNo, s.deliveryNumber, s.billNo, s.shipPart, s.recipientName, s.destination, s.destinationEn, s.routeCode, s.deliveryPhones]
         .some((f) => String(f ?? '').toLowerCase().includes(search)))
   }
   // علم «بتقف تاني يوم» لكل صف + فلتر الشحنات المتوقفة

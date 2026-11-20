@@ -152,6 +152,10 @@ model Shipment {
   warehouseId   String?
   warehouse     Warehouse? @relation(fields: [warehouseId], references: [id])
   loadType      String?
+  // شيت التوزيع اليومي من العميل: Ship Part = رقم أمر الشحن المرجعي عند العميل
+  shipPart      String?
+  // عدد الشاحنات كما يأتي في عمود Truck بالشيت (مستقل عن المقاسات ton15/ton3/m6)
+  truckCount    Float?
   ton15         Float?
   ton3          Float?
   m6            Float?

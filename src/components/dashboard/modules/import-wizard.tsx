@@ -85,17 +85,22 @@ interface ImportLogItem {
 const TARGET_FIELDS: { key: string; label: string; required?: boolean }[] = [
   { key: 'recipientName', label: 'اسم المستلم', required: true },
   { key: 'destination', label: 'الوجهة', required: true },
+  { key: 'destinationEn', label: 'الوجهة (EN)' },
+  { key: 'shipPart', label: 'Ship Part (أمر الشحن)' },
   { key: 'branchName', label: 'الفرع' },
   { key: 'customerName', label: 'العميل' },
   { key: 'contractorName', label: 'المقاول' },
   { key: 'deliveryPhones', label: 'هاتف التوصيل' },
   { key: 'routeCode', label: 'خط السير' },
+  { key: 'deliveryNumber', label: 'رقم الديليفري' },
   { key: 'freightCost', label: 'التكويد (تكلفة النولون)' },
   { key: 'freightTotal', label: 'إجمالي النولون' },
   { key: 'policyQty', label: 'كمية السياسات' },
-  { key: 'ton15', label: '1.5 طن' },
-  { key: 'ton3', label: '3 طن' },
-  { key: 'm6', label: '6 متر' },
+  { key: 'truckCount', label: 'عدد الشاحنات (Truck)' },
+  { key: 'ton15', label: 'شاحنات 1.5 طن' },
+  { key: 'ton3', label: 'شاحنات 3 طن' },
+  { key: 'm6', label: 'شاحنات 6 متر' },
+  { key: 'worker', label: 'العامل / Worker' },
   { key: 'date', label: 'تاريخ الشحن' },
 ]
 
@@ -103,6 +108,8 @@ const TARGET_FIELDS: { key: string; label: string; required?: boolean }[] = [
 const FIELD_HINTS: { key: string; hints: string[] }[] = [
   { key: 'recipientName', hints: ['المستلم', 'المرسل إليه', 'المرسل اليه'] },
   { key: 'destination', hints: ['الوجهة', 'المدينة'] },
+  { key: 'destinationEn', hints: ['Destination 2', 'destination2', 'وجهة انجلي', 'الوجهة الإنجليزية', 'English'] },
+  { key: 'shipPart', hints: ['Ship Part', 'ShipPart', 'ship part', 'شيب بارت', 'أمر الشحن'] },
   { key: 'freightTotal', hints: ['النولون', 'نولون'] },
   { key: 'freightCost', hints: ['التكويد', 'تكلفة'] },
   { key: 'date', hints: ['التاريخ', 'تاريخ'] },
@@ -110,11 +117,14 @@ const FIELD_HINTS: { key: string; hints: string[] }[] = [
   { key: 'customerName', hints: ['اسم العميل', 'العميل', 'المانح'] },
   { key: 'contractorName', hints: ['المقاول', 'المورد'] },
   { key: 'deliveryPhones', hints: ['هاتف', 'تليفون', 'موبايل', 'جوال'] },
+  { key: 'deliveryNumber', hints: ['Delivery', 'ديليفري', 'الديليفري'] },
   { key: 'routeCode', hints: ['خط السير', 'كود الخط'] },
-  { key: 'policyQty', hints: ['السياسات'] },
-  { key: 'ton15', hints: ['1.5'] },
-  { key: 'ton3', hints: ['3 طن'] },
-  { key: 'm6', hints: ['6 متر', '6 م'] },
+  { key: 'policyQty', hints: ['policy', 'السياسات', 'القطع'] },
+  { key: 'truckCount', hints: ['Truck', 'عدد الشاحنات', 'الشاحنات'] },
+  { key: 'ton15', hints: ['1.5', '1,5'] },
+  { key: 'ton3', hints: ['3 طن', '3TON', '3 TON'] },
+  { key: 'm6', hints: ['6 متر', '6 م', '6M', '6 M'] },
+  { key: 'worker', hints: ['Worker', 'عامل'] },
 ]
 
 const LOG_STATUS_META: Record<string, { label: string; cls: string }> = {

@@ -18,8 +18,8 @@ export async function GET(req: Request) {
 }
 
 /** الحقول المالية والتشغيلية المقبولة عند الإنشاء (الكل كانت تُسقط سابقًا) */
-const NUMERIC_FIELDS = ['freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay', 'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'policyQty'] as const
-const TEXT_FIELDS = ['billNo', 'recipientName', 'deliveryPhones', 'destination', 'destinationEn', 'routeCode', 'loadType', 'vehicleNo', 'shipToParty', 'notes'] as const
+const NUMERIC_FIELDS = ['freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay', 'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'truckCount', 'policyQty'] as const
+const TEXT_FIELDS = ['billNo', 'recipientName', 'deliveryPhones', 'destination', 'destinationEn', 'routeCode', 'loadType', 'vehicleNo', 'shipToParty', 'notes', 'shipPart', 'worker'] as const
 const FK_FIELDS = ['customerId', 'contractorId', 'branchId', 'warehouseId'] as const
 
 export async function POST(req: Request) {

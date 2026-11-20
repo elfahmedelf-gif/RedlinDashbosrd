@@ -39,6 +39,20 @@ export async function POST(req: Request) {
           const destination = String(r.destination ?? '').trim()
           if (!recipientName || !destination) { skipped += 1; errors.push(`صف ${r._row ?? '?'}: بيانات ناقصة (مستلم/وجهة)`); continue }
 
+          // رقم الديليفري: شيت العميل قد يحتوي عدة أرقام بفواصل لصف واحد (رحلة مجمّعة) —
+          // نأخذ أول رقم كمعرف أساسي فريد، ونحفظ القائمة كاملة في الملاحظات
+          const rawDelivery = String(r.deliveryNumber ?? '').trim()
+          const deliveryTokens = rawDelivery.split(/[,،;\s]+/).map((x: string) => x.trim()).filter(Boolean)
+          const deliveryNumber = deliveryTokens[0] ?? null
+          if (deliveryNumber) {
+            const dup = await tx.shipment.findFirst({ where: { deliveryNumber }, select: { shipmentNo: true } })
+            if (dup) {
+              skipped += 1
+              errors.push(`صف ${r._row ?? '?'}: رقم الديليفري ${deliveryNumber} مسجل مسبقًا للشحنة ${dup.shipmentNo}`)
+              continue
+            }
+          }
+
           // إنشاء العميل تلقائيًا إن لم يوجد (سياسة الاستيراد)
           let customerId = r.customerName ? customerByName.get(String(r.customerName).trim()) ?? null : null
           if (!customerId && r.customerName && String(r.customerName).trim()) {
@@ -54,8 +68,12 @@ export async function POST(req: Request) {
               shipmentNo,
               recipientName,
               shipToParty: recipientName,
+              deliveryNumber,
               deliveryPhones: r.deliveryPhones ? String(r.deliveryPhones) : null,
               destination,
+              destinationEn: r.destinationEn ? String(r.destinationEn).trim() : null,
+              shipPart: r.shipPart ? String(r.shipPart).trim() : null,
+              worker: r.worker ? String(r.worker).trim() : null,
               routeCode: r.routeCode ? String(r.routeCode) : null,
               branchId: r.branchName ? branchByName.get(String(r.branchName).trim()) ?? null : null,
               customerId,
@@ -67,10 +85,14 @@ export async function POST(req: Request) {
               ton15: num(r.ton15) ?? null,
               ton3: num(r.ton3) ?? null,
               m6: num(r.m6) ?? null,
+              truckCount: num(r.truckCount) ?? null,
               status: 'new',
               collectionStatus: 'uncollected',
-              date: r.date ? new Date(r.date) : new Date(),
-              notes: `استيراد (${fileName})`,
+              date: r.date && !isNaN(new Date(String(r.date)).getTime()) ? new Date(String(r.date)) : new Date(),
+              notes: [
+                deliveryTokens.length > 1 ? `أرقام ديليفري إضافية: ${deliveryTokens.slice(1).join('، ')}` : null,
+                `استيراد (${fileName})`,
+              ].filter(Boolean).join(' — '),
               statusHistory: { create: { fromStatus: null, toStatus: 'new', notes: `استيراد من ${fileName}`, userName: user.username } },
             },
           })

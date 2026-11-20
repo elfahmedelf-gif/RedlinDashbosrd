@@ -46,6 +46,8 @@ interface Shipment {
   branchId: string | null; branch: PartyLite | null;
   recipientName: string | null; destination: string | null; destinationEn: string | null;
   routeCode: string | null; loadType: string | null;
+  // حقول شيت التوزيع اليومي: Ship Part + عدد الشاحنات + العامل
+  shipPart: string | null; truckCount: number | null; worker: string | null;
   freightCost: number | null; freightTotal: number | null; salePrice: number | null;
   customerPay: number | null; totalSuppliers: number | null;
   aging: number | null; overnight: number | null; returns: number | null; transfer: number | null; drop: number | null;
@@ -71,11 +73,11 @@ interface ShipmentsResponse { items: Shipment[]; total: number; page: number; to
 // قوائم الحقول القابلة للتعديل — متوافقة مع القائمة البيضاء على الخادم (PATCH /api/shipments/{id})
 const SHIPMENT_EDIT_TEXT_FIELDS = [
   'billNo', 'recipientName', 'deliveryPhones', 'destination', 'destinationEn', 'routeCode',
-  'loadType', 'customerId', 'contractorId', 'branchId', 'warehouseId', 'notes', 'vehicleNo', 'shipToParty',
+  'loadType', 'customerId', 'contractorId', 'branchId', 'warehouseId', 'notes', 'vehicleNo', 'shipToParty', 'shipPart', 'worker',
 ] as const
 const SHIPMENT_EDIT_NUM_FIELDS = [
   'freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay',
-  'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'policyQty',
+  'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'truckCount', 'policyQty',
 ] as const
 
 // تاريخ اليوم بتوقيت الجهاز المحلي (بدل UTC) — يمنع انحراف الشحنة ليوم سابق في ساعات الصباح
@@ -90,8 +92,9 @@ function localDateStr(d: Date = new Date()): string {
 // نموذج الإنشاء الفارغ — الحالة تُفرض دائمًا من الخادم (جديدة)
 function emptyCreateForm(): any {
   return {
-    deliveryNumber: '', recipientName: '', destination: '', loadType: '', customerId: '', contractorId: '',
-    branchId: '', warehouseId: '', date: localDateStr(),
+    deliveryNumber: '', recipientName: '', destination: '', destinationEn: '', loadType: '', customerId: '', contractorId: '',
+    branchId: '', warehouseId: '', date: localDateStr(), shipPart: '', worker: '',
+    truckCount: '', ton15: '', ton3: '', m6: '',
     freightCost: '', freightTotal: '', notes: '',
     salePrice: '', customerPay: '', aging: '', overnight: '', returns: '', transfer: '', other: '', drop: '', policyQty: '',
   }
@@ -299,6 +302,7 @@ export function ShipmentsModule() {
       if (cols.shipmentNo) {
         r['رقم الشحنة'] = s.shipmentNo
         r['رقم البوليصة'] = s.billNo
+        r['Ship Part'] = s.shipPart
       }
       if (cols.customer) {
         r['العميل'] = s.customer?.name || s.recipientName
@@ -310,6 +314,14 @@ export function ShipmentsModule() {
         r['كود الخط'] = s.routeCode
       }
       if (cols.pieces) r['الكمية (سياسات)'] = s.policyQty
+      // عدد الشاحنات: الصريح (truckCount) أو مجموع المقاسات — نفس منطق العرض في التفاصيل
+      const trucks = s.truckCount ?? (((s.ton15 ?? 0) + (s.ton3 ?? 0) + (s.m6 ?? 0)) || null)
+      r['عدد الشاحنات'] = trucks
+      if (cols.loadType) {
+        r['شاحنات 1.5 طن'] = s.ton15
+        r['شاحنات 3 طن'] = s.ton3
+        r['شاحنات 6م'] = s.m6
+      }
       if (cols.loadType) r['النوع'] = s.loadType
       if (cols.contractor) r['المقاول'] = s.contractor?.name
       r['الفرع'] = s.branch?.name // الفرع دائمًا — معلومة لوجستية غير مالية
@@ -714,6 +726,7 @@ export function ShipmentsModule() {
                             <div className="text-[10px] text-muted-foreground tnum truncate-1">ديليفري: {s.deliveryNumber}</div>
                           )}
                           {s.billNo && <div className="text-[10px] text-muted-foreground tnum truncate-1">بوليصة: {s.billNo}</div>}
+                          {s.shipPart && <div className="text-[10px] text-muted-foreground tnum truncate-1" title="Ship Part — رقم أمر الشحن عند العميل">Ship Part: {s.shipPart}</div>}
                         </td>
                       )}
                       {cols.customer && (
@@ -1083,7 +1096,7 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
     try {
       // تحقق سريع قبل الإرسال: المقاول إلزامي + لا مبالغ سالبة
       if (!v.contractorId) { setErr('اختيار المقاول مطلوب — عيّن مقاول النقل قبل حفظ الشحنة'); setLoading(false); return }
-      const moneyKeys = ['freightCost', 'freightTotal', 'salePrice', 'customerPay', 'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'policyQty']
+      const moneyKeys = ['freightCost', 'freightTotal', 'salePrice', 'customerPay', 'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'policyQty', 'truckCount', 'ton15', 'ton3', 'm6']
       for (const k of moneyKeys) {
         const n = Number(v[k])
         if (v[k] !== '' && Number.isFinite(n) && n < 0) { setErr(`القيمة في «${k}» لا يمكن أن تكون سالبة — أدخل مبلغًا صحيحًا`); setLoading(false); return }
@@ -1144,6 +1157,16 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
             />
           </div>
           <div>
+            <label className="text-xs font-medium">الوجهة (EN)</label>
+            <Input
+              value={v.destinationEn}
+              onChange={(e) => setV({ ...v, destinationEn: e.target.value })}
+              placeholder="Cairo, Alexandria..."
+              dir="ltr"
+            />
+            <div className="text-[10px] text-muted-foreground mt-1">الوجهة بالإنجليزية — عمود Destination 2 في شيت التوزيع</div>
+          </div>
+          <div>
             <label className="text-xs font-medium">نوع الحمولة</label>
             <Select value={v.loadType} onValueChange={(val) => setV({ ...v, loadType: val === '__' ? '' : val })}>
               <SelectTrigger><SelectValue placeholder="اختر الحجم..." /></SelectTrigger>
@@ -1172,6 +1195,24 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
                 {(warehousesRes?.items ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+          <div>
+            <label className="text-xs font-medium">Ship Part (رقم أمر الشحن)</label>
+            <Input
+              value={v.shipPart}
+              onChange={(e) => setV({ ...v, shipPart: e.target.value })}
+              placeholder="79859"
+              className="tnum"
+            />
+            <div className="text-[10px] text-muted-foreground mt-1">الرقم المرجعي عند العميل — عمود Ship Part في شيت التوزيع، وقابل للبحث</div>
+          </div>
+          <div>
+            <label className="text-xs font-medium">العامل / Worker</label>
+            <Input
+              value={v.worker}
+              onChange={(e) => setV({ ...v, worker: e.target.value })}
+              placeholder="اسم العامل المسؤول عن التحميل"
+            />
           </div>
           <div>
             <label className="text-xs font-medium">تاريخ الشحن</label>
@@ -1250,6 +1291,24 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
           <div>
             <label className="text-xs font-medium">عدد القطع</label>
             <Input type="number" value={v.policyQty} onChange={(e) => setV({ ...v, policyQty: e.target.value })} placeholder="0" />
+          </div>
+          {/* عدد الشاحنات — عمود Truck + توزيع المقاسات في شيت التوزيع اليومي */}
+          <div>
+            <label className="text-xs font-medium">عدد الشاحنات (Truck)</label>
+            <Input type="number" value={v.truckCount} onChange={(e) => setV({ ...v, truckCount: e.target.value })} placeholder="0" />
+            <div className="text-[10px] text-muted-foreground mt-1">عمود Truck بالشيت — يُجمع تلقائيًا مع المقاسات إن تُرك فارغًا</div>
+          </div>
+          <div>
+            <label className="text-xs font-medium">شاحنات 1.5 طن</label>
+            <Input type="number" value={v.ton15} onChange={(e) => setV({ ...v, ton15: e.target.value })} placeholder="0" />
+          </div>
+          <div>
+            <label className="text-xs font-medium">شاحنات 3 طن</label>
+            <Input type="number" value={v.ton3} onChange={(e) => setV({ ...v, ton3: e.target.value })} placeholder="0" />
+          </div>
+          <div>
+            <label className="text-xs font-medium">شاحنات 6 متر</label>
+            <Input type="number" value={v.m6} onChange={(e) => setV({ ...v, m6: e.target.value })} placeholder="0" />
           </div>
           <div className="sm:col-span-2">
             <label className="text-xs font-medium">ملاحظات</label>
@@ -1438,11 +1497,13 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
       loadType: shipment.loadType ?? '', customerId: shipment.customerId ?? '', contractorId: shipment.contractorId ?? '',
       branchId: shipment.branchId ?? '', warehouseId: shipment.warehouseId ?? '', notes: shipment.notes ?? '',
       vehicleNo: shipment.vehicleNo ?? '', shipToParty: shipment.shipToParty ?? '',
+      shipPart: shipment.shipPart ?? '', worker: shipment.worker ?? '',
       ...(canPrices ? {
         freightCost: shipment.freightCost ?? '', freightTotal: shipment.freightTotal ?? '', totalSuppliers: shipment.totalSuppliers ?? '',
         salePrice: shipment.salePrice ?? '', customerPay: shipment.customerPay ?? '',
         aging: shipment.aging ?? '', overnight: shipment.overnight ?? '', returns: shipment.returns ?? '',
         transfer: shipment.transfer ?? '', other: shipment.other ?? '', drop: shipment.drop ?? '',
+        truckCount: shipment.truckCount ?? '',
         ton15: shipment.ton15 ?? '', ton3: shipment.ton3 ?? '', m6: shipment.m6 ?? '', policyQty: shipment.policyQty ?? '',
       } : {}),
     })
@@ -1570,6 +1631,8 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
             <Row label="العميل" value={shipment.customer?.name || shipment.recipientName || '-'} />
             <Row label="جهة الشحن" value={shipment.shipToParty || '-'} />
             <Row label="هاتف التوصيل" value={shipment.deliveryPhones || '-'} ltr />
+            <Row label="Ship Part (أمر الشحن عند العميل)" value={shipment.shipPart || '-'} ltr />
+            <Row label="العامل / Worker" value={shipment.worker || '-'} />
             <Row label="الوجهة" value={shipment.destination || '-'} />
             <Row label="الوجهة (EN)" value={shipment.destinationEn || '-'} ltr />
             <Row label="خط السير/التكويد" value={shipment.routeCode || '-'} />
@@ -1584,6 +1647,11 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
             <Row label="نوع الحمولة" value={shipment.loadType || '-'} />
             <Row label="رقم السيارة" value={shipment.vehicleNo || '-'} ltr />
             <Row label="الكمية (سياسات)" value={fmtNum(shipment.policyQty)} />
+            <Row
+              label="عدد الشاحنات"
+              value={fmtNum(shipment.truckCount ?? (((shipment.ton15 ?? 0) + (shipment.ton3 ?? 0) + (shipment.m6 ?? 0)) || null))}
+            />
+            <Row label="توزيع المقاسات (1.5ط / 3ط / 6م)" value={`${fmtNum(shipment.ton15)} / ${fmtNum(shipment.ton3)} / ${fmtNum(shipment.m6)}`} />
           </CardContent>
         </Card>
       </div>
@@ -1779,6 +1847,14 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
                 <Input value={ev.shipToParty} onChange={(e) => setEv({ ...ev, shipToParty: e.target.value })} />
               </div>
               <div>
+                <label className="text-xs font-medium">Ship Part (رقم أمر الشحن)</label>
+                <Input value={ev.shipPart} onChange={(e) => setEv({ ...ev, shipPart: e.target.value })} className="tnum" placeholder="79859" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">العامل / Worker</label>
+                <Input value={ev.worker} onChange={(e) => setEv({ ...ev, worker: e.target.value })} />
+              </div>
+              <div>
                 <label className="text-xs font-medium">نوع الحمولة</label>
                 <Select value={ev.loadType || '__'} onValueChange={(val) => setEv({ ...ev, loadType: val === '__' ? '' : val })}>
                   <SelectTrigger><SelectValue placeholder="اختر الحجم..." /></SelectTrigger>
@@ -1867,6 +1943,10 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
                   <div>
                     <label className="text-xs font-medium">مدفوع من العميل</label>
                     <Input type="number" value={ev.customerPay ?? ''} onChange={(e) => setEv({ ...ev, customerPay: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">عدد الشاحنات (Truck)</label>
+                    <Input type="number" value={ev.truckCount ?? ''} onChange={(e) => setEv({ ...ev, truckCount: e.target.value })} placeholder="0" />
                   </div>
                   <div>
                     <label className="text-xs font-medium">تعتيق</label>
