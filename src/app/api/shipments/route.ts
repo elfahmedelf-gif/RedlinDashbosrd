@@ -5,6 +5,7 @@ import { logAudit } from '@/lib/server/audit'
 import { db } from '@/lib/db'
 import { listShipments } from '@/lib/server/queries'
 import { assertUniqueDeliveryNumber } from '@/lib/server/receipts'
+import { extractExtras, syncShipmentExtras } from '@/lib/server/shipment-extras-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,11 +85,22 @@ export async function POST(req: Request) {
           statusHistory: { create: { fromStatus: null, toStatus: 'new', notes: 'إنشاء شحنة جديدة', userName: user.username } },
         },
       })
+      // مزامنة بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب) مع البنود الإضافية والقيود —
+      // المبالغ المسجلة على الشحنة تدخل مستحقات المقاول عبر دورة الاعتماد الرسمية
+      const extras = extractExtras(data)
+      let extrasSynced: string[] = []
+      if (Object.values(extras).some((v) => v > 0)) {
+        const sync = await syncShipmentExtras(tx, {
+          ...s,
+          deliveryNumber: s.deliveryNumber,
+        }, extras, { userId: user.userId, username: user.username })
+        extrasSynced = [...sync.created]
+      }
       await logAudit(tx, {
         action: 'create', entity: 'shipment', entityId: s.id,
-        notes: `إنشاء شحنة ${shipmentNo}${data.freightTotal ? ` بنولون ${data.freightTotal}` : ''}`,
+        notes: `إنشاء شحنة ${shipmentNo}${data.freightTotal ? ` بنولون ${data.freightTotal}` : ''}${extrasSynced.length ? ` — بنود متزامنة: ${extrasSynced.join('، ')}` : ''}`,
         user: { userId: user.userId, username: user.username },
-        after: { shipmentNo, status: 'new', freightTotal: data.freightTotal ?? 0, totalSuppliers: data.totalSuppliers },
+        after: { shipmentNo, status: 'new', freightTotal: data.freightTotal ?? 0, totalSuppliers: data.totalSuppliers, extrasSynced },
       })
       return s
     })

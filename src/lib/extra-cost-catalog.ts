@@ -1,13 +1,13 @@
 // ============================================================================
 // كتالوج البنود الإضافية على حساب المقاولين — مصدر واحد للخادم والواجهة
-// الأنواع: تعتيق (تحميل وتنزيل) / مبيت / مرتجعات
-// قاعدة العمل الحاسمة: المبيت والمرتجعات لا تدخل مستحقات المقاول إلا بعد
-// اعتماد الشركة — التعتيق يُعتمد تلقائيًا عند التسجيل (بند قياسي).
+// الأنواع: تعتيق (تحميل وتنزيل) / مبيت / مرتجعات / تحويلة / دروب
+// قاعدة العمل الحاسمة: المبيت والمرتجعات والتحويلة والدروب لا تدخل مستحقات
+// المقاول إلا بعد اعتماد الشركة — التعتيق يُعتمد تلقائيًا عند التسجيل (بند قياسي).
 // SQLite لا يدعم Enums في Prisma — الأنواع/الحالات String مع هذا الكتالوج.
 // ============================================================================
 
 export interface ExtraCostTypeDef {
-  key: 'taateeq' | 'mabeet' | 'return'
+  key: 'taateeq' | 'mabeet' | 'return' | 'transfer' | 'drop'
   label: string
   labelEn: string
   tone: string
@@ -40,6 +40,22 @@ export const EXTRA_COST_TYPES: ExtraCostTypeDef[] = [
     tone: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
     autoApprove: false,
     hint: 'لا تُحسب في مستحقات المقاول إلا بعد موافقة الشركة',
+  },
+  {
+    key: 'transfer',
+    label: 'تحويلة',
+    labelEn: 'Transfer',
+    tone: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+    autoApprove: false,
+    hint: 'تحويلة بين المحطات — لا تُحسب في مستحقات المقاول إلا بعد موافقة الشركة',
+  },
+  {
+    key: 'drop',
+    label: 'دروب (تنزيل بالمنزل)',
+    labelEn: 'Drop (Door Delivery)',
+    tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    autoApprove: false,
+    hint: 'تنزيل بالمنزل — لا تُحسب في مستحقات المقاول إلا بعد موافقة الشركة',
   },
 ]
 

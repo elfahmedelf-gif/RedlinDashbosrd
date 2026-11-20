@@ -51,7 +51,7 @@ export function ReportsModule() {
   if (from) qs.set('from', from)
   if (to) qs.set('to', to)
   // التقرير الشهري للمقاول يدير بياناته بنفسه ( contractor + شهر )
-  const { data, isLoading, mutate } = useSWR<{ items: any[]; byCourier?: any[]; total?: number }>(
+  const { data, isLoading, mutate } = useSWR<{ items: any[]; byCourier?: any[]; total?: number; totals?: any }>(
     active && active !== 'contractor-monthly' ? `/api/reports/${active}?${qs.toString()}` : null,
     fetcher,
   )
@@ -174,7 +174,7 @@ export function ReportsModule() {
             canExecute={has('vouchers.execute')}
           />
         ) : (
-          <ReportTable type={active} items={data?.items ?? []} loading={isLoading} />
+          <ReportTable type={active} items={data?.items ?? []} totals={data?.totals} loading={isLoading} />
         )}
       </div>
     )
@@ -398,7 +398,7 @@ function IncomeStatementView({ data, loading }: { data?: any; loading: boolean }
   )
 }
 
-function ReportTable({ type, items, loading }: { type: ReportType; items: any[]; loading: boolean }) {
+function ReportTable({ type, items, totals, loading }: { type: ReportType; items: any[]; totals?: any; loading: boolean }) {
   if (loading) return <Skeleton className="h-96 rounded-xl" />
   if (!items.length) return <Card><CardContent className="py-12 text-center text-muted-foreground">لا توجد بيانات في هذا التقرير</CardContent></Card>
 
@@ -432,11 +432,27 @@ function ReportTable({ type, items, loading }: { type: ReportType; items: any[];
       { key: 'name', header: 'المقاول', primary: true, render: (c: any) => <span className="font-medium truncate-1 block">{c.name}</span> },
       { key: 'count', header: 'الشحنات', align: 'center' as const, width: 'w-24', render: (c: any) => <Badge variant="outline" className="tnum">{fmtNum(c.shipments)}</Badge> },
       { key: 'freight', header: 'النولون', align: 'left' as const, hideInCard: true, width: 'w-28', render: (c: any) => <span className="tnum">{fmtNum(c.freight)}</span> },
-      { key: 'total', header: 'الإجمالي', align: 'left' as const, hideInCard: true, width: 'w-28', render: (c: any) => <span className="tnum">{fmtNum(c.totalSuppliers)}</span> },
+      { key: 'total', header: 'قيمة الشغل', align: 'left' as const, hideInCard: true, width: 'w-28', render: (c: any) => <span className="tnum">{fmtNum(c.totalSuppliers)}</span> },
+      { key: 'extras', header: 'بنود معتمدة', align: 'left' as const, hideInCard: true, width: 'w-24', render: (c: any) => <span className="tnum">{fmtNum(c.extrasApproved ?? 0)}</span> },
+      { key: 'earned', header: 'الشغل المعتمد (دفتر)', align: 'left' as const, hideInCard: true, width: 'w-32', render: (c: any) => <span className="tnum">{fmtNum(c.earned)}</span> },
       { key: 'paid', header: 'مدفوع', align: 'left' as const, width: 'w-28', render: (c: any) => <span className="tnum text-emerald-600">{fmtNum(c.paid)}</span> },
-      { key: 'due', header: 'مستحق', align: 'left' as const, width: 'w-28', render: (c: any) => <span className={cn('tnum font-bold', c.due > 0 ? 'text-rose-600' : '')}>{fmtNum(c.due)}</span> },
+      { key: 'due', header: 'المستحق', align: 'left' as const, width: 'w-28', render: (c: any) => <span className={cn('tnum font-bold', c.due > 0 ? 'text-rose-600' : '')}>{fmtNum(c.due)}</span> },
     ]
-    return <DataTable rows={items} columns={cols} getRowKey={(c) => c.id} minW={800} searchFn={(c, q) => (c.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
+    return (
+      <div className="space-y-3">
+        {totals && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs rounded-xl border border-border bg-muted/40 px-3 py-2">
+            <span className="font-bold">الإجماليات:</span>
+            <span className="tnum">الشغل المعتمد: <b>{fmtNum(totals.earned)}</b></span>
+            <span className="tnum text-emerald-700 dark:text-emerald-400">مدفوع: <b>{fmtNum(totals.paid)}</b></span>
+            <span className="tnum text-rose-700 dark:text-rose-400">المستحق: <b>{fmtNum(totals.due)}</b></span>
+            <span className="tnum text-muted-foreground">بنود معتمدة: <b>{fmtNum(totals.extrasApproved)}</b> • معلقة: <b>{fmtNum(totals.extrasPending)}</b></span>
+            <span className="text-[10px] text-muted-foreground">(مطابق لمتابعة الإدارة وميزان المراجعة 2102)</span>
+          </div>
+        )}
+        <DataTable rows={items} columns={cols} getRowKey={(c) => c.id} minW={800} searchFn={(c, q) => (c.name || '').toLowerCase().includes(q)} searchPlaceholder="بحث..." />
+      </div>
+    )
   }
   if (type === 'customer-debts') {
     const cols = [

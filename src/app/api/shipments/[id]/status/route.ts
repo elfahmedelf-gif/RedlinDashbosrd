@@ -7,8 +7,10 @@ import { ACTIVE_VOUCHER_STATUSES } from '@/lib/voucher-catalog'
 import {
   canTransitionShipment,
   isKnownShipmentStatus,
+  isShipmentStoppedNextDay,
   shipmentStatusLabel,
   shipmentTransitionError,
+  SHIPMENT_STOPPED_BLOCKED_TARGETS,
 } from '@/lib/shipment-catalog'
 import { postShipmentDeliveryJournal } from '@/lib/server/shipment-accounting'
 
@@ -48,6 +50,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // حماية مالية: شحنة محصّلة لا تتحول إلى مرتجع مباشرة (يلزم عكس التحصيل أولًا)
       if (to === 'returned' && s.collectionStatus === 'collected') {
         throw new ApiError(409, 'لا يمكن تحويل شحنة محصّلة إلى مرتجع — عكس التحصيل (إلغاء سند القبض) أولًا وفق سياسة التصحيح')
+      }
+
+      // ── قاعدة «بتقف تاني يوم» ──
+      // شحنة بتاريخ أقدم من اليوم ولم تُحمّل بعد (جديدة/تجهيز/مستلمة) =
+      // متوقفة تلقائيًا عن التحميل والإرسال في اليوم التالي.
+      // المسار الصحيح: إعادة الجدولة لليوم (زر «جدولة لليوم») أو تسجيلها
+      // مبيت/تعتيق/مؤجلة وفق الواقع الفعلي.
+      const stopped = isShipmentStoppedNextDay(s)
+      if (stopped && (SHIPMENT_STOPPED_BLOCKED_TARGETS as readonly string[]).includes(to)) {
+        throw new ApiError(409, `الشحنة متوقفة عن التحميل (بتقف تاني يوم) — بتاريخ ${s.date ? new Date(s.date).toISOString().slice(0, 10) : '—'} ولم تُحمّل في يومها. أعد جدولتها لليوم من زر «جدولة لليوم» أو سجّلها مبيت/تعتيق/مؤجلة وفق الواقع`, {
+          code: 'SHIPMENT_STOPPED_NEXT_DAY',
+          shipmentId: id,
+          shipmentDate: s.date,
+        })
       }
 
       await tx.shipment.update({

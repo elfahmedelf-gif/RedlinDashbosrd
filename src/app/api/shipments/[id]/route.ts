@@ -7,6 +7,7 @@ import { getShipment } from '@/lib/server/queries'
 import { getActiveDeliveryJournal, postShipmentDeliveryJournal } from '@/lib/server/shipment-accounting'
 import { reverseJournal } from '@/lib/server/accounting'
 import { assertUniqueDeliveryNumber } from '@/lib/server/receipts'
+import { clearSyncedExtras, extractExtras, extrasFromShipment, extrasTouched, syncShipmentExtras } from '@/lib/server/shipment-extras-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,9 +44,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
       const moneyTouched = MONEY_FIELDS.some((k) => b[k] !== undefined)
       const contractorChanged = b.contractorId !== undefined && b.contractorId !== s.contractorId
+      // بنود النقلة الإضافية: هل طلب المستخدم تعديل تعتيق/مبيت/تحويلة/دروب؟
+      const prevExtras = extrasFromShipment(s)
+      const touchedExtras = extrasTouched(b)
 
       // حماية الأثر المالي: الشحنات المحصّلة لا تُعدّل مبالغها أبدًا
-      if (moneyTouched && s.collectionStatus === 'collected') {
+      if ((moneyTouched || touchedExtras) && s.collectionStatus === 'collected') {
         throw new ApiError(409, 'لا يمكن تعديل مبالغ شحنة تم تحصيلها — استخدم قيدًا عكسيًا أو إذن تصحيح وفق سياسة النظام')
       }
 
@@ -96,24 +100,52 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         }
       }
 
+      // ── مزامنة بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب) مع البنود والقيود ──
+      let extrasSyncNote: string | null = null
+      if (touchedExtras || contractorChanged) {
+        // تغيير المقاول: بنود المقاول القديم تُسحب بالكامل (عكس القيود + حذف)
+        let cleared: string[] = []
+        if (contractorChanged) {
+          cleared = await clearSyncedExtras(tx, id, user, `تغيير مقاول الشحنة ${s.shipmentNo ?? ''}`)
+        }
+        // المزامنة بالقيم النهائية بعد الدمج — تُنشئ/تحدّث بنود المقاول الجديد
+        const fresh = await tx.shipment.findUnique({
+          where: { id },
+          include: { customer: { select: { id: true, name: true } }, contractor: { select: { id: true, name: true } } },
+        })
+        if (fresh) {
+          const finalExtras = extrasFromShipment(fresh)
+          const sync = await syncShipmentExtras(tx, fresh, finalExtras, { userId: user.userId, username: user.username }, prevExtras)
+          const parts: string[] = []
+          if (sync.created.length) parts.push(`إنشاء: ${sync.created.join('، ')}`)
+          if (sync.updated.length) parts.push(`تحديث: ${sync.updated.join('، ')}`)
+          if (sync.deleted.length || cleared.length) parts.push(`سحب: ${[...cleared, ...sync.deleted].join('، ')}`)
+          if (parts.length) extrasSyncNote = parts.join(' | ')
+        }
+      }
+
       // تعديل البيانات المالية يُسجّل سطرًا في سجل حالات الشحنة (أثر مالي موثّق)
-      if (moneyTouched) {
+      if (moneyTouched || touchedExtras) {
+        const touchedNames = [
+          ...MONEY_FIELDS.filter((k) => b[k] !== undefined),
+          ...(touchedExtras ? ['تعتيق/مبيت/تحويلة/دروب (بنود النقلة)'] : []),
+        ]
         await tx.shipmentStatusHistory.create({
           data: {
             shipmentId: id,
             fromStatus: s.status,
             toStatus: s.status,
-            notes: `تعديل بيانات مالية: ${MONEY_FIELDS.filter((k) => b[k] !== undefined).join('، ')}`,
+            notes: `تعديل بيانات مالية: ${touchedNames.join('، ')}`,
             userName: user.username,
           },
         })
       }
       await logAudit(tx, {
         action: 'update', entity: 'shipment', entityId: id,
-        notes: `تعديل الشحنة ${s.shipmentNo}${reversalNo ? ` — عكس القيد ${reversalNo}` : ''}${repostNo ? ` — إعادة إثبات بالقيد ${repostNo}` : ''}${contractorChanged ? ' — نقل المستحقات بين المقاولين تلقائيًا' : ''}`,
+        notes: `تعديل الشحنة ${s.shipmentNo}${reversalNo ? ` — عكس القيد ${reversalNo}` : ''}${repostNo ? ` — إعادة إثبات بالقيد ${repostNo}` : ''}${contractorChanged ? ' — نقل المستحقات بين المقاولين تلقائيًا' : ''}${extrasSyncNote ? ` — مزامنة بنود النقلة: ${extrasSyncNote}` : ''}`,
         user: { userId: user.userId, username: user.username },
-        before: { freightTotal: s.freightTotal, freightCost: s.freightCost, totalSuppliers: s.totalSuppliers, contractorId: s.contractorId },
-        after: { ...data, reversalNo, repostNo },
+        before: { freightTotal: s.freightTotal, freightCost: s.freightCost, totalSuppliers: s.totalSuppliers, contractorId: s.contractorId, ...prevExtras },
+        after: { ...data, reversalNo, repostNo, extrasSyncNote },
       })
       void updated
     })

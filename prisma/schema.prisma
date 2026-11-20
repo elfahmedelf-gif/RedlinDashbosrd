@@ -459,6 +459,10 @@ model ExtraCost {
   shipmentId      String?
   date            DateTime  @default(now())
   journalEntryId  String?   @unique  // القيد المحاسبي المرتبط (يُنشأ عند الاعتماد)
+  // F2: مصدر البند — 'shipment_sync' بند متزامن تلقائيًا من حقول الشحنة
+  // (تعتيق/مبيت/تحويلة/دروب في جدول الصباح) و'null' بند يدوي من وحدة البنود الإضافية.
+  // المزامنة تلمس فقط بنود shipment_sync — البنود اليدوية لا تُمس أبدًا (منع التكرار المحاسبي).
+  source          String?
   userId          String?
   userName        String?
   approvalUserId  String?

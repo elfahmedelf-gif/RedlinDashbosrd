@@ -10,6 +10,7 @@ import { accountBalancesMap, ACC, reversalOriginalSources, summarizeContractorLe
 import { VOUCHER_CATEGORIES, VOUCHER_STATES, VOUCHER_TYPES } from '../voucher-catalog'
 import { EXTRA_COST_SOURCE, extraCostTypeLabel } from '../extra-cost-catalog'
 import { enrichVoucherRows, voucherInclude } from './vouchers-queries'
+import { isShipmentStoppedNextDay } from '../shipment-catalog'
 import { canSeeExtras, canSeePrices, reportRequiresPrices, stripDashboardStats, stripParties, stripShipmentPrices, stripVoucherPrices, stripVoucherStats } from './prices'
 
 const SHIPMENT_INCLUDE = {
@@ -98,6 +99,11 @@ export async function listShipments(q: URLSearchParams, user?: { permissions: st
   const contractor = q.get('contractor')
   const province = q.get('province')
   const idsParam = q.get('ids')
+  // F3: فلاتر جدول الصباح — يوم محدد + الشحنات المتوقفة (بتقف تاني يوم)
+  const dateFilter = (q.get('date') ?? '').trim()
+  const fromFilter = (q.get('from') ?? '').trim()
+  const toFilter = (q.get('to') ?? '').trim()
+  const stoppedOnly = q.get('stopped') === '1'
   const where: Prisma.ShipmentWhereInput = {}
   if (status && status !== 'all') where.status = status
   if (dest && dest !== 'all') where.destination = dest
@@ -106,6 +112,14 @@ export async function listShipments(q: URLSearchParams, user?: { permissions: st
   if (idsParam) {
     const idSet = idsParam.split(',').filter(Boolean)
     where.id = { in: idSet }
+  }
+  if (dateFilter) {
+    where.date = { gte: new Date(dateFilter + 'T00:00:00'), lte: new Date(dateFilter + 'T23:59:59.999') }
+  } else if (fromFilter || toFilter) {
+    where.date = {
+      ...(fromFilter ? { gte: new Date(fromFilter + 'T00:00:00') } : {}),
+      ...(toFilter ? { lte: new Date(toFilter + 'T23:59:59.999') } : {}),
+    }
   }
   let rows = await db.shipment.findMany({
     where,
@@ -117,12 +131,55 @@ export async function listShipments(q: URLSearchParams, user?: { permissions: st
       [s.shipmentNo, s.deliveryNumber, s.billNo, s.recipientName, s.destination, s.destinationEn, s.routeCode, s.deliveryPhones]
         .some((f) => String(f ?? '').toLowerCase().includes(search)))
   }
+  // علم «بتقف تاني يوم» لكل صف + فلتر الشحنات المتوقفة
+  const withStopped = rows.map((s) => ({ ...s, _stopped: isShipmentStoppedNextDay(s) }))
+  const filteredRows = stoppedOnly ? withStopped.filter((s) => s._stopped) : withStopped
+
+  // ── إجماليات جدول الصباح (الإجمالي النقلة) — على كل الصفوف المطابقة قبل الترقيم ──
+  const sum = (f: (s: (typeof filteredRows)[number]) => number | null | undefined) =>
+    round2(filteredRows.reduce((acc, s) => acc + (Number(f(s) ?? 0) || 0), 0))
+  const countIn = (...keys: string[]) => filteredRows.filter((s) => keys.includes(s.status)).length
+  const freightSum = sum((s) => s.freightTotal ?? s.freightCost)
+  const extrasSum = {
+    aging: sum((s) => s.aging),
+    overnight: sum((s) => s.overnight),
+    transfer: sum((s) => s.transfer),
+    drop: sum((s) => s.drop),
+  }
+  const grandSum = round2(freightSum + extrasSum.aging + extrasSum.overnight + extrasSum.transfer + extrasSum.drop)
+  const suppliersSum = sum((s) => s.totalSuppliers)
+  const totals: Record<string, any> = {
+    shipments: filteredRows.length,
+    pieces: sum((s) => s.policyQty),
+    // إحصاءات الصباح: محمّلة / مش محمّلة / متوقفة / مبيت / تعتيق / مؤجلة / مرتجعة / مُسلّمة
+    notLoaded: countIn('new', 'preparing', 'received'),
+    loaded: countIn('loaded', 'in_transit', 'arrived', 'assigned_courier', 'out_for_delivery'),
+    stopped: filteredRows.filter((s) => s._stopped).length,
+    mabeit: countIn('mabeit'),
+    taateeq: countIn('taateeq'),
+    postponed: countIn('postponed'),
+    returned: countIn('returned', 'received_returned'),
+    delivered: countIn('delivered'),
+    aging: canExtras ? extrasSum.aging : null,
+    overnight: canExtras ? extrasSum.overnight : null,
+    transfer: canExtras ? extrasSum.transfer : null,
+    drop: canExtras ? extrasSum.drop : null,
+    // الإجمالي النقلة = نولون العميل + البنود الإضافية (يُكشف لمن يملك صلاحية الأسعار فقط)
+    freight: canPrices ? freightSum : null,
+    suppliers: canPrices ? suppliersSum : null,
+    margin: canPrices ? round2(freightSum - suppliersSum) : null,
+    grand: canPrices ? grandSum : null,
+  }
+
   // روابط الإذن↔شحنة لكل الصفوف المفلترة (كانت للصفين الـ60 الأول فقط)
-  const links = await voucherLinksForShipments(rows)
-  const items = rows.map((s) => enrichShipment(s, links, canPrices, canExtras))
+  const links = await voucherLinksForShipments(filteredRows)
+  const items = filteredRows.map((s) => {
+    const enriched = enrichShipment(s, links, canPrices, canExtras)
+    return { ...enriched, stopped: s._stopped }
+  })
   const page = Math.max(1, parseInt(q.get('page') || '1', 10))
   const pageSize = Math.min(500, Math.max(1, parseInt(q.get('pageSize') || '20', 10)))
-  return paginate(items, page, pageSize)
+  return { ...paginate(items, page, pageSize), totals }
 }
 
 export async function getShipment(id: string, user?: { permissions: string[] } | null) {
@@ -516,44 +573,67 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
   }
 
   if (type === 'contractor-dues') {
-    const rows = await db.shipment.findMany({ where: dateWhere('date', from, to), include: SHIPMENT_INCLUDE })
-    const map = new Map<string, any>()
-    for (const s of rows) {
+    // ------------------------------------------------------------------
+    // مستحقات المقاولين — مستمدة بالكامل من دفتر الأستاذ (2102) — مطابقة 1:1
+    // مع متابعة الإدارة + كشف حساب المقاول + ميزان المراجعة (شاشات متطابقة).
+    // قيمة الشغل (له) = دائن 2102 + افتتاحي دائن − تخفيضات المستحقات (عكس بنود)
+    // المسحوبات = مدين 2102 (سندات صرف/قيد يدوي) + افتتاحي مدين
+    // معلومات الشحنات/البنود تُعرض كسياق تشغيلي دون أن تغيّر المستحق المحاسبي.
+    // ------------------------------------------------------------------
+    const contractors = await db.party.findMany({
+      where: { isContractor: true, active: true },
+      select: { id: true, name: true, code: true, openingBalance: true, openingBalanceType: true },
+      orderBy: { name: 'asc' },
+    })
+    const partyIds = contractors.map((c) => c.id)
+    const contractorsAcc = await db.account.findUnique({ where: { code: ACC.CONTRACTORS }, select: { id: true } })
+
+    // معلومات الشحنات (سياق تشغيلي — مرشحة بالتاريخ عند التحديد)
+    const shipRows = partyIds.length
+      ? await db.shipment.findMany({
+          where: { contractorId: { in: partyIds }, ...(from || to ? dateWhere('date', from, to) : {}) },
+          select: { contractorId: true, freightTotal: true, totalSuppliers: true },
+        })
+      : []
+    const shipMap = new Map<string, { shipments: number; freight: number; totalSuppliers: number }>()
+    for (const s of shipRows) {
       if (!s.contractorId) continue
-      const cur = map.get(s.contractorId) ?? { id: s.contractorId, name: s.contractor?.name ?? '-', shipments: 0, freight: 0, totalSuppliers: 0 }
+      const cur = shipMap.get(s.contractorId) ?? { shipments: 0, freight: 0, totalSuppliers: 0 }
       cur.shipments += 1
       cur.freight += s.freightTotal ?? 0
       cur.totalSuppliers += s.totalSuppliers ?? 0
-      map.set(s.contractorId, cur)
+      shipMap.set(s.contractorId, cur)
     }
-    // البنود الإضافية المعتمدة تدخل مستحقات المقاول (تم ترحيلها محاسبيًا عند الاعتماد)
-    // والمعلقة تُعرض منفصلة — لا تُحسب قبل موافقة الشركة
-    const ecWhere: any = { contractorId: { in: [...map.keys()] } }
+
+    // البنود الإضافية (سياق تشغيلي — المعتمدة مُرحّلة بالفعل داخل الدفتر)
+    const ecWhere: any = { contractorId: { in: partyIds } }
     if (from || to) {
       ecWhere.date = {}
       if (from) ecWhere.date.gte = new Date(from + 'T00:00:00')
       if (to) ecWhere.date.lte = new Date(to + 'T23:59:59')
     }
-    const [ecRows, contractorsAcc] = await Promise.all([
-      map.size ? db.extraCost.groupBy({ by: ['contractorId', 'approvalStatus'], where: ecWhere, _count: { _all: true }, _sum: { amount: true } }) : Promise.resolve([] as any[]),
-      db.account.findUnique({ where: { code: ACC.CONTRACTORS }, select: { id: true } }),
-    ])
-    // المسحوبات الفعلية = سطور مدين 2102 المصدرها سندات صرف/قيد يدوي — مشتقة من
-    // دفتر الأستاذ نفسه (متسقة مع كشف الحساب ومتابعة الإدارة والتقرير الشهري)
-    // مع نسبة القيود العكسية لأثرها الأصلي: عكس دفعة يُخرجها من المسحوبات فورًا
-    const paidLines = contractorsAcc
+    const ecRows = partyIds.length
+      ? await db.extraCost.groupBy({ by: ['contractorId', 'approvalStatus'], where: ecWhere, _count: { _all: true }, _sum: { amount: true } })
+      : []
+
+    // الدفتر حتى نهاية التاريخ (أو الفترة عند التحديد) — بنفس منهجية متابعة الإدارة
+    const asOfEnd = to ? new Date(to + 'T23:59:59.999') : undefined
+    const ledgerRows = contractorsAcc && partyIds.length
       ? await db.journalLine.findMany({
-          where: { accountId: contractorsAcc.id, partyId: { in: [...map.keys()] }, entry: { status: 'posted', sourceType: { in: ['op_voucher', 'manual', 'journal_reversal'] } } },
-          select: { partyId: true, debit: true, credit: true, entry: { select: { sourceType: true, sourceId: true } } },
+          where: {
+            accountId: contractorsAcc.id,
+            partyId: { in: partyIds },
+            entry: { status: 'posted', ...(from ? { date: { gte: new Date(from + 'T00:00:00'), ...(asOfEnd ? { lte: asOfEnd } : {}) } } : asOfEnd ? { date: { lte: asOfEnd } } : {}) },
+          },
+          select: { partyId: true, debit: true, credit: true, entry: { select: { sourceType: true, sourceId: true, reference: true } } },
         })
       : []
-    const reversalIds = paidLines
+    const reversalSourceIds = ledgerRows
       .filter((l) => l.entry?.sourceType === 'journal_reversal' && l.entry?.sourceId)
       .map((l) => l.entry.sourceId as string)
-    const paidOriginalSources = await reversalOriginalSources(db, [...new Set(reversalIds)])
-    const paidSummary = summarizeContractorLedgerLines(paidLines, paidOriginalSources)
-    const paidMap = new Map<string, number>()
-    for (const [pid, s] of paidSummary) paidMap.set(pid, s.paidFromVouchers)
+    const originalSources = await reversalOriginalSources(db, [...new Set(reversalSourceIds)])
+    const ledgerMap = summarizeContractorLedgerLines(ledgerRows, originalSources)
+
     const ecMap = new Map<string, { approved: number; approvedCount: number; pending: number; pendingCount: number }>()
     for (const g of ecRows) {
       if (!g.contractorId) continue
@@ -562,25 +642,41 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
       if (g.approvalStatus === 'pending') { cur.pending += g._sum.amount ?? 0; cur.pendingCount += g._count._all }
       ecMap.set(g.contractorId, cur)
     }
-    const items = [...map.values()].map((c) => {
-      const paid = round2(paidMap.get(c.id) ?? 0)
+
+    const items = contractors.map((c) => {
+      const led = ledgerMap.get(c.id) ?? { earnedFromLedger: 0, paidFromVouchers: 0, duesReduction: 0 }
+      const openingSign = c.openingBalanceType === 'credit' ? -1 : 1
+      const opening = round2(openingSign * Number(c.openingBalance ?? 0))
+      const earned = round2(led.earnedFromLedger + (opening < 0 ? -opening : 0) - led.duesReduction)
+      const paid = round2(led.paidFromVouchers + (opening > 0 ? opening : 0))
+      const due = round2(earned - paid)
+      const ship = shipMap.get(c.id) ?? { shipments: 0, freight: 0, totalSuppliers: 0 }
       const ec = ecMap.get(c.id) ?? { approved: 0, approvedCount: 0, pending: 0, pendingCount: 0 }
-      const work = round2(c.totalSuppliers)
-      const extrasApproved = round2(ec.approved)
       return {
-        ...c,
-        freight: round2(c.freight),
-        totalSuppliers: work,
-        extrasApproved,
+        id: c.id,
+        name: c.name,
+        code: c.code,
+        shipments: ship.shipments,
+        freight: round2(ship.freight),
+        totalSuppliers: round2(ship.totalSuppliers),
+        extrasApproved: round2(ec.approved),
         extrasApprovedCount: ec.approvedCount,
         extrasPending: round2(ec.pending),
         extrasPendingCount: ec.pendingCount,
+        earned,
         paid,
-        // المتبقي = قيمة الشغل + البنود المعتمدة − المسحوبات (المعلقة غير محسوبة)
-        due: round2(work + extrasApproved - paid),
+        // المستحق من الدفتر — مطابق لمتابعة الإدارة وكشف الحساب وميزان المراجعة
+        due,
       }
     }).sort((a, b) => b.due - a.due)
-    return { items }
+    const totals = {
+      earned: round2(items.reduce((s, c) => s + c.earned, 0)),
+      paid: round2(items.reduce((s, c) => s + c.paid, 0)),
+      due: round2(items.reduce((s, c) => s + c.due, 0)),
+      extrasApproved: round2(items.reduce((s, c) => s + c.extrasApproved, 0)),
+      extrasPending: round2(items.reduce((s, c) => s + c.extrasPending, 0)),
+    }
+    return { items, totals }
   }
 
   // ------------------------------------------------------------------

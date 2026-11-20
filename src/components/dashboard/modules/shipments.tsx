@@ -33,6 +33,7 @@ import {
   SHIPMENT_STATUSES,
   allowedShipmentTransitions,
   canTransitionShipment,
+  isShipmentStoppedNextDay,
   isTerminalShipmentStatus,
   shipmentStatusDef,
   shipmentStatusLabel,
@@ -50,11 +51,21 @@ interface Shipment {
   customerPay: number | null; totalSuppliers: number | null;
   aging: number | null; overnight: number | null; returns: number | null; transfer: number | null; drop: number | null;
   status: string; collectionStatus: string;
+  // قاعدة «بتقف تاني يوم» — يحسبها الخادم لكل صف (تاريخ أقدم من اليوم ولم تُحمّل)
+  stopped?: boolean;
   date: string | null; date2: string | null; notes: string | null;
   ton15: number | null; ton3: number | null; m6: number | null;
 }
 
-interface ShipmentsResponse { items: Shipment[]; total: number; page: number; totalPages: number }
+interface ShipmentsTotals {
+  shipments: number; pieces: number;
+  notLoaded: number; loaded: number; stopped: number;
+  mabeit: number; taateeq: number; postponed: number; returned: number; delivered: number;
+  aging: number | null; overnight: number | null; transfer: number | null; drop: number | null;
+  freight: number | null; suppliers: number | null; margin: number | null; grand: number | null;
+}
+
+interface ShipmentsResponse { items: Shipment[]; total: number; page: number; totalPages: number; totals?: ShipmentsTotals }
 
 // قوائم الحقول القابلة للتعديل — متوافقة مع القائمة البيضاء على الخادم (PATCH /api/shipments/{id})
 const SHIPMENT_EDIT_TEXT_FIELDS = [
@@ -95,6 +106,9 @@ export function ShipmentsModule() {
   const [destination, setDestination] = React.useState<string>('all')
   const [contractor, setContractor] = React.useState<string>('all')
   const [province, setProvince] = React.useState<string>('all')
+  // فلاتر جدول الصباح: يوم محدد + الشحنات المتوقفة (بتقف تاني يوم)
+  const [dateFilter, setDateFilter] = React.useState<string>('')
+  const [stoppedOnly, setStoppedOnly] = React.useState<boolean>(false)
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(10) // rows-per-page selectable from the unified pagination bar
   const [debouncedQ, setDebouncedQ] = React.useState('')
@@ -127,9 +141,12 @@ export function ShipmentsModule() {
   if (destination !== 'all') params.set('destination', destination)
   if (contractor !== 'all') params.set('contractor', contractor)
   if (province !== 'all') params.set('province', province)
+  if (dateFilter) params.set('date', dateFilter)
+  if (stoppedOnly) params.set('stopped', '1')
   params.set('page', String(page))
   params.set('pageSize', String(pageSize))
   const { data, error, isLoading, mutate } = useSWR<ShipmentsResponse>(`/api/shipments?${params.toString()}`, fetcher, { keepPreviousData: true, refreshInterval: 30000 })
+  const totals = data?.totals
 
   // Load filter options (destinations + contractors + provinces) — derive from stats endpoint
   const { data: stats } = useSWR<{ destinations: { name: string }[] }>('/api/stats', fetcher)
@@ -148,10 +165,31 @@ export function ShipmentsModule() {
     return Array.from(set).sort()
   }, [destinations])
 
-  const hasFilters = debouncedQ || status !== 'all' || destination !== 'all' || contractor !== 'all' || province !== 'all'
+  const hasFilters = debouncedQ || status !== 'all' || destination !== 'all' || contractor !== 'all' || province !== 'all' || !!dateFilter || stoppedOnly
 
   // عدد أعمدة جدول سطح المكتب (يُستخدم في colSpan للهياكل/الفراغ)
-  const colCount = 9 + (canExtras ? 4 : 0) + (canPrices ? 4 : 0)
+  // الأساس: تحديد/رقم/عميل/جهة/قطع/أدوات تحميل/مقاول/تاريخ/حالة/إجراءات = 10
+  const colCount = 10 + (canExtras ? 4 : 0) + (canPrices ? 4 : 0)
+
+  // شريط الإجراءات: إعادة جدولة شحنة متوقفة (بتقف تاني يوم) لليوم — تفرخ تحميلها
+  const [reschedulingId, setReschedulingId] = React.useState<string | null>(null)
+  const reschedule = async (id: string) => {
+    const ok = await confirmDialog({
+      title: 'إعادة جدولة الشحنة لليوم',
+      message: 'هيتم تحديث تاريخ الشحنة لليوم وإلغاء الإيقاف (بتقف تاني يوم) — وبكدا تتسمح بالتحميل النهارده. متابعة؟',
+      variant: 'primary',
+      confirmText: 'جدولة لليوم',
+    })
+    if (!ok) return
+    setReschedulingId(id)
+    try {
+      await apiPost(`/api/shipments/${id}/reschedule`, {})
+      toast({ title: 'تمت إعادة الجدولة لليوم — الشحنة مسموح تحميلها' })
+      mutate()
+    } catch (e: any) {
+      toast({ title: 'تعذّرت إعادة الجدولة', description: e.message, variant: 'destructive' })
+    } finally { setReschedulingId(null) }
+  }
 
   // ---- bulk selection helpers ----
   const pageItems = data?.items ?? []
@@ -330,9 +368,44 @@ export function ShipmentsModule() {
                 {provinces.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
               </SelectContent>
             </Select>
-            {hasFilters && <Button variant="ghost" onClick={() => { setQ(''); setStatus('all'); setDestination('all'); setContractor('all'); setProvince('all'); setPage(1) }} className="sm:col-span-2 lg:col-span-4 justify-start"><X className="size-4" /> مسح المرشحات</Button>}
+            <div>
+              <label className="text-[11px] text-muted-foreground mb-1 block">جدول يوم محدد</label>
+              <Input type="date" value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setPage(1) }} className="min-h-[40px]" />
+            </div>
+            <label className="flex items-center gap-2 text-sm rounded-md border border-border px-3 py-2.5 cursor-pointer hover:bg-muted/40 min-h-[40px]">
+              <input type="checkbox" checked={stoppedOnly} onChange={(e) => { setStoppedOnly(e.target.checked); setPage(1) }} className="size-4 accent-[hsl(var(--primary))]" />
+              <span className="font-medium">المتوقفة فقط (بتقف تاني يوم)</span>
+            </label>
+            {hasFilters && <Button variant="ghost" onClick={() => { setQ(''); setStatus('all'); setDestination('all'); setContractor('all'); setProvince('all'); setDateFilter(''); setStoppedOnly(false); setPage(1) }} className="sm:col-span-2 lg:col-span-4 justify-start"><X className="size-4" /> مسح المرشحات</Button>}
           </CardContent>
         </Card>
+      )}
+
+      {/* شريط جدول الصباح — إحصاءات الحالة اليومية + الإجمالي النقلة */}
+      {totals && (
+        <div className="rounded-2xl border border-border bg-card elev-sm px-3 py-2.5 print:hidden">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+            <span className="font-bold text-foreground">جدول الصباح:</span>
+            <span className="tnum">الشحنات: <b className="text-foreground">{fmtNum(totals.shipments)}</b></span>
+            <span className="tnum">القطع: <b className="text-foreground">{fmtNum(totals.pieces)}</b></span>
+            <span className="text-emerald-700 tnum dark:text-emerald-400">محمّلة: <b>{fmtNum(totals.loaded)}</b></span>
+            <span className="text-amber-700 tnum dark:text-amber-400">مش محمّلة: <b>{fmtNum(totals.notLoaded)}</b></span>
+            {totals.stopped > 0 && <button onClick={() => { setStoppedOnly(true); setPage(1) }} className="text-rose-700 tnum underline decoration-dotted underline-offset-2 dark:text-rose-400 hover:no-underline">متوقفة (بتقف تاني يوم): <b>{fmtNum(totals.stopped)}</b></button>}
+            {totals.mabeit > 0 && <button onClick={() => { setStatus('mabeit'); setPage(1) }} className="text-amber-700 tnum underline decoration-dotted underline-offset-2 dark:text-amber-400 hover:no-underline">مبيت: <b>{fmtNum(totals.mabeit)}</b></button>}
+            {totals.taateeq > 0 && <button onClick={() => { setStatus('taateeq'); setPage(1) }} className="text-sky-700 tnum underline decoration-dotted underline-offset-2 dark:text-sky-400 hover:no-underline">تعتيق: <b>{fmtNum(totals.taateeq)}</b></button>}
+            {totals.postponed > 0 && <span className="text-yellow-700 tnum dark:text-yellow-400">مؤجلة: <b>{fmtNum(totals.postponed)}</b></span>}
+            {totals.returned > 0 && <span className="text-rose-700 tnum dark:text-rose-400">مرتجعة: <b>{fmtNum(totals.returned)}</b></span>}
+            {totals.delivered > 0 && <span className="text-emerald-700 tnum dark:text-emerald-400">مُسلّمة: <b>{fmtNum(totals.delivered)}</b></span>}
+            {canExtras && (totals.aging || totals.overnight || totals.transfer || totals.drop) ? (
+              <span className="tnum text-muted-foreground">بنود النقلة: تعتيق <b className="text-foreground">{fmtNum(totals.aging ?? 0)}</b> • مبيت <b className="text-foreground">{fmtNum(totals.overnight ?? 0)}</b> • تحويلة <b className="text-foreground">{fmtNum(totals.transfer ?? 0)}</b> • دروب <b className="text-foreground">{fmtNum(totals.drop ?? 0)}</b></span>
+            ) : null}
+            {canPrices && totals.grand != null && (
+              <span className="ms-auto rounded-lg bg-primary/10 px-2.5 py-1 font-bold text-primary tnum" title="الإجمالي النقلة = نولون العميل + التعتيق + المبيت + التحويلة + الدروب">
+                الإجمالي النقلة: {fmtNum(totals.grand)} ج.م
+              </span>
+            )}
+          </div>
+        </div>
       )}
 
       <div className="text-xs text-muted-foreground tnum print:hidden">إجمالي النتائج: <b className="text-foreground">{fmtNum(data?.total ?? 0)}</b></div>
@@ -375,15 +448,24 @@ export function ShipmentsModule() {
                   </div>
                   <Badge variant="outline" className={sMeta.tone + ' shrink-0'}>{sMeta.label}</Badge>
                 </div>
-                {/* Meta grid: destination + size + date + contractor */}
+                {s.stopped && (
+                  <Badge variant="outline" className="w-full justify-center font-bold bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-900/60">
+                    بتقف تاني يوم — لم تُحمّل في يومها
+                  </Badge>
+                )}
+                {/* Meta grid: الجهة + القطع + أدوات التحميل + المقاول + التاريخ */}
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-1 border-t border-border/60">
                   <div className="min-w-0">
-                    <div className="text-[10px] text-muted-foreground/70">الوجهة</div>
+                    <div className="text-[10px] text-muted-foreground/70">الجهة</div>
                     <div className="text-xs font-medium truncate-1">{s.destination ?? '-'}</div>
                     {s.destinationEn && <div className="text-[10px] text-muted-foreground/80 truncate-1 num-ltr" dir="ltr">{s.destinationEn}</div>}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] text-muted-foreground/70">الحجم</div>
+                    <div className="text-[10px] text-muted-foreground/70">القطع (كام قطعة)</div>
+                    <div className="text-xs font-medium tnum num-ltr">{s.policyQty != null ? fmtNum(s.policyQty) : '-'}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-muted-foreground/70">أدوات التحميل</div>
                     <Badge variant="outline" className={cn('font-bold', sizeTone)}>{size}</Badge>
                   </div>
                   <div className="min-w-0">
@@ -461,6 +543,17 @@ export function ShipmentsModule() {
                     <Printer className="size-4" /> بوليصة
                   </Button>
                 </div>
+                {s.stopped && has('shipments.edit') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full min-h-[40px] font-bold text-rose-700 border-rose-300 hover:bg-rose-50 dark:text-rose-300 dark:border-rose-900/60 dark:hover:bg-rose-950/40"
+                    disabled={reschedulingId === s.id}
+                    onClick={() => reschedule(s.id)}
+                  >
+                    جدولة لليوم — إلغاء الإيقاف
+                  </Button>
+                )}
               </div>
             )
           })}
@@ -470,7 +563,7 @@ export function ShipmentsModule() {
       {/* Desktop (md+): table view */}
       <Card className="gap-0 overflow-hidden py-0 hidden md:block print:hidden">
         <div className="w-full overflow-x-auto">
-          <table className="w-full table-fixed text-sm text-right" style={{ minWidth: 1760 }}>
+          <table className="w-full table-fixed text-sm text-right" style={{ minWidth: 1880 }}>
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
                 <th className="font-medium px-2 py-3 text-center w-12 print:hidden">
@@ -480,9 +573,10 @@ export function ShipmentsModule() {
                 </th>
                 <th className="font-medium px-4 py-3 text-center w-28">رقم الشحنة</th>
                 <th className="font-medium px-4 py-3">العميل / المستلم</th>
-                <th className="font-medium px-4 py-3 w-36">الوجهة</th>
+                <th className="font-medium px-4 py-3 w-36">الجهة</th>
+                <th className="font-medium px-4 py-3 text-center w-20" title="كام قطعة">القطع</th>
+                <th className="font-medium px-4 py-3 text-center w-24" title="أدوات التحميل / نوع الحمولة">أدوات التحميل</th>
                 <th className="font-medium px-4 py-3 w-28">المقاول</th>
-                <th className="font-medium px-4 py-3 text-center w-20">الحجم</th>
                 <th className="font-medium px-4 py-3 text-center w-28">التاريخ</th>
                 <th className="font-medium px-4 py-3 text-center w-32">الحالة</th>
                 {/* بنود النقلة الإضافية — صلاحية shipments.extras.view (العمليات/المالي) */}
@@ -495,8 +589,8 @@ export function ShipmentsModule() {
                 {canPrices && <th className="font-medium px-4 py-3 text-left w-24">نولون المقاول</th>}
                 {canPrices && <th className="font-medium px-4 py-3 text-left w-24">هامش الربح</th>}
                 {/* إجمالي النقلة لكل صف — نولون العميل + بنود النقلة الإضافية */}
-                {canPrices && <th className="font-semibold px-4 py-3 text-left w-24 text-primary">الإجمالي</th>}
-                <th className="font-medium px-4 py-3 text-center w-20 print:hidden">إجراءات</th>
+                {canPrices && <th className="font-semibold px-4 py-3 text-left w-26 text-primary">الإجمالي النقلة</th>}
+                <th className="font-medium px-4 py-3 text-center w-24 print:hidden">إجراءات</th>
               </tr>
             </thead>
             <tbody>
@@ -546,14 +640,23 @@ export function ShipmentsModule() {
                           ? <div className="text-[10px] text-muted-foreground truncate-1 num-ltr" dir="ltr">{s.destinationEn}</div>
                           : s.routeCode && <div className="text-[10px] text-muted-foreground truncate-1">كود: {s.routeCode}</div>}
                       </td>
-                      <td className="px-4 py-3 align-middle text-xs cursor-pointer" onClick={() => setSelected(s.id)}><span className="truncate-1 block">{s.contractor?.name ?? '-'}</span></td>
-                      <td className="px-4 py-3 align-middle text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
-                        <Badge variant="outline" className={cn('font-bold', sizeTone)}>{size}</Badge>
-                        {s.policyQty != null && <div className="text-[10px] text-muted-foreground tnum mt-0.5">كمية: {fmtNum(s.policyQty)}</div>}
+                      {/* كام قطعة — عمود مستقل في جدول الصباح */}
+                      <td className="px-4 py-3 align-middle text-center tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="كام قطعة">
+                        <span className="num-ltr">{s.policyQty != null ? fmtNum(s.policyQty) : '-'}</span>
                       </td>
+                      {/* أدوات التحميل / نوع الحمولة */}
+                      <td className="px-4 py-3 align-middle text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="أدوات التحميل">
+                        <Badge variant="outline" className={cn('font-bold', sizeTone)}>{size}</Badge>
+                      </td>
+                      <td className="px-4 py-3 align-middle text-xs cursor-pointer" onClick={() => setSelected(s.id)}><span className="truncate-1 block">{s.contractor?.name ?? '-'}</span></td>
                       <td className="px-4 py-3 align-middle text-xs tnum text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>{fmtDate(s.date)}</td>
                       <td className="px-4 py-3 align-middle text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
                         <Badge variant="outline" className={sMeta.tone}>{sMeta.label}</Badge>
+                        {s.stopped && (
+                          <Badge variant="outline" className="mt-1 font-bold bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-900/60" title="لم تُحمّل في يومها — متوقفة عن التحميل (بتقف تاني يوم)">
+                            بتقف تاني يوم
+                          </Badge>
+                        )}
                       </td>
                       {canExtras && (
                         <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="التعتيق">
@@ -596,14 +699,28 @@ export function ShipmentsModule() {
                         </td>
                       )}
                       <td className="px-4 py-3 align-middle text-center whitespace-nowrap print:hidden">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); setWaybillShipment(s) }}
-                          title="طباعة بوليصة الشحن"
-                        >
-                          <Printer className="size-3.5" />
-                        </Button>
+                        <div className="flex items-center justify-center gap-0.5">
+                          {s.stopped && has('shipments.edit') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-2 text-[11px] font-bold text-rose-700 border-rose-300 hover:bg-rose-50 dark:text-rose-300 dark:border-rose-900/60 dark:hover:bg-rose-950/40"
+                              disabled={reschedulingId === s.id}
+                              onClick={(e) => { e.stopPropagation(); reschedule(s.id) }}
+                              title="إعادة الجدولة لليوم — إلغاء الإيقاف وترخيص التحميل"
+                            >
+                              جدولة لليوم
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); setWaybillShipment(s) }}
+                            title="طباعة بوليصة الشحن"
+                          >
+                            <Printer className="size-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -631,6 +748,34 @@ export function ShipmentsModule() {
                 </td></tr>
               )}
             </tbody>
+            {/* ── صف الإجمالي النقلة — إجماليات كل النتائج المطابقة (مش الصفحة بس) ── */}
+            {totals && data && data.items.length > 0 && (
+              <tfoot className="border-t-2 border-border bg-muted/60 font-semibold text-sm">
+                <tr>
+                  <td colSpan={4} className="px-4 py-3 text-primary whitespace-nowrap">
+                    الإجمالي النقلة
+                    <span className="block text-[10px] font-medium text-muted-foreground">لـ {fmtNum(totals.shipments)} شحنة (كل النتائج المطابقة)</span>
+                  </td>
+                  <td className="px-4 py-3 text-center tnum num-ltr" title="إجمالي القطع">{fmtNum(totals.pieces)}</td>
+                  <td className="px-4 py-3 text-center text-[11px] font-medium text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-[11px] font-medium text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-center text-[11px] font-medium text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-center text-[10px] font-medium leading-relaxed text-muted-foreground whitespace-nowrap">
+                    محمّلة: {fmtNum(totals.loaded)}
+                    <span className="block">مش محمّلة: {fmtNum(totals.notLoaded)}</span>
+                  </td>
+                  {canExtras && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.aging ?? 0)}</td>}
+                  {canExtras && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.overnight ?? 0)}</td>}
+                  {canExtras && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.transfer ?? 0)}</td>}
+                  {canExtras && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.drop ?? 0)}</td>}
+                  {canPrices && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.freight ?? 0)}</td>}
+                  {canPrices && <td className="px-4 py-3 text-left tnum num-ltr">{fmtNum(totals.suppliers ?? 0)}</td>}
+                  {canPrices && <td className={cn('px-4 py-3 text-left tnum num-ltr', (totals.margin ?? 0) >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>{fmtNum(totals.margin ?? 0)}</td>}
+                  {canPrices && <td className="px-4 py-3 text-left font-bold text-primary tnum num-ltr">{fmtNum(totals.grand ?? 0)}</td>}
+                  <td className="px-4 py-3 print:hidden" />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
         {/* Pagination — flush footer of the table card (server-side) */}
@@ -669,6 +814,45 @@ export function ShipmentsModule() {
             )}
           </div>
         </CardContent></Card>
+      )}
+
+      {/* Mobile: totals card (الإجمالي النقلة) */}
+      {totals && data && data.items.length > 0 && (
+        <div className="md:hidden rounded-2xl border border-border bg-muted/40 elev-sm p-3 print:hidden">
+          <div className="text-xs font-bold text-foreground mb-2">الإجمالي النقلة — لـ {fmtNum(totals.shipments)} شحنة</div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
+              <div className="text-[10px] text-muted-foreground">القطع</div>
+              <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.pieces)}</div>
+            </div>
+            {canExtras && (
+              <>
+                <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
+                  <div className="text-[10px] text-muted-foreground">تعتيق</div>
+                  <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.aging ?? 0)}</div>
+                </div>
+                <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
+                  <div className="text-[10px] text-muted-foreground">مبيت</div>
+                  <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.overnight ?? 0)}</div>
+                </div>
+                <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
+                  <div className="text-[10px] text-muted-foreground">تحويلة</div>
+                  <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.transfer ?? 0)}</div>
+                </div>
+                <div className="rounded-lg bg-card px-2 py-1.5 border border-border/60">
+                  <div className="text-[10px] text-muted-foreground">دروب</div>
+                  <div className="text-xs font-bold tnum num-ltr">{fmtNum(totals.drop ?? 0)}</div>
+                </div>
+              </>
+            )}
+            {canPrices && totals.grand != null && (
+              <div className="rounded-lg bg-primary/10 px-2 py-1.5 border border-primary/30">
+                <div className="text-[10px] text-primary/80">الإجمالي النقلة</div>
+                <div className="text-xs font-bold text-primary tnum num-ltr">{fmtNum(totals.grand)} ج.م</div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Mobile: pagination bar below the cards */}
@@ -1049,6 +1233,8 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
   const [editLoading, setEditLoading] = React.useState(false)
   const [editErr, setEditErr] = React.useState('')
   const [ev, setEv] = React.useState<any>(null)
+  // إعادة الجدولة لليوم (بتقف تاني يوم) — hook قبل أي early return
+  const [rescheduleLoading, setRescheduleLoading] = React.useState(false)
 
   React.useEffect(() => {
     if (shipment && codOpen) {
@@ -1068,6 +1254,26 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
   const sMeta = STATUS_LOOKUP[shipment.status] || { label: shipment.status, tone: '' }
   const cMeta = COLLECTION_LOOKUP[shipment.collectionStatus] || { label: shipment.collectionStatus, tone: '' }
   const margin = (Number(shipment.freightTotal ?? 0)) - (Number(shipment.totalSuppliers ?? 0))
+  // قاعدة «بتقف تاني يوم» — الشحنة متوقفة عن التحميل لأنها لم تُحمّل في يومها
+  const stopped = isShipmentStoppedNextDay(shipment)
+  const reschedule = async () => {
+    const ok = await confirmDialog({
+      title: 'إعادة جدولة الشحنة لليوم',
+      message: 'هيتم تحديث تاريخ الشحنة لليوم وإلغاء الإيقاف (بتقف تاني يوم) — وبكذا تسمح بالتحميل النهارده. متابعة؟',
+      variant: 'primary',
+      confirmText: 'جدولة لليوم',
+    })
+    if (!ok) return
+    setRescheduleLoading(true)
+    try {
+      await apiPost(`/api/shipments/${id}/reschedule`, {})
+      toast({ title: 'تمت إعادة الجدولة لليوم — الشحنة مسموح تحميلها' })
+      mutate()
+      onChanged?.()
+    } catch (e: any) {
+      toast({ title: 'تعذّرت إعادة الجدولة', description: e.message, variant: 'destructive' })
+    } finally { setRescheduleLoading(false) }
+  }
   // آلة الحالات الصارمة: الحالات النهائية لا تقبل التغيير، والانتقالات تقتصر على الجدول المعتمد
   const isTerminal = isTerminalShipmentStatus(shipment.status)
   const allowedNext = allowedShipmentTransitions(shipment.status).map((key) => ({
@@ -1171,6 +1377,12 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
         <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-4" /> رجوع للقائمة</Button>
         <div className="flex gap-2 flex-wrap items-center">
           <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => setWaybillOpen(true)}><Printer className="size-4" /> طباعة بوليصة</Button>
+          {/* إعادة الجدولة لليوم — إلغاء إيقاف «بتقف تاني يوم» */}
+          {stopped && canEdit && (
+            <Button variant="outline" size="sm" className="min-h-[40px] font-bold text-rose-700 border-rose-300 hover:bg-rose-50 dark:text-rose-300 dark:border-rose-900/60 dark:hover:bg-rose-950/40" disabled={rescheduleLoading} onClick={reschedule}>
+              جدولة لليوم
+            </Button>
+          )}
           {/* تسوية COD تتطلب صلاحية الأسعار (تتعامل مع مبالغ) */}
           {canPrices && <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => setCodOpen(true)}><Banknote className="size-4" /> تسوية COD</Button>}
           {/* تعديل الشحنة — الحقول البيضاء المتوافقة مع الخادم */}
@@ -1204,8 +1416,19 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
             <div className="flex gap-2 flex-wrap">
               <Badge variant="outline" className={cn('font-bold', sMeta.tone)}>{sMeta.label}</Badge>
               <Badge variant="outline" className={cn('font-bold', cMeta.tone)}>{cMeta.label}</Badge>
+              {stopped && (
+                <Badge variant="outline" className="font-bold bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-900/60">
+                  متوقفة — بتقف تاني يوم
+                </Badge>
+              )}
             </div>
           </div>
+          {stopped && (
+            <div className="mt-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
+              الشحنة متوقفة عن التحميل (بتقف تاني يوم) — بتاريخ {shipment.date ? fmtDate(shipment.date) : '—'} ولم تُحمّل في يومها.
+              إما إعادة جدولتها لليوم من زر «جدولة لليوم» أو تسجيلها مبيت/تعتيق/مؤجلة وفق الواقع.
+            </div>
+          )}
         </CardContent>
       </Card>
 

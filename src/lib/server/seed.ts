@@ -96,6 +96,13 @@ export async function ensureSeeded(): Promise<void> {
     } catch (e) {
       console.warn('[seed] فشلت مزامنة إعدادات النظام:', (e as Error)?.message)
     }
+    // قوائم حالات الشحنات (idempotent) — يضمن ظهور الحالات الجديدة (مبيت/تعتيق)
+    // في قوائم النظام على القواعد القائمة دون إعادة تهيئة
+    try {
+      await seedShipmentStatusLookups()
+    } catch (e) {
+      console.warn('[seed] فشلت مزامنة قوائم حالات الشحنات:', (e as Error)?.message)
+    }
   })()
   seedPromise.catch(() => { seedPromise = null })
   return seedPromise
@@ -105,10 +112,37 @@ const D = (ms: any): Date | null => (typeof ms === 'number' && ms > 1e11 ? new D
 const d = (day: number) => new Date(`2026-09-${String(day).padStart(2, '0')}T10:00:00.000Z`)
 const iso = (day: number) => d(day).toISOString()
 
+/** حالات الشحنات التشغيلية في قوائم النظام — تُزرع عند التهيئة وعلى القواعد القائمة (upsert) */
+async function seedShipmentStatusLookups(): Promise<void> {
+  const opStatuses = [
+    { key: 'new', label: 'جديدة', tone: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300', sortOrder: 10 },
+    { key: 'preparing', label: 'قيد التجهيز', tone: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300', sortOrder: 11 },
+    { key: 'received', label: 'مستلمة بالفرع', tone: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300', sortOrder: 12 },
+    { key: 'loaded', label: 'محمّلة على المركبة', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', sortOrder: 13 },
+    { key: 'in_transit', label: 'في الطريق بين الفروع', tone: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300', sortOrder: 14 },
+    { key: 'arrived', label: 'وصلت فرع الوجهة', tone: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', sortOrder: 15 },
+    { key: 'assigned_courier', label: 'مُسلّمة لمندوب التوصيل', tone: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300', sortOrder: 16 },
+    { key: 'mabeit', label: 'مبيت — مرابطة عند المقاول', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', sortOrder: 165 },
+    { key: 'taateeq', label: 'تعتيق — متوقفة بالرصيف', tone: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300', sortOrder: 166 },
+    { key: 'received_returned', label: 'مرتجعة مستلمة بالفرع', tone: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', sortOrder: 17 },
+    { key: 'written_off', label: 'شطبت من المخزون', tone: 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300', sortOrder: 18 },
+  ]
+  for (const os of opStatuses) {
+    await db.lookupItem.upsert({
+      where: { category_key: { category: 'shipment_status', key: os.key } },
+      update: { label: os.label, tone: os.tone, sortOrder: os.sortOrder, isSystem: true },
+      create: { category: 'shipment_status', key: os.key, label: os.label, tone: os.tone, sortOrder: os.sortOrder, isSystem: true },
+    })
+  }
+}
+
 async function runSeed(): Promise<void> {
   const existing = await db.party.count()
   if (existing > 0) {
     await ensurePolicySetting()
+    // قوائم حالات الشحنات تُزرع أيضًا على القواعد القائمة (upsert آمن) —
+    // يضمن ظهور الحالات الجديدة (مبيت/تعتيق) في قوائم النظام دون إعادة تهيئة
+    await seedShipmentStatusLookups()
     return
   }
   console.log('[seed] قاعدة البيانات فارغة — بدء تهيئة البيانات من mock-data.json ...')
@@ -192,23 +226,8 @@ async function runSeed(): Promise<void> {
         })),
       })
 
-      // ---------- حالات الشحنات التشغيلية (قوائم النظام) ----------
-      const opStatuses = [
-        { key: 'received', label: 'مستلمة بالفرع', tone: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300', sortOrder: 12 },
-        { key: 'loaded', label: 'محمّلة على المركبة', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', sortOrder: 13 },
-        { key: 'in_transit', label: 'في الطريق بين الفروع', tone: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300', sortOrder: 14 },
-        { key: 'arrived', label: 'وصلت فرع الوجهة', tone: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', sortOrder: 15 },
-        { key: 'assigned_courier', label: 'مُسلّمة لمندوب التوصيل', tone: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300', sortOrder: 16 },
-        { key: 'received_returned', label: 'مرتجعة مستلمة بالفرع', tone: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', sortOrder: 17 },
-        { key: 'written_off', label: 'شطبت من المخزون', tone: 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300', sortOrder: 18 },
-      ]
-      for (const os of opStatuses) {
-        await tx.lookupItem.upsert({
-          where: { category_key: { category: 'shipment_status', key: os.key } },
-          update: {},
-          create: { category: 'shipment_status', key: os.key, label: os.label, tone: os.tone, sortOrder: os.sortOrder, isSystem: true },
-        })
-      }
+      // ---------- حالات الشحنات التشغيلية (قوائم النظام) — عبر الدالة المشتركة ----------
+      // (تُزرع بعد المعاملة أدناه عبر seedShipmentStatusLookups — نفس القائمة للمسارين)
 
       // ---------- الأدوار والمستخدمين ----------
       const roleIds = new Map<string, string>()
@@ -539,6 +558,7 @@ async function runSeed(): Promise<void> {
   )
 
   await ensurePolicySetting()
+  await seedShipmentStatusLookups()
   console.log('[seed] تمت تهيئة قاعدة البيانات بنجاح ✓')
 }
 
