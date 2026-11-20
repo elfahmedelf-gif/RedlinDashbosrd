@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 export const metadata: Metadata = {
   title: "لوحة تحكم شركة الشحن | Shipping Dashboard",
   description: "نظام إدارة وتشغيل شركات الشحن - متابعة الشحنات، العملاء، النولون، المقاولين والوجهات",
-  icons: { icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg" },
+  icons: { icon: "/icon.svg", shortcut: "/favicon.ico", apple: "/icon.svg" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
