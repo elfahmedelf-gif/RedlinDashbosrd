@@ -394,9 +394,9 @@ export function ShipmentsModule() {
               <label className="text-[11px] text-muted-foreground mb-1 block">جدول يوم محدد</label>
               <Input type="date" value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setPage(1) }} className="min-h-[40px]" />
             </div>
-            <label className="flex items-center gap-2 text-sm rounded-md border border-border px-3 py-2.5 cursor-pointer hover:bg-muted/40 min-h-[40px]">
+            <label className="flex items-center gap-2 text-sm rounded-md border border-border px-3 h-10 cursor-pointer hover:bg-muted/40 self-end">
               <input type="checkbox" checked={stoppedOnly} onChange={(e) => { setStoppedOnly(e.target.checked); setPage(1) }} className="size-4 accent-[hsl(var(--primary))]" />
-              <span className="font-medium">المتوقفة فقط (بتقف تاني يوم)</span>
+              <span className="font-medium text-xs">المتوقفة فقط (بتقف تاني يوم)</span>
             </label>
             {hasFilters && <Button variant="ghost" onClick={() => { setQ(''); setStatus('all'); setDestination('all'); setContractor('all'); setProvince('all'); setDateFilter(''); setStoppedOnly(false); setPage(1) }} className="sm:col-span-2 lg:col-span-4 justify-start"><X className="size-4" /> مسح المرشحات</Button>}
           </CardContent>
