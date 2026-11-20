@@ -93,6 +93,16 @@ export function useCanPrices(): boolean {
 }
 
 /**
+ * خطاف مختصر لصلاحية رؤية بنود النقلة الإضافية (shipments.extras.view):
+ * التعتيق/المبيت/التحويلة/الدروب — صلاحية تشغيلية منفصلة عن الأسعار،
+ * تُمنح تلقائيًا لمن يملك extra_costs.view ولا تكشف نولون العميل أو الهامش.
+ */
+export function useCanExtras(): boolean {
+  const { has } = useAuth()
+  return has('shipments.extras.view')
+}
+
+/**
  * خطاف مختصر لصلاحيات متعددة دفعة واحدة — يُعيد كائن boolean لكل صلاحية.
  * مفيد للأزرار المعقدة (مثلًا: يمكن التنفيذ + الطباعة + التصدير).
  *

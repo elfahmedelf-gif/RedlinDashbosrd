@@ -13,18 +13,31 @@ export function canSeePrices(user: { permissions: string[] } | null | undefined)
 }
 
 /**
+ * هل المستخدم يملك صلاحية رؤية بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب/مرتجع)؟
+ * صلاحية تشغيلية منفصلة عن الأسعار — من يتابع البنود الإضافية يوميًا (العمليات/المالي)
+ * يراها دون أن يكشف له نولون العميل أو التكلفة أو الهامش.
+ */
+export function canSeeExtras(user: { permissions: string[] } | null | undefined): boolean {
+  if (!user) return false
+  return matchPermission(user.permissions, 'shipments.extras.view')
+}
+
+/**
  * يُفرغ الحقول المالية من كائن شحنة — يُستعمل في API /api/shipments و /api/shipments/[id]
- * الحقول المخفية: freightCost, freightTotal, salePrice, customerPay, totalSuppliers,
- * aging, overnight, returns, transfer, other, drop, ton15*, ton3, m6, margin
+ * مستويان للإخفاء:
+ *  - أسعار الشركة (نولون العميل/المقاول، التكلفة، التحصيل، الهامش، الأحجام) → صلاحية prices.view
+ *  - بنود النقلة الإضافية (تعتيق/مبيت/مرتجع/تحويلة/أخرى/دروب) → صلاحية shipments.extras.view
+ *    (تُمنح تلقائيًا لمن يملك extra_costs.view عبر خريطة التوافق)
  * (نُبقي policyQty لأنها كمية لا سعر)
  */
-export function stripShipmentPrices<T extends Record<string, any>>(s: T, canPrices: boolean): T {
+export function stripShipmentPrices<T extends Record<string, any>>(s: T, canPrices: boolean, canExtras: boolean = canPrices): T {
   if (canPrices) return s
-  const hide = [
+  const strictHide = [
     'freightCost', 'freightTotal', 'salePrice', 'customerPay', 'totalSuppliers',
-    'aging', 'overnight', 'returns', 'transfer', 'other', 'drop',
     'ton15', 'ton3', 'm6', 'margin',
   ]
+  const extrasHide = ['aging', 'overnight', 'returns', 'transfer', 'other', 'drop']
+  const hide = canExtras ? strictHide : [...strictHide, ...extrasHide]
   const out: any = { ...s }
   for (const k of hide) {
     if (k in out) out[k] = null

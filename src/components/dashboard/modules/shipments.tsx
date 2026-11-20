@@ -25,7 +25,7 @@ import { fmtNum, fmtDate, fmtDateTime } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import { useLookup } from '@/lib/lookups'
 import { cn } from '@/lib/utils'
-import { useAuth, useCanPrices } from '../auth-provider'
+import { useAuth, useCanExtras, useCanPrices } from '../auth-provider'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { bus, BUS_EVENTS, consumeIntent } from '@/lib/bus'
 // كتالوج آلة حالات الشحنة الصارمة — مصدر واحد للخادم والواجهة
@@ -40,7 +40,7 @@ import {
 
 interface PartyLite { id: string; name: string }
 interface Shipment {
-  id: string; shipmentNo: string | null; billNo: string | null;
+  id: string; shipmentNo: string | null; billNo: string | null; deliveryNumber: string | null;
   policyQty: number | null; customerId: string | null; customer: PartyLite | null;
   contractorId: string | null; contractor: PartyLite | null;
   branchId: string | null; branch: PartyLite | null;
@@ -48,9 +48,10 @@ interface Shipment {
   routeCode: string | null; loadType: string | null;
   freightCost: number | null; freightTotal: number | null; salePrice: number | null;
   customerPay: number | null; totalSuppliers: number | null;
+  aging: number | null; overnight: number | null; returns: number | null; transfer: number | null; drop: number | null;
   status: string; collectionStatus: string;
   date: string | null; date2: string | null; notes: string | null;
-  ton15: number | null; ton3: number | null; m6: number | null; drop: number | null;
+  ton15: number | null; ton3: number | null; m6: number | null;
 }
 
 interface ShipmentsResponse { items: Shipment[]; total: number; page: number; totalPages: number }
@@ -80,6 +81,8 @@ export function ShipmentsModule() {
   const { has } = useAuth()
   // صلاحية رؤية الأسعار — تتحكم في إظهار كل المبالغ (نولون/تكلفة/تحصيل/هامش)
   const canPrices = useCanPrices()
+  // صلاحية رؤية بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب) — تشغيلية منفصلة عن الأسعار
+  const canExtras = useCanExtras()
   const { confirm: confirmDialog } = useConfirm()
   // Dynamic shipment status options from the lookup table
   const { items: statusItems } = useLookup('shipment_status')
@@ -147,8 +150,25 @@ export function ShipmentsModule() {
 
   const hasFilters = debouncedQ || status !== 'all' || destination !== 'all' || contractor !== 'all' || province !== 'all'
 
+  // عدد أعمدة جدول سطح المكتب (يُستخدم في colSpan للهياكل/الفراغ/الإجمالي)
+  const colCount = 9 + (canExtras ? 4 : 0) + (canPrices ? 3 : 0)
+
   // ---- bulk selection helpers ----
   const pageItems = data?.items ?? []
+
+  // مجاميع الصفحة الحالية — صف الإجمالي أسفل الجدول (إجمالي النقلة وبنودها)
+  const totals = React.useMemo(() => {
+    const sum = (f: (s: Shipment) => number | null | undefined) => pageItems.reduce((acc, s) => acc + (Number(f(s)) || 0), 0)
+    return {
+      aging: sum((s) => s.aging),
+      overnight: sum((s) => s.overnight),
+      transfer: sum((s) => s.transfer),
+      drop: sum((s) => s.drop),
+      freight: sum((s) => s.freightTotal ?? s.freightCost),
+      suppliers: sum((s) => s.totalSuppliers),
+      margin: sum((s) => (Number(s.freightTotal ?? s.freightCost ?? 0) || 0) - (Number(s.totalSuppliers ?? 0) || 0)),
+    }
+  }, [pageItems])
   const pageIds = pageItems.map((s) => s.id)
   const allOnPageSelected = pageItems.length > 0 && pageIds.every((id) => selectedIds.has(id))
   const someSelected = pageIds.some((id) => selectedIds.has(id))
@@ -358,6 +378,9 @@ export function ShipmentsModule() {
                     </button>
                     <button onClick={() => setSelected(s.id)} className="min-w-0 flex-1 text-right">
                       <div className="font-mono text-xs font-bold truncate-1">{s.shipmentNo}</div>
+                      {s.deliveryNumber && s.deliveryNumber !== s.shipmentNo && (
+                        <div className="text-[10px] text-muted-foreground tnum truncate-1">ديليفري: {s.deliveryNumber}</div>
+                      )}
                       <div className="font-semibold text-sm truncate-1 mt-0.5" title={s.customer?.name || s.recipientName || ''}>
                         {s.customer?.name || s.recipientName || '-'}
                       </div>
@@ -371,6 +394,7 @@ export function ShipmentsModule() {
                   <div className="min-w-0">
                     <div className="text-[10px] text-muted-foreground/70">الوجهة</div>
                     <div className="text-xs font-medium truncate-1">{s.destination ?? '-'}</div>
+                    {s.destinationEn && <div className="text-[10px] text-muted-foreground/80 truncate-1 num-ltr" dir="ltr">{s.destinationEn}</div>}
                   </div>
                   <div className="min-w-0">
                     <div className="text-[10px] text-muted-foreground/70">الحجم</div>
@@ -384,6 +408,31 @@ export function ShipmentsModule() {
                     <div className="text-[10px] text-muted-foreground/70">التاريخ</div>
                     <div className="text-xs font-medium tnum truncate-1">{fmtDate(s.date)}</div>
                   </div>
+                  {/* بنود النقلة الإضافية — صلاحية shipments.extras.view */}
+                  {canExtras && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">تعتيق</div>
+                      <div className="text-xs font-medium tnum num-ltr">{s.aging != null ? fmtNum(s.aging) : '-'}</div>
+                    </div>
+                  )}
+                  {canExtras && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">مبيت</div>
+                      <div className="text-xs font-medium tnum num-ltr">{s.overnight != null ? fmtNum(s.overnight) : '-'}</div>
+                    </div>
+                  )}
+                  {canExtras && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">تحويلة</div>
+                      <div className="text-xs font-medium tnum num-ltr">{s.transfer != null ? fmtNum(s.transfer) : '-'}</div>
+                    </div>
+                  )}
+                  {canExtras && (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground/70">دروب</div>
+                      <div className="text-xs font-medium tnum num-ltr">{s.drop != null ? fmtNum(s.drop) : '-'}</div>
+                    </div>
+                  )}
                   {/* النولون يُعرض فقط لمن يملك صلاحية الأسعار */}
                   {canPrices && (
                     <div className="min-w-0">
@@ -426,7 +475,7 @@ export function ShipmentsModule() {
       {/* Desktop (md+): table view */}
       <Card className="gap-0 overflow-hidden py-0 hidden md:block print:hidden">
         <div className="w-full overflow-x-auto">
-          <table className="w-full table-fixed text-sm text-right" style={{ minWidth: 1320 }}>
+          <table className="w-full table-fixed text-sm text-right" style={{ minWidth: 1680 }}>
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
                 <th className="font-medium px-2 py-3 text-center w-12 print:hidden">
@@ -436,11 +485,16 @@ export function ShipmentsModule() {
                 </th>
                 <th className="font-medium px-4 py-3 text-center w-28">رقم الشحنة</th>
                 <th className="font-medium px-4 py-3">العميل / المستلم</th>
-                <th className="font-medium px-4 py-3 w-32">الوجهة</th>
-                <th className="font-medium px-4 py-3 text-center w-20">الحجم</th>
+                <th className="font-medium px-4 py-3 w-36">الوجهة</th>
                 <th className="font-medium px-4 py-3 w-28">المقاول</th>
+                <th className="font-medium px-4 py-3 text-center w-20">الحجم</th>
                 <th className="font-medium px-4 py-3 text-center w-28">التاريخ</th>
                 <th className="font-medium px-4 py-3 text-center w-32">الحالة</th>
+                {/* بنود النقلة الإضافية — صلاحية shipments.extras.view (العمليات/المالي) */}
+                {canExtras && <th className="font-medium px-4 py-3 text-left w-20" title="التعتيق">تعتيق</th>}
+                {canExtras && <th className="font-medium px-4 py-3 text-left w-20" title="المبيت">مبيت</th>}
+                {canExtras && <th className="font-medium px-4 py-3 text-left w-20" title="التحويلة">تحويلة</th>}
+                {canExtras && <th className="font-medium px-4 py-3 text-left w-20" title="الدروب">دروب</th>}
                 {/* أعمدة المبالغ — تُعرض فقط لمن يملك صلاحية الأسعار */}
                 {canPrices && <th className="font-medium px-4 py-3 text-left w-24">نولون العميل</th>}
                 {canPrices && <th className="font-medium px-4 py-3 text-left w-24">نولون المقاول</th>}
@@ -450,7 +504,7 @@ export function ShipmentsModule() {
             </thead>
             <tbody>
               {isLoading && !data ? (
-                Array.from({ length: 10 }).map((_, i) => <tr key={i}><td colSpan={canPrices ? 12 : 9}><Skeleton className="h-12 m-1" /></td></tr>)
+                Array.from({ length: 10 }).map((_, i) => <tr key={i}><td colSpan={colCount}><Skeleton className="h-12 m-1" /></td></tr>)
               ) : data && data.items.length > 0 ? (
                 data.items.map((s, i) => {
                   const size = s.loadType === '1.5TON' ? '1.5ط' : s.loadType === '3TON' ? '3ط' : s.loadType === '6M' ? '6م' : '-'
@@ -473,6 +527,9 @@ export function ShipmentsModule() {
                       </td>
                       <td className="px-4 py-3 align-middle text-center cursor-pointer" onClick={() => setSelected(s.id)}>
                         <div className="font-mono text-xs font-bold truncate-1">{s.shipmentNo}</div>
+                        {s.deliveryNumber && s.deliveryNumber !== s.shipmentNo && (
+                          <div className="text-[10px] text-muted-foreground tnum truncate-1">ديليفري: {s.deliveryNumber}</div>
+                        )}
                         {s.billNo && <div className="text-[10px] text-muted-foreground tnum truncate-1">بوليصة: {s.billNo}</div>}
                       </td>
                       <td className="px-4 py-3 align-middle cursor-pointer" onClick={() => setSelected(s.id)}>
@@ -482,17 +539,39 @@ export function ShipmentsModule() {
                       </td>
                       <td className="px-4 py-3 align-middle cursor-pointer" onClick={() => setSelected(s.id)}>
                         <div className="font-medium truncate-1">{s.destination ?? '-'}</div>
-                        {s.routeCode && <div className="text-[10px] text-muted-foreground truncate-1">كود: {s.routeCode}</div>}
+                        {s.destinationEn
+                          ? <div className="text-[10px] text-muted-foreground truncate-1 num-ltr" dir="ltr">{s.destinationEn}</div>
+                          : s.routeCode && <div className="text-[10px] text-muted-foreground truncate-1">كود: {s.routeCode}</div>}
                       </td>
+                      <td className="px-4 py-3 align-middle text-xs cursor-pointer" onClick={() => setSelected(s.id)}><span className="truncate-1 block">{s.contractor?.name ?? '-'}</span></td>
                       <td className="px-4 py-3 align-middle text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
                         <Badge variant="outline" className={cn('font-bold', sizeTone)}>{size}</Badge>
                         {s.policyQty != null && <div className="text-[10px] text-muted-foreground tnum mt-0.5">كمية: {fmtNum(s.policyQty)}</div>}
                       </td>
-                      <td className="px-4 py-3 align-middle text-xs cursor-pointer" onClick={() => setSelected(s.id)}><span className="truncate-1 block">{s.contractor?.name ?? '-'}</span></td>
                       <td className="px-4 py-3 align-middle text-xs tnum text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>{fmtDate(s.date)}</td>
                       <td className="px-4 py-3 align-middle text-center whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
                         <Badge variant="outline" className={sMeta.tone}>{sMeta.label}</Badge>
                       </td>
+                      {canExtras && (
+                        <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="التعتيق">
+                          <span className="num-ltr">{s.aging != null ? fmtNum(s.aging) : '-'}</span>
+                        </td>
+                      )}
+                      {canExtras && (
+                        <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="المبيت">
+                          <span className="num-ltr">{s.overnight != null ? fmtNum(s.overnight) : '-'}</span>
+                        </td>
+                      )}
+                      {canExtras && (
+                        <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="التحويلة">
+                          <span className="num-ltr">{s.transfer != null ? fmtNum(s.transfer) : '-'}</span>
+                        </td>
+                      )}
+                      {canExtras && (
+                        <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)} title="الدروب">
+                          <span className="num-ltr">{s.drop != null ? fmtNum(s.drop) : '-'}</span>
+                        </td>
+                      )}
                       {canPrices && (
                         <td className="px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
                           <span className="num-ltr">{fmtNum(s.freightTotal ?? s.freightCost)}</span>
@@ -522,7 +601,7 @@ export function ShipmentsModule() {
                   )
                 })
               ) : (
-                <tr><td colSpan={12} className="py-14 text-center text-muted-foreground">
+                <tr><td colSpan={colCount} className="py-14 text-center text-muted-foreground">
                   <div className="flex flex-col items-center gap-2 max-w-md mx-auto">
                     <span className="flex items-center justify-center size-12 rounded-full bg-muted/70 text-muted-foreground/70">
                       <PackageSearch className="size-6" />
@@ -544,6 +623,52 @@ export function ShipmentsModule() {
                 </td></tr>
               )}
             </tbody>
+            {/* صف الإجمالي — مجموع بنود النقلة للصفحة الحالية (إجمالي النقلة آخر الجدول) */}
+            {data && data.items.length > 0 && (
+              <tfoot className="border-t-2 border-border bg-muted/40 text-xs font-bold">
+                <tr>
+                  <td colSpan={8} className="px-4 py-2.5 text-muted-foreground">
+                    الإجمالي — <span className="tnum num-ltr">{data.items.length}</span> نقلة (الصفحة الحالية من {data.total})
+                  </td>
+                  {canExtras && (
+                    <td className="px-4 py-2.5 text-left tnum" title="إجمالي التعتيق">
+                      <span className="num-ltr">{fmtNum(totals.aging)}</span>
+                    </td>
+                  )}
+                  {canExtras && (
+                    <td className="px-4 py-2.5 text-left tnum" title="إجمالي المبيت">
+                      <span className="num-ltr">{fmtNum(totals.overnight)}</span>
+                    </td>
+                  )}
+                  {canExtras && (
+                    <td className="px-4 py-2.5 text-left tnum" title="إجمالي التحويلة">
+                      <span className="num-ltr">{fmtNum(totals.transfer)}</span>
+                    </td>
+                  )}
+                  {canExtras && (
+                    <td className="px-4 py-2.5 text-left tnum" title="إجمالي الدروب">
+                      <span className="num-ltr">{fmtNum(totals.drop)}</span>
+                    </td>
+                  )}
+                  {canPrices && (
+                    <td className="px-4 py-2.5 text-left tnum text-primary" title="إجمالي النقلة (نولون العميل)">
+                      <span className="num-ltr">{fmtNum(totals.freight)}</span>
+                    </td>
+                  )}
+                  {canPrices && (
+                    <td className="px-4 py-2.5 text-left tnum" title="إجمالي نولون المقاول">
+                      <span className="num-ltr">{fmtNum(totals.suppliers)}</span>
+                    </td>
+                  )}
+                  {canPrices && (
+                    <td className={cn('px-4 py-2.5 text-left tnum', totals.margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')} title="إجمالي هامش الربح">
+                      <span className="num-ltr">{fmtNum(totals.margin)}</span>
+                    </td>
+                  )}
+                  <td className="px-4 py-2.5 print:hidden" />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
         {/* Pagination — flush footer of the table card (server-side) */}
@@ -936,6 +1061,8 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
   const { confirmDelete, confirm: confirmDialog } = useConfirm()
   // صلاحية رؤية الأسعار — تتحكم في إظهار المبالغ المالية في بطاقة الشحنة
   const canPrices = useCanPrices()
+  // صلاحية رؤية بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب) — تشغيلية منفصلة
+  const canExtras = useCanExtras()
   // صلاحيات التشغيل — يفرضها الخادم أيضًا (تعديل الحقول البيضاء / تغيير الحالة)
   const canEdit = has('shipments.edit')
   const canChangeStatus = has('shipments.status')
@@ -1168,7 +1295,7 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* بطاقة المبالغ المالية — تُعرض فقط لمن يملك صلاحية الأسعار */}
+        {/* بطاقة المبالغ المالية — الأسعار لمن يملك prices.view، وبنود النقلة لمن يملك shipments.extras.view */}
         {canPrices ? (
           <Card>
             <CardContent className="p-4 space-y-2 text-sm">
@@ -1185,11 +1312,23 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
               <Row label="أخرى / Drop" value={`${fmtNum((shipment.other ?? 0) + (shipment.drop ?? 0))} ج.م`} money />
             </CardContent>
           </Card>
+        ) : canExtras ? (
+          <Card>
+            <CardContent className="p-4 space-y-2 text-sm">
+              <h3 className="font-semibold mb-2">بنود النقلة الإضافية</h3>
+              <Row label="التعتيق" value={`${fmtNum(shipment.aging)} ج.م`} money />
+              <Row label="المبيت" value={`${fmtNum(shipment.overnight)} ج.م`} money />
+              <Row label="المرتجع" value={`${fmtNum(shipment.returns)} ج.م`} money />
+              <Row label="التحويلة" value={`${fmtNum(shipment.transfer)} ج.م`} money />
+              <Row label="أخرى / Drop" value={`${fmtNum((shipment.other ?? 0) + (shipment.drop ?? 0))} ج.م`} money />
+              <p className="text-[10px] text-muted-foreground pt-1">الأسعار (نولون/تكلفة/هامش) محجوبة — لا تملك صلاحية رؤية الأسعار.</p>
+            </CardContent>
+          </Card>
         ) : (
           <Card>
             <CardContent className="p-4 space-y-2 text-sm">
               <h3 className="font-semibold mb-2">المبالغ المالية</h3>
-              <p className="text-xs text-muted-foreground">المبالغ المالية محجوبة — لا تملك صلاحية رؤية الأسعار.</p>
+              <p className="text-xs text-muted-foreground">المبالغ وبنود النقلة محجوبة — لا تملك صلاحية رؤيتها.</p>
             </CardContent>
           </Card>
         )}

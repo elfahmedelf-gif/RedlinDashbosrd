@@ -10,7 +10,7 @@ import { accountBalancesMap, ACC, reversalOriginalSources, summarizeContractorLe
 import { VOUCHER_CATEGORIES, VOUCHER_STATES, VOUCHER_TYPES } from '../voucher-catalog'
 import { EXTRA_COST_SOURCE, extraCostTypeLabel } from '../extra-cost-catalog'
 import { enrichVoucherRows, voucherInclude } from './vouchers-queries'
-import { canSeePrices, reportRequiresPrices, stripDashboardStats, stripParties, stripShipmentPrices, stripVoucherPrices, stripVoucherStats } from './prices'
+import { canSeeExtras, canSeePrices, reportRequiresPrices, stripDashboardStats, stripParties, stripShipmentPrices, stripVoucherPrices, stripVoucherStats } from './prices'
 
 const SHIPMENT_INCLUDE = {
   customer: { select: { id: true, name: true } },
@@ -43,7 +43,7 @@ function ref(r?: { id: string; name: string } | null) {
   return r ? { id: r.id, name: r.name } : null
 }
 
-export function enrichShipment(s: ShipmentRow, voucherLinks?: Map<string, { id: string; voucherNo: string; type: string; status: string; createdAt: Date; amount: number | null; notes: string | null }[]>, canPrices: boolean = true) {
+export function enrichShipment(s: ShipmentRow, voucherLinks?: Map<string, { id: string; voucherNo: string; type: string; status: string; createdAt: Date; amount: number | null; notes: string | null }[]>, canPrices: boolean = true, canExtras: boolean = canPrices) {
   const sell = Number(s.freightTotal ?? 0)
   const cost = Number(s.totalSuppliers ?? 0)
   const history = (s.statusHistory ?? []).map((h) => ({ status: h.toStatus, notes: h.notes ?? null, date: h.changedAt, userName: h.userName ?? null }))
@@ -65,7 +65,7 @@ export function enrichShipment(s: ShipmentRow, voucherLinks?: Map<string, { id: 
   if (!canPrices) {
     base.vouchers = base.vouchers.map((v: any) => ({ ...v, amount: null, notes: v.notes }))
   }
-  return stripShipmentPrices(base, canPrices)
+  return stripShipmentPrices(base, canPrices, canExtras)
 }
 
 /** روابط إذن↔شحنة لدفعة معرفات (لتفادي N+1) */
@@ -91,6 +91,7 @@ export async function voucherLinksForShipments(shipments: { id: string }[]) {
 // ---------------------------------------------------------------------------
 export async function listShipments(q: URLSearchParams, user?: { permissions: string[] } | null) {
   const canPrices = canSeePrices(user)
+  const canExtras = canSeeExtras(user)
   const search = (q.get('q') ?? '').trim().toLowerCase()
   const status = q.get('status')
   const dest = q.get('destination')
@@ -118,7 +119,7 @@ export async function listShipments(q: URLSearchParams, user?: { permissions: st
   }
   // روابط الإذن↔شحنة لكل الصفوف المفلترة (كانت للصفين الـ60 الأول فقط)
   const links = await voucherLinksForShipments(rows)
-  const items = rows.map((s) => enrichShipment(s, links, canPrices))
+  const items = rows.map((s) => enrichShipment(s, links, canPrices, canExtras))
   const page = Math.max(1, parseInt(q.get('page') || '1', 10))
   const pageSize = Math.min(500, Math.max(1, parseInt(q.get('pageSize') || '20', 10)))
   return paginate(items, page, pageSize)
@@ -126,10 +127,11 @@ export async function listShipments(q: URLSearchParams, user?: { permissions: st
 
 export async function getShipment(id: string, user?: { permissions: string[] } | null) {
   const canPrices = canSeePrices(user)
+  const canExtras = canSeeExtras(user)
   const s = await db.shipment.findUnique({ where: { id }, include: SHIPMENT_INCLUDE })
   if (!s) throw new ApiError(404, 'الشحنة غير موجودة')
   const links = await voucherLinksForShipments([s])
-  return enrichShipment(s, links, canPrices)
+  return enrichShipment(s, links, canPrices, canExtras)
 }
 
 export async function shipmentVouchers(id: string, user?: { permissions: string[] } | null) {

@@ -31,6 +31,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'shipments.settle', label: 'تسوية COD', group: 'الشحنات' },
   { key: 'shipments.print', label: 'طباعة بوليصة', group: 'الشحنات' },
   { key: 'shipments.export', label: 'تصدير الشحنات', group: 'الشحنات' },
+  { key: 'shipments.extras.view', label: 'رؤية بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب) — دون الأسعار', group: 'الشحنات' },
   // 4) أذونات التسليم (receipts) — الديليفري / POD
   { key: 'receipts.view', label: 'عرض أذونات التسليم والأذونات المتأخرة', group: 'أذونات التسليم' },
   { key: 'receipts.manage', label: 'التأشير بتسليم الإذن ✓ أو إلغاء التسليم', group: 'أذونات التسليم' },
@@ -171,6 +172,7 @@ export const LEGACY_PERMISSION_EQUIV: Record<string, string[]> = {
   'warehouses.view': ['structure.view', 'structure.*'],
   'warehouses.manage': ['structure.manage', 'structure.*'],
   'extra_costs.view': ['parties.extras.view'],
+  'shipments.extras.view': ['extra_costs.view'],
   'extra_costs.create': ['parties.extras.manage'],
   'extra_costs.delete': ['parties.extras.manage'],
   'extra_costs.approve': ['parties.extras.approve'],
