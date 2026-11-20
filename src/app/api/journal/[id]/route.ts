@@ -1,7 +1,7 @@
 import { ApiError, handle, readBody } from '@/lib/server/http'
 import { requirePerm } from '@/lib/server/session'
 import { ensureSeeded } from '@/lib/server/seed'
-import { voidJournal, updateJournalDraft } from '@/lib/server/accounting'
+import { voidJournal, updateJournalEntry } from '@/lib/server/accounting'
 import { logAudit } from '@/lib/server/audit'
 import { db } from '@/lib/db'
 
@@ -61,7 +61,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   })
 }
 
-/** تعديل قيد مسودة — استبدال كامل للترويسة والسطور بعد التحقق من التوازن */
+/** تعديل قيد — متاح في كل الحالات (مسودة/مرحّل/ملغي): القيد يبقى في حالته بعد الحفظ
+ *  مع استبدال كامل للترويسة والسطور بعد التحقق من التوازن (مدين = دائن) */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
     await ensureSeeded()
@@ -69,7 +70,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params
     const b = await readBody(req)
     const updated = await db.$transaction(async (tx) => {
-      return updateJournalDraft(tx, id, {
+      return updateJournalEntry(tx, id, {
         date: b.date ?? null,
         description: b.description ?? '',
         reference: b.reference ?? null,

@@ -5,7 +5,8 @@
 // الحسابات: بطاقات الخزينة (الصندوق/البنوك/العهد) + كشف حساب تفاعلي لكل حساب
 // (رصيد افتتاحي + حركات + رصيد متحرك بفترة) + إضافة/تعديل/تفعيل/حذف عبر /api/accounts
 // اليومية: فلاتر موسّعة (الحالة/المصدر/الحساب/الفترة) + شارة مصدر القيد والطرف
-// + ترحيل/تعديل المسودة (PATCH)/حذف/إلغاء/عكس + ترحيل جماعي لقيود التسليم (backfill)
+// + ترحيل/تعديل في كل الحالات (مسودة/مرحّل/ملغي — القيد يبقى في حالته بعد التعديل)/حذف/إلغاء/عكس
+// + استعادة قيد ملغي إلى مسودة + ترحيل جماعي لقيود التسليم (backfill)
 // ============================================================================
 
 import * as React from 'react'
@@ -381,7 +382,8 @@ export function JournalModule() {
   const { confirmDelete, confirm: confirmDialog } = useConfirm()
   const canManage = has('accounting.journal')
   const [open, setOpen] = React.useState(false)
-  // القيد الجاري تحريره (null = إنشاء جديد) — المسودات فقط قابلة للتعديل
+  // القيد الجاري تحريره (null = إنشاء جديد) — التعديل متاح في كل الحالات (مسودة/مرحّل/ملغي)
+  // والقيد يبقى في حالته بعد الحفظ (المرحّل يبقى مرحّلًا والملغي يبقى ملغيًا)
   const [editing, setEditing] = React.useState<any>(null)
   // فلاتر موسّعة — الحالة/المصدر/الحساب/الفترة (تُطبق على الخادم)
   const [statusFilter, setStatusFilter] = React.useState<string>('all')
@@ -482,14 +484,34 @@ export function JournalModule() {
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
   }
 
-  const del = async (id: string) => {
+  const del = async (e: any) => {
     const ok = await confirmDelete({
       title: 'حذف القيد',
-      message: 'حذف القيد؟ (لا يمكن حذف قيد مرحّل)',
+      message: e.status === 'void'
+        ? `حذف القيد الملغي ${e.entryNo} نهائيًا من السجل؟ لا يمكن التراجع عن هذه العملية.`
+        : `حذف القيد ${e.entryNo}؟ (لا يمكن حذف قيد مرحّل — استخدم العكس أو التعديل)`,
     })
     if (!ok) return
-    try { await apiDelete(`/api/journal/${id}`); mutate(); toast({ title: 'تم الحذف' }) }
-    catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+    try { await apiDelete(`/api/journal/${e.id}`); mutate(); toast({ title: 'تم الحذف' }) }
+    catch (err: any) { toast({ title: 'خطأ', description: err.message, variant: 'destructive' }) }
+  }
+
+  // استعادة قيد ملغي إلى مسودة — سيناريو «ألغيت القيد بالخطأ»: بعد الاستعادة يمكن تعديله وترحيله طبيعيًا
+  const restore = async (e: any) => {
+    const ok = await confirmDialog({
+      title: `استعادة القيد ${e.entryNo}`,
+      message: 'ستعود حالة القيد إلى «مسودة» ويمكنك بعدها تعديله وترحيله بشكل طبيعي. هل تريد المتابعة؟',
+      variant: 'primary',
+      confirmText: 'استعادة',
+    })
+    if (!ok) return
+    try {
+      await apiPost(`/api/journal/${e.id}/restore`, {})
+      toast({ title: 'تمت الاستعادة إلى مسودة', description: e.entryNo })
+      mutate()
+    } catch (err: any) {
+      toast({ title: 'خطأ', description: err.message, variant: 'destructive' })
+    }
   }
 
   // عكس قيد مرحّل — يُنشئ قيدًا عكسيًا كاملًا (تبديل المدين والدائن) ويُفك ربطه بالأذونات
@@ -623,18 +645,19 @@ export function JournalModule() {
         if (!canManage) return <span className="text-muted-foreground text-xs">—</span>
         return (
           <div className="flex items-center justify-center gap-0.5">
+            {/* التعديل متاح في كل الحالات (مسودة/مرحّل/ملغي) — القيد يبقى في حالته بعد الحفظ */}
+            <Button variant="ghost" size="sm" onClick={() => openEdit(e)} title={`تعديل القيد (${e.status === 'posted' ? 'مرحّل' : e.status === 'void' ? 'ملغي' : 'مسودة'})`} aria-label={`تعديل القيد ${e.entryNo}`}>
+              <SquarePen className="size-3.5 text-primary" />
+            </Button>
             {e.status === 'draft' && (
               <>
                 <Button variant="ghost" size="sm" onClick={() => post(e.id)} title="ترحيل القيد" aria-label={`ترحيل القيد ${e.entryNo}`}>
                   <Check className="size-3.5 text-emerald-600" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => openEdit(e)} title="تعديل القيد (مسودة)" aria-label={`تعديل القيد ${e.entryNo}`}>
-                  <SquarePen className="size-3.5 text-primary" />
-                </Button>
                 <Button variant="ghost" size="sm" onClick={() => voidEntry(e)} title="إلغاء القيد (يبقى في السجل)" aria-label={`إلغاء القيد ${e.entryNo}`}>
                   <Ban className="size-3.5 text-amber-600" />
                 </Button>
-                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(e.id)} title="حذف القيد" aria-label={`حذف القيد ${e.entryNo}`}>
+                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(e)} title="حذف القيد" aria-label={`حذف القيد ${e.entryNo}`}>
                   <Trash2 className="size-3.5" />
                 </Button>
               </>
@@ -643,6 +666,16 @@ export function JournalModule() {
               <Button variant="ghost" size="sm" onClick={() => reverse(e)} title="عكس القيد" aria-label={`عكس القيد ${e.entryNo}`}>
                 <Undo2 className="size-3.5 text-primary" />
               </Button>
+            )}
+            {e.status === 'void' && (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => restore(e)} title="استعادة إلى مسودة" aria-label={`استعادة القيد ${e.entryNo}`}>
+                  <Undo2 className="size-3.5 text-emerald-600" />
+                </Button>
+                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => del(e)} title="حذف القيد الملغي نهائيًا" aria-label={`حذف القيد ${e.entryNo}`}>
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </>
             )}
           </div>
         )
@@ -728,13 +761,36 @@ export function JournalModule() {
       <Dialog open={open} onOpenChange={(o) => { if (!o) closeDialog(); else setOpen(true) }}>
         <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? `تعديل القيد المسودة — ${editing.entryNo}` : 'قيد يومية جديد'}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2 flex-wrap">
+              <span>{editing ? `تعديل القيد — ${editing.entryNo}` : 'قيد يومية جديد'}</span>
+              {editing && (
+                <Badge variant="outline" className={
+                  editing.status === 'posted'
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                    : editing.status === 'void'
+                      ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                      : 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                }>
+                  {editing.status === 'posted' ? 'مرحّل' : editing.status === 'void' ? 'ملغي' : 'مسودة'}
+                </Badge>
+              )}
+            </DialogTitle>
             <DialogDescription>
               {editing
-                ? 'التعديل متاح للمسودات فقط — سيُستبدل الترويسة والسطور بالكامل بعد التحقق من التوازن.'
+                ? editing.status === 'posted'
+                  ? 'هذا القيد مرحّل — التعديل مسموح في كل الحالات: بعد الحفظ يبقى القيد مرحّلًا وتتحدث الأرصدة والتقارير فورًا وفق الأرقام الجديدة، ويُسجّل التعديل في سجل التدقيق.'
+                  : editing.status === 'void'
+                    ? 'هذا القيد ملغي — يمكنك تعديله بالكامل (يبقى ملغيًا بعد الحفظ)، أو استعادته إلى مسودة من زر الاستعادة ثم ترحيله.'
+                    : 'سيُستبدل الترويسة والسطور بالكامل بعد التحقق من التوازن، ويبقى القيد مسودة حتى ترحّله.'
                 : 'القيد المزدوج — يجب أن يكون المدين = الدائن. يُحفظ كمسودة ما لم تفعّل «ترحيل مباشر».'}
             </DialogDescription>
           </DialogHeader>
+          {editing?.status === 'posted' && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+              <Ban className="size-3.5 shrink-0 mt-0.5" />
+              <span>تنبيه: أنت تعدّل قيدًا مرحّلًا — سيؤثر الحفظ مباشرة على الأرصدة وكشوف الحسابات والتقارير، ويُسجّل التعديل في سجل التدقيق باسمك.</span>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 py-2">
             <div><label className="text-xs font-medium">التاريخ</label><Input type="date" value={header.date} onChange={(e) => setHeader({ ...header, date: e.target.value })} /></div>
             <div><label className="text-xs font-medium">مرجع</label><Input value={header.reference} onChange={(e) => setHeader({ ...header, reference: e.target.value })} /></div>
@@ -750,7 +806,7 @@ export function JournalModule() {
                 <Switch id="autopost" checked={!!header.autoPost} onCheckedChange={(c) => setHeader({ ...header, autoPost: c })} />
                 <label htmlFor="autopost" className="text-xs cursor-pointer">
                   <span className="font-bold">ترحيل مباشر</span>
-                  <span className="text-muted-foreground block text-[10px] mt-0.5">عند التفعيل، يُرحّل القيد فورًا بعد الحفظ (لا يمكن تعديله بعدها — استخدم قيدًا عكسيًا).</span>
+                  <span className="text-muted-foreground block text-[10px] mt-0.5">عند التفعيل، يُرحّل القيد فورًا بعد الحفظ (ويمكن تعديله لاحقًا من زر التعديل في أي وقت).</span>
                 </label>
               </div>
             )}

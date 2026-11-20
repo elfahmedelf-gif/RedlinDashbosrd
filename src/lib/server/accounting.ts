@@ -210,16 +210,19 @@ export async function reverseJournal(tx: Tx, id: string, user: JUser, reason?: s
   return reversal
 }
 
-/** تعديل قيد مسودة — استبدال كامل للسطور بعد التحقق (المسودات فقط) */
-export async function updateJournalDraft(
+/** تعديل قيد — متاح في كل الحالات (مسودة/مرحّل/ملغي) حسب طلب الإدارة:
+ *  - المسودة تبقى مسودة، والمرحّل يبقى مرحّلًا (تُحدَّث أثره في الأرصدة فورًا)، والملغي يبقى ملغيًا.
+ *  - التحقق من التوازن (مدين = دائن) إلزامي في كل الحالات — لا يُقبل قيد غير متوازن أبدًا.
+ *  - استبدال كامل للسطور + تدقيق قبل/بعد في سجل التدقيق مع ذكر حالة القيد وقت التعديل. */
+export async function updateJournalEntry(
   tx: Tx,
   id: string,
   opts: Omit<CreateJournalOpts, 'status' | 'sourceType' | 'sourceId' | 'preventDuplicateSource' | 'allowIfReversed'>,
 ) {
   const e = await tx.journalEntry.findUnique({ where: { id } })
   if (!e) throw new ApiError(404, 'القيد غير موجود')
-  if (e.status !== 'draft') throw new ApiError(409, 'لا يمكن تعديل قيد مرحّل أو ملغي — استخدم القيد العكسي للتصحيح')
   const { clean, totalDebit, totalCredit } = await validateLines(tx, opts.lines)
+  const statusLabel = e.status === 'posted' ? 'مرحّل' : e.status === 'void' ? 'ملغي' : 'مسودة'
   const updated = await tx.journalEntry.update({
     where: { id },
     data: {
@@ -246,12 +249,24 @@ export async function updateJournalDraft(
   })
   await logAudit(tx, {
     action: 'update', entity: 'journal_entry', entityId: id,
-    notes: `تعديل قيد مسودة ${e.entryNo} — ${opts.description ?? e.description}`,
+    notes: `تعديل قيد (${statusLabel}) ${e.entryNo} — ${opts.description ?? e.description}`,
     user: opts.user,
-    before: { totalDebit: e.totalDebit, totalCredit: e.totalCredit },
-    after: { totalDebit, totalCredit },
+    before: { totalDebit: e.totalDebit, totalCredit: e.totalCredit, status: e.status },
+    after: { totalDebit, totalCredit, status: e.status },
   })
   return updated
+}
+
+/** استعادة قيد ملغي إلى مسودة — سيناريو «ألغيت القيد بالخطأ»: تُعاد الحالة لمسودة
+ *  ثم يمكن تعديله وترحيله طبيعيًا. لا تنطبق على القيود المرحّلة (تُعالج بالقيد العكسي). */
+export async function restoreJournal(tx: Tx, id: string, user: JUser) {
+  const e = await tx.journalEntry.findUnique({ where: { id } })
+  if (!e) throw new ApiError(404, 'القيد غير موجود')
+  if (e.status === 'posted') throw new ApiError(409, 'القيد مرحّل بالفعل — لا يحتاج استعادة')
+  if (e.status !== 'void') throw new ApiError(409, 'الاستعادة متاحة للقيود الملغية فقط')
+  await tx.journalEntry.update({ where: { id }, data: { status: 'draft' } })
+  await logAudit(tx, { action: 'restore', entity: 'journal_entry', entityId: id, notes: `استعادة قيد ملغي ${e.entryNo} إلى مسودة`, user })
+  return { ok: true }
 }
 
 /** إلغاء قيد مسودة (وليس مرحّلًا) */
