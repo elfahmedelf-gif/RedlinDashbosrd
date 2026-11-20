@@ -8,6 +8,7 @@ import { getActiveDeliveryJournal, postShipmentDeliveryJournal } from '@/lib/ser
 import { reverseJournal } from '@/lib/server/accounting'
 import { assertUniqueDeliveryNumber } from '@/lib/server/receipts'
 import { clearSyncedExtras, extractExtras, extrasFromShipment, extrasTouched, syncShipmentExtras } from '@/lib/server/shipment-extras-sync'
+import { shipmentFieldVisibility } from '@/lib/server/prices'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +16,8 @@ export const dynamic = 'force-dynamic'
 const EDITABLE_TEXT = ['billNo', 'recipientName', 'deliveryPhones', 'destination', 'destinationEn', 'routeCode', 'branchId', 'warehouseId', 'loadType', 'contractorId', 'customerId', 'notes', 'vehicleNo', 'shipToParty', 'deliveryNumber', 'shipPart', 'worker'] as const
 const EDITABLE_NUM = ['freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay', 'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'truckCount', 'policyQty'] as const
 const MONEY_FIELDS = ['freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay'] as const
+// بنود النقلة الإضافية — تسجيلها يتطلب صلاحية الفئة (حماية على مستوى الخادم لا الواجهة فقط)
+const EXTRAS_FIELDS = ['aging', 'overnight', 'returns', 'transfer', 'other', 'drop'] as const
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
@@ -31,6 +34,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const user = await requirePerm(req, 'shipments.edit')
     const { id } = await params
     const b = await readBody(req)
+
+    // حماية على مستوى الخادم (لا تكفي الواجهة): تعديل المبالغ يتطلب صلاحية «رؤية الأسعار»
+    // وتعديل بنود النقلة يتطلب صلاحيتها — منع تجاوز الحدود عبر API مباشرة
+    const vis = shipmentFieldVisibility(user)
+    if (MONEY_FIELDS.some((k) => b[k] !== undefined) && !vis.canPrices) {
+      throw new ApiError(403, 'تعديل المبالغ المالية يتطلب صلاحية «رؤية الأسعار» — اطلب الصلاحية من المدير')
+    }
+    if (EXTRAS_FIELDS.some((k) => b[k] !== undefined) && !vis.canExtras) {
+      throw new ApiError(403, 'تعديل بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب) يتطلب صلاحية «بنود النقلة الإضافية»')
+    }
 
     await db.$transaction(async (tx) => {
       const s = await tx.shipment.findUnique({ where: { id } })

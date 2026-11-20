@@ -6,6 +6,7 @@ import { db } from '@/lib/db'
 import { listShipments } from '@/lib/server/queries'
 import { assertUniqueDeliveryNumber } from '@/lib/server/receipts'
 import { extractExtras, syncShipmentExtras } from '@/lib/server/shipment-extras-sync'
+import { shipmentFieldVisibility } from '@/lib/server/prices'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,9 @@ export async function GET(req: Request) {
 const NUMERIC_FIELDS = ['freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay', 'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'truckCount', 'policyQty'] as const
 const TEXT_FIELDS = ['billNo', 'recipientName', 'deliveryPhones', 'destination', 'destinationEn', 'routeCode', 'loadType', 'vehicleNo', 'shipToParty', 'notes', 'shipPart', 'worker'] as const
 const FK_FIELDS = ['customerId', 'contractorId', 'branchId', 'warehouseId'] as const
+// حقول المبالغ المالية وبنود النقلة — تعديلها يتطلب صلاحية الفئة (حماية على مستوى الخادم لا الواجهة فقط)
+const MONEY_FIELDS = ['freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay'] as const
+const EXTRAS_FIELDS = ['aging', 'overnight', 'returns', 'transfer', 'other', 'drop'] as const
 
 export async function POST(req: Request) {
   return handle(async () => {
@@ -30,6 +34,15 @@ export async function POST(req: Request) {
     const shipmentNo = await nextShipmentNo()
 
     // ── تحقق صارم قبل الحفظ ──
+    // حماية على مستوى الخادم (لا تكفي الواجهة): تسجيل مبالغ مالية يتطلب صلاحية «رؤية الأسعار»،
+    // وبنود النقلة الإضافية تتطلب صلاحيتها — حتى لا يتجاوز مستخدم تعديل الشحنات حدود المبالغ عبر API
+    const vis = shipmentFieldVisibility(user)
+    if (MONEY_FIELDS.some((k) => b[k] !== undefined && b[k] !== null && b[k] !== '') && !vis.canPrices) {
+      throw new ApiError(403, 'تسجيل المبالغ المالية يتطلب صلاحية «رؤية الأسعار» — أنشئ الشحنة بدون مبالغ أو اطلب الصلاحية من المدير')
+    }
+    if (EXTRAS_FIELDS.some((k) => b[k] !== undefined && b[k] !== null && b[k] !== '') && !vis.canExtras) {
+      throw new ApiError(403, 'تسجيل بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب) يتطلب صلاحية «بنود النقلة الإضافية»')
+    }
     // المقاول إلزامي — لا شحنة بدون ناقل (يُختار المقاول قبل الحفظ)
     const contractorId = String(b.contractorId ?? '').trim()
     if (!contractorId) throw new ApiError(400, 'اختيار المقاول مطلوب — عيّن مقاول النقل قبل حفظ الشحنة')

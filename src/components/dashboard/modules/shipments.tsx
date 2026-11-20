@@ -79,6 +79,28 @@ const SHIPMENT_EDIT_NUM_FIELDS = [
   'freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay',
   'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'truckCount', 'policyQty',
 ] as const
+// الحقول التشغيلية (كميات لا مبالغ) — متاحة لكل من يملك صلاحية التعديل بغضّ النظر عن صلاحية الأسعار
+const SHIPMENT_EDIT_COUNT_FIELDS = ['policyQty', 'truckCount'] as const
+
+// خريطة أسماء عربية للحقول الرقمية — تُستخدم في رسائل التحقق بدل المفاتيح الإنجليزية
+// (كانت الرسالة تظهر مثل «القيمة في «ton15»» — غير مفهومة للمستخدم)
+const NUM_FIELD_LABELS: Record<string, string> = {
+  freightCost: 'تكلفة النولون', freightTotal: 'إجمالي النولون', totalSuppliers: 'نولون المقاول',
+  salePrice: 'سعر البيع', customerPay: 'مدفوع من العميل', aging: 'تعتيق', overnight: 'مبيت',
+  returns: 'مرتجعات', transfer: 'تحويلة', other: 'أخرى', drop: 'دروب',
+  ton15: 'شاحنات 1.5 طن', ton3: 'شاحنات 3 طن', m6: 'شاحنات 6 متر',
+  truckCount: 'عدد الشاحنات', policyQty: 'عدد القطع',
+}
+
+// تحقق موحّد من الأرقام السالبة — يعيد أول رسالة خطأ أو '' إذا سليم (نفس قائمة الخادم)
+function firstNegativeError(v: Record<string, any>): string {
+  for (const k of SHIPMENT_EDIT_NUM_FIELDS) {
+    if (v[k] === '' || v[k] == null) continue
+    const n = Number(v[k])
+    if (Number.isFinite(n) && n < 0) return `القيمة في «${NUM_FIELD_LABELS[k] ?? k}» لا يمكن أن تكون سالبة — أدخل رقمًا صحيحًا`
+  }
+  return ''
+}
 
 // تاريخ اليوم بتوقيت الجهاز المحلي (بدل UTC) — يمنع انحراف الشحنة ليوم سابق في ساعات الصباح
 // (toISOString كان يعطي يوم أمس لمن يسجل شحنة بعد منتصف الليل وقبل ٢ ص/٣ ص صيفًا)
@@ -178,6 +200,10 @@ export function ShipmentsModule() {
   }, [stats])
 
   const hasFilters = debouncedQ || status !== 'all' || destination !== 'all' || contractor !== 'all' || province !== 'all' || !!dateFilter || stoppedOnly
+  // عدد الفلاتر النشطة — شارة على زر التصفية تلفت النظر لوجود فلترة مطبّقة واللوحة مغلقة
+  const activeFilterCount = [
+    !!debouncedQ, status !== 'all', destination !== 'all', contractor !== 'all', province !== 'all', !!dateFilter, stoppedOnly,
+  ].filter(Boolean).length
 
   // عدد أعمدة جدول سطح المكتب (يُستخدم في colSpan للهياكل/الفراغ)
   // محسوب من رؤية الأعمدة الفعلية (cols.count يشمل عمود التحديد + كل الأعمدة الظاهرة)
@@ -280,6 +306,15 @@ export function ShipmentsModule() {
 
   const runBulkAssign = async () => {
     if (!bulkContractor || selectedIds.size === 0 || bulkLoading) return
+    // تأكيد قبل الإسناد الجماعي — العملية نقل مستحقات مالية (عكس وإعادة إثبات القيود)
+    const contractorName = contractorsList.find((c) => c.id === bulkContractor)?.name ?? 'المقاول المختار'
+    const ok = await confirmDialog({
+      title: 'إسناد الشحنات لمقاول',
+      message: `سيتم إسناد ${selectedIds.size} شحنة إلى «${contractorName}» — والشحنات المُرحّلة قيودها ستُعكس وتُعاد إثباتها على المقاول الجديد تلقائيًا (نقل المستحقات). متابعة؟`,
+      variant: 'primary',
+      confirmText: 'إسناد',
+    })
+    if (!ok) return
     setBulkLoading(true)
     const ids = Array.from(selectedIds)
     try {
@@ -290,56 +325,75 @@ export function ShipmentsModule() {
     finally { setBulkLoading(false) }
   }
 
-  // ---- export to CSV ----
-  const exportShipments = () => {
+  // ---- export to CSV — كل النتائج المطابقة (لا الصفحة الحالية فقط) ----
+  // يُجلب بنفس الفلاتر على دفعات 500 صف حتى 5000 صف كحد أقصى — يفشل بأمان برسالة واضحة
+  const [exporting, setExporting] = React.useState(false)
+  const buildExportRow = (s: Shipment) => {
+    const r: Record<string, any> = {}
+    if (cols.shipmentNo) {
+      r['رقم الشحنة'] = s.shipmentNo
+      r['رقم البوليصة'] = s.billNo
+      r['Ship Part'] = s.shipPart
+    }
+    if (cols.customer) {
+      r['العميل'] = s.customer?.name || s.recipientName
+      r['المستلم'] = s.recipientName
+    }
+    if (cols.destination) {
+      r['الوجهة'] = s.destination
+      r['الوجهة EN'] = s.destinationEn
+      r['كود الخط'] = s.routeCode
+    }
+    if (cols.pieces) r['الكمية (سياسات)'] = s.policyQty
+    // عدد الشاحنات: الصريح (truckCount) أو مجموع المقاسات — نفس منطق العرض في التفاصيل
+    const trucks = s.truckCount ?? (((s.ton15 ?? 0) + (s.ton3 ?? 0) + (s.m6 ?? 0)) || null)
+    r['عدد الشاحنات'] = trucks
+    if (cols.loadType) {
+      r['شاحنات 1.5 طن'] = s.ton15
+      r['شاحنات 3 طن'] = s.ton3
+      r['شاحنات 6م'] = s.m6
+      r['النوع'] = s.loadType
+    }
+    if (cols.contractor) r['المقاول'] = s.contractor?.name
+    r['الفرع'] = s.branch?.name // الفرع دائمًا — معلومة لوجستية غير مالية
+    if (cols.date) r['تاريخ الشحن'] = s.date ? fmtDate(s.date) : ''
+    if (cols.status) r['الحالة'] = STATUS_LABEL[s.status]?.label || s.status
+    // المبالغ — صلاحية العمود + prices.view
+    if (cols.freight) r['نولون العميل'] = s.freightTotal ?? s.freightCost
+    if (cols.suppliers) r['نولون المقاول'] = s.totalSuppliers ?? 0
+    if (cols.margin) r['هامش الربح'] = s.margin ?? ((s.freightTotal ?? 0) - (s.totalSuppliers ?? 0))
+    // بنود النقلة الإضافية — صلاحية العمود + extras.view
+    if (cols.aging) r['تعتيق'] = s.aging
+    if (cols.overnight) r['مبيت'] = s.overnight
+    if (cols.transfer) r['تحويلة'] = s.transfer
+    if (cols.drop) r['دروب'] = s.drop
+    return r
+  }
+  const exportShipments = async () => {
     if (!pageItems.length) {
       toast({ title: 'لا توجد بيانات للتصدير' })
       return
     }
-    // كل عمود يُصدّر فقط إذا كان ظاهرًا للمستخدم (cols) — ضمان عدم تسرّب نولون العميل لمن لا يراه
-    const rows = pageItems.map((s) => {
-      const r: Record<string, any> = {}
-      if (cols.shipmentNo) {
-        r['رقم الشحنة'] = s.shipmentNo
-        r['رقم البوليصة'] = s.billNo
-        r['Ship Part'] = s.shipPart
+    if (exporting) return
+    setExporting(true)
+    try {
+      const all: Shipment[] = []
+      const maxRows = 5000
+      for (let p = 1; p <= Math.ceil(maxRows / 500); p++) {
+        const qp = new URLSearchParams(params.toString())
+        qp.set('page', String(p))
+        qp.set('pageSize', '500')
+        const res: ShipmentsResponse = await fetcher(`/api/shipments?${qp.toString()}`)
+        all.push(...(res?.items ?? []))
+        if (!res?.items?.length || p >= (res.totalPages ?? 1) || all.length >= maxRows) break
       }
-      if (cols.customer) {
-        r['العميل'] = s.customer?.name || s.recipientName
-        r['المستلم'] = s.recipientName
-      }
-      if (cols.destination) {
-        r['الوجهة'] = s.destination
-        r['الوجهة EN'] = s.destinationEn
-        r['كود الخط'] = s.routeCode
-      }
-      if (cols.pieces) r['الكمية (سياسات)'] = s.policyQty
-      // عدد الشاحنات: الصريح (truckCount) أو مجموع المقاسات — نفس منطق العرض في التفاصيل
-      const trucks = s.truckCount ?? (((s.ton15 ?? 0) + (s.ton3 ?? 0) + (s.m6 ?? 0)) || null)
-      r['عدد الشاحنات'] = trucks
-      if (cols.loadType) {
-        r['شاحنات 1.5 طن'] = s.ton15
-        r['شاحنات 3 طن'] = s.ton3
-        r['شاحنات 6م'] = s.m6
-      }
-      if (cols.loadType) r['النوع'] = s.loadType
-      if (cols.contractor) r['المقاول'] = s.contractor?.name
-      r['الفرع'] = s.branch?.name // الفرع دائمًا — معلومة لوجستية غير مالية
-      if (cols.date) r['تاريخ الشحن'] = s.date ? fmtDate(s.date) : ''
-      if (cols.status) r['الحالة'] = STATUS_LABEL[s.status]?.label || s.status
-      // المبالغ — صلاحية العمود + prices.view
-      if (cols.freight) r['نولون العميل'] = s.freightTotal ?? s.freightCost
-      if (cols.suppliers) r['نولون المقاول'] = s.totalSuppliers ?? 0
-      if (cols.margin) r['هامش الربح'] = s.margin ?? ((s.freightTotal ?? 0) - (s.totalSuppliers ?? 0))
-      // بنود النقلة الإضافية — صلاحية العمود + extras.view
-      if (cols.aging) r['تعتيق'] = s.aging
-      if (cols.overnight) r['مبيت'] = s.overnight
-      if (cols.transfer) r['تحويلة'] = s.transfer
-      if (cols.drop) r['دروب'] = s.drop
-      return r
-    })
-    exportToCSV(rows, `shipments-${localDateStr()}.csv`)
-    toast({ title: `تم تصدير ${rows.length} شحنة` })
+      if (!all.length) { toast({ title: 'لا توجد بيانات للتصدير' }); return }
+      // كل عمود يُصدّر فقط إذا كان ظاهرًا للمستخدم (cols) — ضمان عدم تسرّب بيانات لمن لا يراها
+      exportToCSV(all.map(buildExportRow), `shipments-${localDateStr()}.csv`)
+      toast({ title: `تم تصدير ${fmtNum(all.length)} شحنة${all.length > pageItems.length ? ' — كل النتائج المطابقة' : ''}` })
+    } catch (e: any) {
+      toast({ title: 'تعذّر التصدير', description: e.message, variant: 'destructive' })
+    } finally { setExporting(false) }
   }
 
   if (selected) return <ShipmentDetail id={selected} onBack={() => setSelected(null)} onChanged={() => mutate()} />
@@ -350,16 +404,21 @@ export function ShipmentsModule() {
       <div className="flex flex-col sm:flex-row gap-2 print:hidden">
         <div className="relative flex-1 min-w-0">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground shrink-0" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="بحث برقم الشحنة/العميل/الوجهة/الهاتف..." className="pr-9 min-w-0" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="بحث برقم الشحنة/العميل/الوجهة/الهاتف..." className="pr-9 min-w-0" aria-label="بحث في الشحنات" />
           {q && <button onClick={() => setQ('')} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground shrink-0"><X className="size-4" /></button>}
         </div>
         <div className="flex gap-2 shrink-0">
           <Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters((v) => !v)} className="flex-1 sm:flex-none min-h-[40px]">
             <Filter className="size-4" /> تصفية
+            {activeFilterCount > 0 && !showFilters && (
+              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-primary-foreground text-primary text-[10px] font-bold tnum" title="فلاتر مطبّقة">
+                {activeFilterCount}
+              </span>
+            )}
           </Button>
           {has('shipments.export') && (
-            <Button variant="outline" onClick={exportShipments} className="flex-1 sm:flex-none min-h-[40px]" disabled={!pageItems.length}>
-              <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">تصدير</span>
+            <Button variant="outline" onClick={exportShipments} className="flex-1 sm:flex-none min-h-[40px]" disabled={!pageItems.length || exporting}>
+              <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">{exporting ? 'جاري التصدير...' : 'تصدير'}</span>
             </Button>
           )}
           <Button onClick={() => setAddOpen(true)} className="flex-1 sm:flex-none min-h-[40px]">
@@ -488,6 +547,12 @@ export function ShipmentsModule() {
       <div className="text-xs text-muted-foreground tnum print:hidden">إجمالي النتائج: <b className="text-foreground">{fmtNum(data?.total ?? 0)}</b></div>
 
       {/* Mobile (< md): card view */}
+      {/* هيكل تحميل للموبايل — كان أول تحميل يظهر منطقة فارغة بلا أي مؤشر */}
+      {isLoading && !data && (
+        <div className="md:hidden space-y-2" aria-hidden="true">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-2xl" />)}
+        </div>
+      )}
       {data && data.items.length > 0 && (
         <div className="md:hidden space-y-2 print:hidden">
           {data.items.map((s) => {
@@ -508,7 +573,9 @@ export function ShipmentsModule() {
                     <button
                       onClick={(e) => { e.stopPropagation(); toggleOne(s.id, s.status) }}
                       className={cn('shrink-0 mt-0.5 size-5 rounded-md border-2 flex items-center justify-center', isSel ? 'border-primary bg-primary text-primary-foreground' : 'border-slate-300 dark:border-slate-600')}
-                      aria-label="تحديد"
+                      aria-label="تحديد الشحنة"
+                      role="checkbox"
+                      aria-checked={isSel}
                     >
                       {isSel && <CheckSquare className="size-3.5" />}
                     </button>
@@ -659,31 +726,31 @@ export function ShipmentsModule() {
           <table className="w-full table-fixed text-sm text-right" style={{ minWidth: cols.count >= 14 ? 1880 : 1280 }}>
             <thead className="bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                <th className="font-medium px-2 py-3 text-center w-12 print:hidden">
-                  <button onClick={toggleAll} aria-label="تحديد الكل" className={cn('inline-flex items-center justify-center size-5 rounded-md border-2', allOnPageSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-slate-300 dark:border-slate-600')}>
+                <th scope="col" className="font-medium px-2 py-3 text-center w-12 print:hidden">
+                  <button onClick={toggleAll} aria-label="تحديد الكل" role="checkbox" aria-checked={allOnPageSelected} className={cn('inline-flex items-center justify-center size-5 rounded-md border-2', allOnPageSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-slate-300 dark:border-slate-600')}>
                     {allOnPageSelected && <CheckSquare className="size-3.5" />}
                   </button>
                 </th>
-                {cols.shipmentNo && <th className="font-medium px-4 py-3 text-center w-28">رقم الشحنة</th>}
-                {cols.customer && <th className="font-medium px-4 py-3">العميل / المستلم</th>}
-                {cols.destination && <th className="font-medium px-4 py-3 w-36">الجهة</th>}
-                {cols.pieces && <th className="font-medium px-4 py-3 text-center w-20" title="كام قطعة">القطع</th>}
-                {cols.loadType && <th className="font-medium px-4 py-3 text-center w-24" title="أدوات التحميل / نوع الحمولة">أدوات التحميل</th>}
-                {cols.contractor && <th className="font-medium px-4 py-3 w-28">المقاول</th>}
-                {cols.date && <th className="font-medium px-4 py-3 text-center w-28">التاريخ</th>}
-                {cols.status && <th className="font-medium px-4 py-3 text-center w-32">الحالة</th>}
+                {cols.shipmentNo && <th scope="col" className="font-medium px-4 py-3 text-center w-28">رقم الشحنة</th>}
+                {cols.customer && <th scope="col" className="font-medium px-4 py-3">العميل / المستلم</th>}
+                {cols.destination && <th scope="col" className="font-medium px-4 py-3 w-36">الجهة</th>}
+                {cols.pieces && <th scope="col" className="font-medium px-4 py-3 text-center w-20" title="كام قطعة">القطع</th>}
+                {cols.loadType && <th scope="col" className="font-medium px-4 py-3 text-center w-24" title="أدوات التحميل / نوع الحمولة">أدوات التحميل</th>}
+                {cols.contractor && <th scope="col" className="font-medium px-4 py-3 w-28">المقاول</th>}
+                {cols.date && <th scope="col" className="font-medium px-4 py-3 text-center w-28">التاريخ</th>}
+                {cols.status && <th scope="col" className="font-medium px-4 py-3 text-center w-32">الحالة</th>}
                 {/* بنود النقلة الإضافية — صلاحية العمود + shipments.extras.view */}
-                {cols.aging && <th className="font-medium px-4 py-3 text-left w-20" title="التعتيق">تعتيق</th>}
-                {cols.overnight && <th className="font-medium px-4 py-3 text-left w-20" title="المبيت">مبيت</th>}
-                {cols.transfer && <th className="font-medium px-4 py-3 text-left w-20" title="التحويلة">تحويلة</th>}
-                {cols.drop && <th className="font-medium px-4 py-3 text-left w-20" title="الدروب">دروب</th>}
+                {cols.aging && <th scope="col" className="font-medium px-4 py-3 text-left w-20" title="التعتيق">تعتيق</th>}
+                {cols.overnight && <th scope="col" className="font-medium px-4 py-3 text-left w-20" title="المبيت">مبيت</th>}
+                {cols.transfer && <th scope="col" className="font-medium px-4 py-3 text-left w-20" title="التحويلة">تحويلة</th>}
+                {cols.drop && <th scope="col" className="font-medium px-4 py-3 text-left w-20" title="الدروب">دروب</th>}
                 {/* أعمدة المبالغ — صلاحية العمود + prices.view */}
-                {cols.freight && <th className="font-medium px-4 py-3 text-left w-24">نولون العميل</th>}
-                {cols.suppliers && <th className="font-medium px-4 py-3 text-left w-24">نولون المقاول</th>}
-                {cols.margin && <th className="font-medium px-4 py-3 text-left w-24">هامش الربح</th>}
+                {cols.freight && <th scope="col" className="font-medium px-4 py-3 text-left w-24">نولون العميل</th>}
+                {cols.suppliers && <th scope="col" className="font-medium px-4 py-3 text-left w-24">نولون المقاول</th>}
+                {cols.margin && <th scope="col" className="font-medium px-4 py-3 text-left w-24">هامش الربح</th>}
                 {/* إجمالي النقلة لكل صف — نولون العميل + بنود النقلة الإضافية */}
                 {cols.grand && <th className="font-semibold px-4 py-3 text-left w-26 text-primary">الإجمالي النقلة</th>}
-                {cols.actions && <th className="font-medium px-4 py-3 text-center w-24 print:hidden">إجراءات</th>}
+                {cols.actions && <th scope="col" className="font-medium px-4 py-3 text-center w-24 print:hidden">إجراءات</th>}
               </tr>
             </thead>
             <tbody>
@@ -713,7 +780,9 @@ export function ShipmentsModule() {
                       <td className="px-2 py-3 align-middle text-center print:hidden">
                         <button
                           onClick={(e) => { e.stopPropagation(); toggleOne(s.id, s.status) }}
-                          aria-label="تحديد"
+                          aria-label="تحديد الشحنة"
+                          role="checkbox"
+                          aria-checked={isSel}
                           className={cn('inline-flex items-center justify-center size-5 rounded-md border-2', isSel ? 'border-primary bg-primary text-primary-foreground' : 'border-slate-300 dark:border-slate-600')}
                         >
                           {isSel && <CheckSquare className="size-3.5" />}
@@ -1094,13 +1163,10 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
   const submit = async () => {
     setLoading(true); setErr(''); setDupInfo(null)
     try {
-      // تحقق سريع قبل الإرسال: المقاول إلزامي + لا مبالغ سالبة
+      // تحقق سريع قبل الإرسال: المقاول إلزامي + لا مبالغ سالبة (بأسماء الحقول العربية)
       if (!v.contractorId) { setErr('اختيار المقاول مطلوب — عيّن مقاول النقل قبل حفظ الشحنة'); setLoading(false); return }
-      const moneyKeys = ['freightCost', 'freightTotal', 'salePrice', 'customerPay', 'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'policyQty', 'truckCount', 'ton15', 'ton3', 'm6']
-      for (const k of moneyKeys) {
-        const n = Number(v[k])
-        if (v[k] !== '' && Number.isFinite(n) && n < 0) { setErr(`القيمة في «${k}» لا يمكن أن تكون سالبة — أدخل مبلغًا صحيحًا`); setLoading(false); return }
-      }
+      const neg = firstNegativeError(v)
+      if (neg) { setErr(neg); setLoading(false); return }
       // الحالة تُفرض دائمًا من الخادم (جديدة) — ونمرر الحقول المالية الكاملة
       await apiPost('/api/shipments', { ...v })
       onOpenChange(false); onCreated()
@@ -1136,10 +1202,15 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
               </SelectContent>
             </Select>
             <div className="text-[10px] text-muted-foreground mt-1">مطلوب — مستحقات النولون تُسجل على حساب المقاول المختار</div>
+            {contractors && !(contractors?.items ?? []).length && (
+              <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-900/50">
+                لا يوجد مقاولون بعد — أضف مقاولًا من شاشة «الأطراف» أولًا
+              </div>
+            )}
           </div>
           <div className="sm:col-span-2">
             <label className="text-xs font-medium">العميل / المستلم *</label>
-            <Select value={v.customerId} onValueChange={(val) => setV({ ...v, customerId: val === '__' ? '' : val, recipientName: parties?.items.find(p => p.id === val)?.name || '' })}>
+            <Select value={v.customerId} onValueChange={(val) => setV({ ...v, customerId: val === '__' ? '' : val, recipientName: val === '__' ? '' : (parties?.items.find(p => p.id === val)?.name || '') })}>
               <SelectTrigger><SelectValue placeholder="اختر عميلاً..." /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__">— بدون —</SelectItem>
@@ -1356,7 +1427,7 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
   // صلاحيات التشغيل — يفرضها الخادم أيضًا (تعديل الحقول البيضاء / تغيير الحالة)
   const canEdit = has('shipments.edit')
   const canChangeStatus = has('shipments.status')
-  const { data: shipment, mutate } = useSWR<any>(`/api/shipments/${id}`, fetcher)
+  const { data: shipment, error: shipmentError, mutate } = useSWR<any>(`/api/shipments/${id}`, fetcher)
   const { items: statusItems } = useLookup('shipment_status')
   const { items: collectionItems } = useLookup('collection_status')
   // خيارات نافذة التعديل — أطراف/فروع/مخازن/أنواع الحمولة
@@ -1391,7 +1462,41 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
     }
   }, [shipment, codOpen])
 
-  if (!shipment) return <Skeleton className="h-96 rounded-xl" />
+  // خطأ التحميل — بدل تعليق المستخدم على هيكل تحميل إلى الأبد (مثل شحنة حُذفت من جهاز آخر
+  // أو انقطاع شبكة): رسالة واضحة + إعادة محاولة + رجوع — لا طريق مسدود
+  if (shipmentError) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between print:hidden">
+          <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-4" /> رجوع للقائمة</Button>
+        </div>
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardContent className="p-6 flex flex-col items-center gap-3 text-center">
+            <AlertTriangle className="size-8 text-destructive" />
+            <div className="text-sm font-semibold">تعذّر تحميل بيانات الشحنة</div>
+            <div className="text-xs text-muted-foreground">
+              {shipmentError?.message || 'خطأ غير متوقع'} — قد تكون الشحنة حُذفت أو الرابط غير صحيح.
+            </div>
+            <div className="flex gap-2 flex-wrap justify-center">
+              <Button variant="outline" size="sm" onClick={() => mutate()} className="min-h-[40px]">إعادة المحاولة</Button>
+              <Button variant="outline" size="sm" onClick={onBack} className="min-h-[40px]">رجوع للقائمة</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+  // أثناء التحميل — زر رجوع ظاهر دائمًا حتى لو تأخر الرد (لا حبس المستخدم بلا مخرج)
+  if (!shipment) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between print:hidden">
+          <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-4" /> رجوع للقائمة</Button>
+        </div>
+        <Skeleton className="h-96 rounded-xl" />
+      </div>
+    )
+  }
 
   const STATUS_LOOKUP: Record<string, { label: string; tone: string }> = Object.fromEntries(
     statusItems.map((i) => [i.key, { label: i.label, tone: i.tone || '' }]),
@@ -1402,6 +1507,15 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
   const sMeta = STATUS_LOOKUP[shipment.status] || { label: shipment.status, tone: '' }
   const cMeta = COLLECTION_LOOKUP[shipment.collectionStatus] || { label: shipment.collectionStatus, tone: '' }
   const margin = shipment.margin ?? ((Number(shipment.freightTotal ?? 0)) - (Number(shipment.totalSuppliers ?? 0)))
+  // تحقق فوري لمبالغ تسوية COD — منع الإرسال بمبالغ غير صالحة برسالة واضحة قبل الخادم
+  // (الخادم يرفض صفر/سالب — كان المستخدم يكتشف ذلك بعد الحفظ فقط)
+  const codCustomerNum = Number(codCustomerAmount)
+  const codContractorNum = Number(codContractorAmount)
+  const codError = !codCustomerAmount || !Number.isFinite(codCustomerNum) || codCustomerNum <= 0
+    ? 'مبلغ تحصيل العميل يجب أن يكون أكبر من صفر'
+    : !codContractorAmount || !Number.isFinite(codContractorNum) || codContractorNum < 0
+      ? 'مبلغ صرف المقاول لا يمكن أن يكون سالبًا أو فارغًا'
+      : ''
   // قاعدة «بتقف تاني يوم» — الشحنة متوقفة عن التحميل لأنها لم تُحمّل في يومها
   const stopped = isShipmentStoppedNextDay(shipment)
   const reschedule = async () => {
@@ -1488,7 +1602,9 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
     finally { setDeleteLoading(false) }
   }
 
-  // فتح نافذة التعديل — تعبئة الحقول البيضاء فقط (المبالغ لمن يملك صلاحية الأسعار)
+  // فتح نافذة التعديل — الحقول البيضاء المتوافقة مع الخادم
+  // الحقول التشغيلية (عدد القطع/الشاحنات) للجميع — كانت تُملأ للمستخدم بدون صلاحية الأسعار
+  // ثم تُسقط بصمت عند الحفظ (تعديل ضائع) — تُصلح الآن بإرسالها فعليًا
   const openEdit = () => {
     if (!shipment) return
     setEv({
@@ -1498,13 +1614,13 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
       branchId: shipment.branchId ?? '', warehouseId: shipment.warehouseId ?? '', notes: shipment.notes ?? '',
       vehicleNo: shipment.vehicleNo ?? '', shipToParty: shipment.shipToParty ?? '',
       shipPart: shipment.shipPart ?? '', worker: shipment.worker ?? '',
+      policyQty: shipment.policyQty ?? '', truckCount: shipment.truckCount ?? '',
       ...(canPrices ? {
         freightCost: shipment.freightCost ?? '', freightTotal: shipment.freightTotal ?? '', totalSuppliers: shipment.totalSuppliers ?? '',
         salePrice: shipment.salePrice ?? '', customerPay: shipment.customerPay ?? '',
         aging: shipment.aging ?? '', overnight: shipment.overnight ?? '', returns: shipment.returns ?? '',
         transfer: shipment.transfer ?? '', other: shipment.other ?? '', drop: shipment.drop ?? '',
-        truckCount: shipment.truckCount ?? '',
-        ton15: shipment.ton15 ?? '', ton3: shipment.ton3 ?? '', m6: shipment.m6 ?? '', policyQty: shipment.policyQty ?? '',
+        ton15: shipment.ton15 ?? '', ton3: shipment.ton3 ?? '', m6: shipment.m6 ?? '',
       } : {}),
     })
     setEditErr('')
@@ -1515,9 +1631,16 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
     if (!ev) return
     setEditLoading(true); setEditErr('')
     try {
+      // تحقق الأرقام السالبة قبل الإرسال — رسالة عربية بأسماء الحقول بدل انتظار رفض الخادم
+      const neg = firstNegativeError(ev)
+      if (neg) { setEditErr(neg); setEditLoading(false); return }
       const payload: Record<string, unknown> = {}
       for (const k of SHIPMENT_EDIT_TEXT_FIELDS) payload[k] = ev[k] ?? ''
-      if (canPrices) for (const k of SHIPMENT_EDIT_NUM_FIELDS) payload[k] = ev[k] ?? ''
+      // الحقول التشغيلية (كميات) تُرسل لكل من يملك التعديل — المبالغ والبنود لمن يملك صلاحية الأسعار
+      for (const k of SHIPMENT_EDIT_NUM_FIELDS) {
+        if (!canPrices && !(SHIPMENT_EDIT_COUNT_FIELDS as readonly string[]).includes(k)) continue
+        payload[k] = ev[k] ?? ''
+      }
       // 409: حماية الخادم للمبالغ على الشحنات المحصّلة/المرحّلة قيدها — رسالة الخادم عربية
       await apiPatch(`/api/shipments/${id}`, payload)
       toast({ title: 'تم حفظ التعديلات بنجاح' })
@@ -1543,8 +1666,8 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
               جدولة لليوم
             </Button>
           )}
-          {/* تسوية COD تتطلب صلاحية الأسعار (تتعامل مع مبالغ) */}
-          {canPrices && <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => setCodOpen(true)}><Banknote className="size-4" /> تسوية COD</Button>}
+          {/* تسوية COD تتطلب صلاحية الأسعار + صلاحية التسوية (الخادم يفرضها — الآن الواجهة مطابقة) */}
+          {canPrices && has('shipments.settle') && <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => setCodOpen(true)}><Banknote className="size-4" /> تسوية COD</Button>}
           {/* تعديل الشحنة — الحقول البيضاء المتوافقة مع الخادم */}
           {canEdit && <Button variant="outline" size="sm" className="min-h-[40px]" onClick={openEdit}><Pencil className="size-4" /> تعديل</Button>}
           {/* آلة الحالات الصارمة: الحالة النهائية لا تقبل التغيير */}
@@ -1904,23 +2027,32 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
                   </SelectContent>
                 </Select>
               </div>
-              {/* أعداد تشغيلية — ليست مبالغ مالية */}
+              {/* أعداد تشغيلية — ظاهرة للجميع وقابلة للحفظ فعليًا (كميات لا مبالغ) */}
               <div>
                 <label className="text-xs font-medium">عدد القطع</label>
                 <Input type="number" value={ev.policyQty ?? ''} onChange={(e) => setEv({ ...ev, policyQty: e.target.value })} placeholder="0" />
               </div>
               <div>
-                <label className="text-xs font-medium">عدد 1.5 طن</label>
-                <Input type="number" value={ev.ton15 ?? ''} onChange={(e) => setEv({ ...ev, ton15: e.target.value })} placeholder="0" />
+                <label className="text-xs font-medium">عدد الشاحنات (Truck)</label>
+                <Input type="number" value={ev.truckCount ?? ''} onChange={(e) => setEv({ ...ev, truckCount: e.target.value })} placeholder="0" />
               </div>
-              <div>
-                <label className="text-xs font-medium">عدد 3 طن</label>
-                <Input type="number" value={ev.ton3 ?? ''} onChange={(e) => setEv({ ...ev, ton3: e.target.value })} placeholder="0" />
-              </div>
-              <div>
-                <label className="text-xs font-medium">عدد 6 متر</label>
-                <Input type="number" value={ev.m6 ?? ''} onChange={(e) => setEv({ ...ev, m6: e.target.value })} placeholder="0" />
-              </div>
+              {/* توزيع المقاسات — يُعرض/يُحفظ لمن يملك صلاحية الأسعار (الخادم يخفيها عن غيرهم) */}
+              {canPrices && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium">عدد 1.5 طن</label>
+                    <Input type="number" value={ev.ton15 ?? ''} onChange={(e) => setEv({ ...ev, ton15: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">عدد 3 طن</label>
+                    <Input type="number" value={ev.ton3 ?? ''} onChange={(e) => setEv({ ...ev, ton3: e.target.value })} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">عدد 6 متر</label>
+                    <Input type="number" value={ev.m6 ?? ''} onChange={(e) => setEv({ ...ev, m6: e.target.value })} placeholder="0" />
+                  </div>
+                </>
+              )}
               {/* المبالغ المالية — تُعرض فقط لمن يملك صلاحية الأسعار */}
               {canPrices && (
                 <>
@@ -1943,10 +2075,6 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
                   <div>
                     <label className="text-xs font-medium">مدفوع من العميل</label>
                     <Input type="number" value={ev.customerPay ?? ''} onChange={(e) => setEv({ ...ev, customerPay: e.target.value })} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium">عدد الشاحنات (Truck)</label>
-                    <Input type="number" value={ev.truckCount ?? ''} onChange={(e) => setEv({ ...ev, truckCount: e.target.value })} placeholder="0" />
                   </div>
                   <div>
                     <label className="text-xs font-medium">تعتيق</label>
@@ -2000,21 +2128,22 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
             <div>
               <label className="text-xs font-medium">سند قبض من العميل (ج.م)</label>
-              <Input type="number" value={codCustomerAmount} onChange={(e) => setCodCustomerAmount(e.target.value)} />
+              <Input type="number" value={codCustomerAmount} onChange={(e) => setCodCustomerAmount(e.target.value)} min="0" />
               <p className="text-[10px] text-muted-foreground mt-0.5">قيمة نولون العميل — يصدر سند قبض للعميل ويُرحّل في الصندوق ومديونية العميل.</p>
             </div>
             <div>
               <label className="text-xs font-medium">سند صرف للمقاول (ج.م)</label>
-              <Input type="number" value={codContractorAmount} onChange={(e) => setCodContractorAmount(e.target.value)} />
+              <Input type="number" value={codContractorAmount} onChange={(e) => setCodContractorAmount(e.target.value)} min="0" />
               <p className="text-[10px] text-muted-foreground mt-0.5">قيمة نولون المقاول — يصدر سند صرف للمقاول ويُرحّل في الصندوق ومستحقات المقاولين.</p>
             </div>
+            {codError && <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2 sm:col-span-2">{codError}</div>}
           </div>
           <div className="text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
             العميل: <b>{shipment.customer?.name || shipment.recipientName || '-'}</b> — المقاول: <b>{shipment.contractor?.name || '-'}</b>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCodOpen(false)}>إلغاء</Button>
-            <Button onClick={settleCOD} disabled={codLoading}><Banknote className="size-4" /> {codLoading ? 'جاري التسوية...' : 'تأكيد التسوية'}</Button>
+            <Button onClick={settleCOD} disabled={codLoading || !!codError}><Banknote className="size-4" /> {codLoading ? 'جاري التسوية...' : 'تأكيد التسوية'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
