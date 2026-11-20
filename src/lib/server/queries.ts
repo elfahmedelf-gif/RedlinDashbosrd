@@ -44,6 +44,17 @@ function ref(r?: { id: string; name: string } | null) {
   return r ? { id: r.id, name: r.name } : null
 }
 
+/** الإجمالي النقلة لصف واحد — نولون العميل + التعتيق + المبيت + التحويلة + الدروب (نفس صيغة الواجهة) */
+function rowGrand(s: { freightTotal?: number | null; freightCost?: number | null; aging?: number | null; overnight?: number | null; transfer?: number | null; drop?: number | null }): number {
+  return round2(
+    (Number(s.freightTotal ?? s.freightCost ?? 0) || 0)
+    + (Number(s.aging ?? 0) || 0)
+    + (Number(s.overnight ?? 0) || 0)
+    + (Number(s.transfer ?? 0) || 0)
+    + (Number(s.drop ?? 0) || 0),
+  )
+}
+
 export function enrichShipment(s: ShipmentRow, voucherLinks?: Map<string, { id: string; voucherNo: string; type: string; status: string; createdAt: Date; amount: number | null; notes: string | null }[]>, vis: ShipmentFieldVisibility = SHIPMENT_VIS_FULL) {
   const sell = Number(s.freightTotal ?? 0)
   const cost = Number(s.totalSuppliers ?? 0)
@@ -56,6 +67,8 @@ export function enrichShipment(s: ShipmentRow, voucherLinks?: Map<string, { id: 
     branch: ref(s.branch),
     warehouse: ref(s.warehouse),
     margin: round2(sell - cost),
+    // الإجمالي النقلة للصف — يحسبه الخادم ليطابق الجدول حتى لو خُفي عمود نولون العميل
+    grand: rowGrand(s),
     statusHistory: history.length
       ? history
       : [{ status: s.status, notes: 'استيراد أولي', date: s.updatedAt ?? s.createdAt ?? null, userName: 'system' }],
@@ -177,8 +190,10 @@ export async function listShipments(q: URLSearchParams, user?: { permissions: st
     const enriched = enrichShipment(s, links, vis)
     return { ...enriched, stopped: s._stopped }
   })
-  const page = Math.max(1, parseInt(q.get('page') || '1', 10))
-  const pageSize = Math.min(500, Math.max(1, parseInt(q.get('pageSize') || '20', 10)))
+  const pageRaw = Number(q.get('page') ?? 1)
+  const pageSizeRaw = Number(q.get('pageSize') ?? 20)
+  const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1
+  const pageSize = Number.isFinite(pageSizeRaw) && pageSizeRaw >= 1 ? Math.min(500, Math.floor(pageSizeRaw)) : 20
   return { ...paginate(items, page, pageSize), totals }
 }
 

@@ -20,10 +20,17 @@ export async function handle(fn: () => Promise<any>): Promise<NextResponse> {
     const data = await fn()
     return NextResponse.json(data ?? { ok: true })
   } catch (e: any) {
-    const status = e instanceof ApiError ? e.status : 500
+    let status = e instanceof ApiError ? e.status : 500
+    let message = e?.message ?? 'خطأ غير متوقع في الخادم'
+    // أخطاء Prisma المعروفة → رسائل عربية واضحة بدل نص محرك قاعدة البيانات
+    if (!(e instanceof ApiError) && typeof e?.code === 'string') {
+      if (e.code === 'P2002') { status = 409; message = 'قيمة مكررة تتعارض مع قيود التفرد في النظام — راجع البيانات المدخلة' }
+      else if (e.code === 'P2003') { status = 409; message = 'لا يمكن تنفيذ العملية — توجد سجلات مرتبطة تعتمد على هذا السجل' }
+      else if (e.code === 'P2025') { status = 404; message = 'السجل المطلوب غير موجود — ربما حُذف للتو' }
+    }
     if (status >= 500) console.error('[api-error]', e)
     return NextResponse.json(
-      { error: e?.message ?? 'خطأ غير متوقع في الخادم', ...(e?.details ? { details: e.details } : {}) },
+      { error: message, ...(e?.details ? { details: e.details } : {}) },
       { status },
     )
   }

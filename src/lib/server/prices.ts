@@ -104,6 +104,7 @@ export function stripShipmentPrices<T extends Record<string, any>>(s: T, vis: Sh
   if (!vis.freight) setNull(['freightCost', 'freightTotal'])
   if (!vis.suppliers) setNull(['totalSuppliers'])
   if (!vis.margin && 'margin' in out) out.margin = null
+  if (!vis.grand && 'grand' in out) out.grand = null
   if (!vis.aging) setNull(['aging'])
   if (!vis.overnight) setNull(['overnight'])
   if (!vis.transfer) setNull(['transfer'])

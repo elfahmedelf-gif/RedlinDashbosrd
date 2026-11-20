@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 }
 
 /** الحقول المالية والتشغيلية المقبولة عند الإنشاء (الكل كانت تُسقط سابقًا) */
-const NUMERIC_FIELDS = ['freightCost', 'freightTotal', 'salePrice', 'customerPay', 'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'policyQty'] as const
+const NUMERIC_FIELDS = ['freightCost', 'freightTotal', 'totalSuppliers', 'salePrice', 'customerPay', 'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'policyQty'] as const
 const TEXT_FIELDS = ['billNo', 'recipientName', 'deliveryPhones', 'destination', 'destinationEn', 'routeCode', 'loadType', 'vehicleNo', 'shipToParty', 'notes'] as const
 const FK_FIELDS = ['customerId', 'contractorId', 'branchId', 'warehouseId'] as const
 
@@ -37,6 +37,11 @@ export async function POST(req: Request) {
     for (const k of NUMERIC_FIELDS) {
       const v = num(b[k])
       if (v != null && v < 0) throw new ApiError(400, `القيمة في «${k}» لا يمكن أن تكون سالبة — أدخل مبلغًا صحيحًا أو اتركه فارغًا`)
+    }
+    // تاريخ الشحنة يجب أن يكون صالحًا — قيمة غير قابلة للتحليل تسبب خطأ خادم
+    if (b.date) {
+      const d = new Date(String(b.date))
+      if (isNaN(d.getTime())) throw new ApiError(400, 'تاريخ الشحنة غير صالح — اختر تاريخًا صحيحًا')
     }
     // رقم الديليفري فريد على مستوى النظام — يُمنع التكرار برسالة عربية واضحة + بيانات الشحنة الموجودة
     const dn = b.deliveryNumber ? String(b.deliveryNumber).trim() : ''
@@ -57,7 +62,10 @@ export async function POST(req: Request) {
     }
 
     // إنشاء الشحنة + السجل التاريخي + التدقيق داخل معاملة واحدة (ذرية كاملة)
-    const created = await db.$transaction(async (tx) => {
+    // التقاط P2002 (تعارض تزامن نادر على رقم الديليفري) → رسالة عربية واضحة بدل خطأ خادم
+    let created: any
+    try {
+      created = await db.$transaction(async (tx) => {
       // التحقق من الأطراف/الفروع/المخازن المشار إليها (منع مفاتيح مكسورة)
       if (b.customerId && !(await tx.party.findUnique({ where: { id: b.customerId } }))) throw new ApiError(400, 'العميل المحدد غير موجود')
       if (b.contractorId && !(await tx.party.findUnique({ where: { id: b.contractorId } }))) throw new ApiError(400, 'المقاول المحدد غير موجود')
@@ -104,6 +112,10 @@ export async function POST(req: Request) {
       })
       return s
     })
+    } catch (e: any) {
+      if (e?.code === 'P2002') throw new ApiError(409, 'رقم الديليفري مسجل مسبقًا لشحنة أخرى — أدخل رقمًا مختلفًا')
+      throw e
+    }
     return { id: created.id, shipmentNo }
   })
 }

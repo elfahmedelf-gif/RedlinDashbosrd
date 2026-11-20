@@ -163,13 +163,17 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       const s = await tx.shipment.findUnique({ where: { id } })
       if (!s) return
 
-      // منع الحذف المدمر: أذونات نشطة/مكتملة أو بنود إضافية معتمدة (قيودها مرحّلة)
-      const blockingVoucher = await tx.opVoucherItem.findFirst({
-        where: { shipmentId: id, voucher: { status: { in: ['draft', 'pending', 'approved', 'in_progress', 'completed'] } } },
+      // منع الحذف المدمر: أي ارتباط بإذن تشغيلي (بأي حالة — حتى الملغاة تحمل بندًا مرجعيًا)
+      // أو فاتورة، أو بنود إضافية معتمدة (قيودها مرحّلة)
+      const anyVoucherLink = await tx.opVoucherItem.findFirst({
+        where: { shipmentId: id },
         include: { voucher: { select: { voucherNo: true, status: true } } },
       })
-      if (blockingVoucher) {
-        throw new ApiError(409, `لا يمكن حذف شحنة مرتبطة بإذن (${blockingVoucher.voucher.voucherNo} — ${blockingVoucher.voucher.status}) — عالجها وفق سياسة التصحيح أولًا`)
+      if (anyVoucherLink) {
+        throw new ApiError(409, `لا يمكن حذف شحنة مرتبطة بإذن تشغيلي (${anyVoucherLink.voucher.voucherNo} — ${anyVoucherLink.voucher.status}) — احذف/ألغِ بند الشحنة من الإذن أولًا وفق سياسة التصحيح`)
+      }
+      if (s.invoiceId) {
+        throw new ApiError(409, 'لا يمكن حذف شحنة مسجّلة في فاتورة — احذفها من الفاتورة أولًا (منع ازدواج الإيراد)')
       }
       const approvedExtras = await tx.extraCost.count({ where: { shipmentId: id, approvalStatus: 'approved' } })
       if (approvedExtras > 0) {

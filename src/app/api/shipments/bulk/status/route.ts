@@ -7,8 +7,10 @@ import { ACTIVE_VOUCHER_STATUSES } from '@/lib/voucher-catalog'
 import {
   canTransitionShipment,
   isKnownShipmentStatus,
+  isShipmentStoppedNextDay,
   shipmentStatusLabel,
   shipmentTransitionError,
+  SHIPMENT_STOPPED_BLOCKED_TARGETS,
 } from '@/lib/shipment-catalog'
 import { postShipmentDeliveryJournal } from '@/lib/server/shipment-accounting'
 
@@ -16,7 +18,7 @@ export const dynamic = 'force-dynamic'
 
 /**
  * تحديث حالة مجموعة شحنات — داخل معاملة واحدة:
- * كل شحنة تمر عبر آلة الحالات + سجل حالات + تدقيق خاص بها.
+ * كل شحنة تمر عبر آلة الحالات + قاعدة «بتقف تاني يوم» + سجل حالات + تدقيق خاص بها.
  * الشحنات غير الصالحة تُتخطى (النتيجة تفصيلية لكل شحنة).
  */
 export async function POST(req: Request) {
@@ -52,6 +54,11 @@ export async function POST(req: Request) {
         }
         if (to === 'returned' && s.collectionStatus === 'collected') {
           results.push({ id, ok: false, reason: 'شحنة محصّلة — عكس التحصيل أولًا' }); continue
+        }
+        // قاعدة «بتقف تاني يوم» — نفس حماية المسار الفردي:
+        // شحنة متوقفة (بتاريخ أقدم ولم تُحمّل) لا تُحمّل جماعيًا — إما جدولة لليوم أو مبيت/تعتيق/مؤجلة
+        if (isShipmentStoppedNextDay(s) && (SHIPMENT_STOPPED_BLOCKED_TARGETS as readonly string[]).includes(to)) {
+          results.push({ id, ok: false, reason: `الشحنة متوقفة عن التحميل (بتقف تاني يوم) — أعد جدولتها لليوم من زر «جدولة لليوم» أو سجّلها مبيت/تعتيق/مؤجلة` }); continue
         }
 
         await tx.shipment.update({

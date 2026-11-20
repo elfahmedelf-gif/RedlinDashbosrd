@@ -610,6 +610,7 @@ export async function settleShipmentCOD(user: SessionUser, shipmentId: string, b
 
     // 1) سند قبض من العميل
     const customerAmount = round2(Number(body.customerAmount ?? s.freightTotal ?? 0))
+    if (!Number.isFinite(customerAmount)) throw new ApiError(400, 'مبلغ التحصيل من العميل غير صالح — أدخل رقمًا صحيحًا')
     if (customerAmount <= 0) throw new ApiError(400, 'مبلغ التحصيل من العميل يجب أن يكون أكبر من صفر — لا يمكن تسوية بمبلغ صفر وإثبات التحصيل')
     if (s.customerId) {
       const voucherNo = await nextVoucherNo(tx, 'collection')
@@ -639,6 +640,7 @@ export async function settleShipmentCOD(user: SessionUser, shipmentId: string, b
 
     // 2) سند صرف للمقاول
     const contractorAmount = round2(Number(body.contractorAmount ?? s.totalSuppliers ?? s.freightCost ?? 0))
+    if (!Number.isFinite(contractorAmount)) throw new ApiError(400, 'مبلغ الصرف للمقاول غير صالح — أدخل رقمًا صحيحًا')
     if (contractorAmount < 0) throw new ApiError(400, 'مبلغ الصرف للمقاول لا يمكن أن يكون سالبًا')
     if (s.contractorId && contractorAmount > 0) {
       const voucherNo = await nextVoucherNo(tx, 'cash_disbursement')

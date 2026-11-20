@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { Plus, PackageSearch, Filter, X, Search, Printer, ArrowLeft, Trash2, FileSpreadsheet, CheckSquare, Layers, Banknote, Link2, Truck, Pencil } from 'lucide-react'
+import { Plus, PackageSearch, Filter, X, Search, Printer, ArrowLeft, Trash2, FileSpreadsheet, CheckSquare, Layers, Banknote, Link2, Truck, Pencil, AlertTriangle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { WaybillPrint } from '../waybill-print'
-import { EntityFormDialog } from '../entity-dialog'
 import { DataTablePagination } from '../data-table-pagination'
 import { fetcher } from '@/lib/api'
 import { apiPostSync as apiPost, apiPatchSync as apiPatch, apiDeleteSync as apiDelete } from '@/lib/sync'
@@ -51,6 +50,8 @@ interface Shipment {
   customerPay: number | null; totalSuppliers: number | null;
   aging: number | null; overnight: number | null; returns: number | null; transfer: number | null; drop: number | null;
   status: string; collectionStatus: string;
+  // محسوبة على الخادم (مُبوَّبة وفق صلاحيات الأعمدة) — تعاد للصف حتى لو خُفيت حقولها الأصلية
+  margin?: number | null; grand?: number | null;
   // قاعدة «بتقف تاني يوم» — يحسبها الخادم لكل صف (تاريخ أقدم من اليوم ولم تُحمّل)
   stopped?: boolean;
   date: string | null; date2: string | null; notes: string | null;
@@ -77,11 +78,20 @@ const SHIPMENT_EDIT_NUM_FIELDS = [
   'aging', 'overnight', 'returns', 'transfer', 'other', 'drop', 'ton15', 'ton3', 'm6', 'policyQty',
 ] as const
 
+// تاريخ اليوم بتوقيت الجهاز المحلي (بدل UTC) — يمنع انحراف الشحنة ليوم سابق في ساعات الصباح
+// (toISOString كان يعطي يوم أمس لمن يسجل شحنة بعد منتصف الليل وقبل ٢ ص/٣ ص صيفًا)
+function localDateStr(d: Date = new Date()): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 // نموذج الإنشاء الفارغ — الحالة تُفرض دائمًا من الخادم (جديدة)
 function emptyCreateForm(): any {
   return {
     deliveryNumber: '', recipientName: '', destination: '', loadType: '', customerId: '', contractorId: '',
-    branchId: '', warehouseId: '', date: new Date().toISOString().slice(0, 10),
+    branchId: '', warehouseId: '', date: localDateStr(),
     freightCost: '', freightTotal: '', notes: '',
     salePrice: '', customerPay: '', aging: '', overnight: '', returns: '', transfer: '', other: '', drop: '', policyQty: '',
   }
@@ -90,10 +100,6 @@ function emptyCreateForm(): any {
 export function ShipmentsModule() {
   const { toast } = useToast()
   const { has } = useAuth()
-  // صلاحية رؤية الأسعار — تتحكم في إظهار كل المبالغ (نولون/تكلفة/تحصيل/هامش)
-  const canPrices = useCanPrices()
-  // صلاحية رؤية بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب) — تشغيلية منفصلة عن الأسعار
-  const canExtras = useCanExtras()
   // رؤية مستقلة لكل عمود في جدول الشحنات — يتحكم فيها المدير من شاشة الصلاحيات
   const cols = useShipmentCols()
   const { confirm: confirmDialog } = useConfirm()
@@ -127,6 +133,8 @@ export function ShipmentsModule() {
   const [bulkNotes, setBulkNotes] = React.useState('')
   // waybill print target
   const [waybillShipment, setWaybillShipment] = React.useState<any>(null)
+  // حماية من الضغط المكرر أثناء التنفيذ الجماعي (منع طلبات مزدوجة)
+  const [bulkLoading, setBulkLoading] = React.useState(false)
 
   React.useEffect(() => { const t = setTimeout(() => { setDebouncedQ(q); setPage(1) }, 350); return () => clearTimeout(t) }, [q])
 
@@ -151,21 +159,20 @@ export function ShipmentsModule() {
   const totals = data?.totals
 
   // Load filter options (destinations + contractors + provinces) — derive from stats endpoint
-  const { data: stats } = useSWR<{ destinations: { name: string }[] }>('/api/stats', fetcher)
+  const { data: stats } = useSWR<{ destinations: { name: string }[]; codings?: { name: string }[] }>('/api/stats', fetcher)
   const { data: contractorsRes } = useSWR<{ items: any[] }>('/api/parties?type=contractor', fetcher)
   const destinations = stats?.destinations.map((d) => d.name) ?? []
   const contractorsList = contractorsRes?.items ?? []
-  // Provinces derived from route codes in shipments (typically formatted like "القاهرة 1", "الجيزة 2" etc.)
+  // المحافظات تُشتق من كود الخط (routeCode) — أول كلمة منه — لأن الخادم يفلتر المحافظة على routeCode
+  // (اشتقاقها من أول كلمة الوجهة كان ينتج فلاتر بلا نتائج: وجهات مثل «العبور» تتبع خط «القاهرة 1»)
   const provinces = React.useMemo(() => {
     const set = new Set<string>()
-    // Best-effort: derive from destinations + known Egyptian governorates that appear in the data
-    for (const d of destinations) {
-      // first word of destination as a coarse province hint
-      const first = String(d).split(/\s+/)[0]
-      if (first) set.add(first)
+    for (const c of stats?.codings ?? []) {
+      const first = String(c?.name ?? '').trim().split(/\s+/)[0]
+      if (first && first !== '-') set.add(first)
     }
     return Array.from(set).sort()
-  }, [destinations])
+  }, [stats])
 
   const hasFilters = debouncedQ || status !== 'all' || destination !== 'all' || contractor !== 'all' || province !== 'all' || !!dateFilter || stoppedOnly
 
@@ -238,6 +245,8 @@ export function ShipmentsModule() {
       confirmText: 'تغيير الحالة',
     })
     if (!ok) return
+    if (bulkLoading) return
+    setBulkLoading(true)
     const ids = Array.from(selectedIds)
     try {
       // الخادم يفرض آلة الحالات لكل شحنة ويعيد نتيجة لكل معرف
@@ -263,16 +272,19 @@ export function ShipmentsModule() {
       } else clearSelection()
       mutate()
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+    finally { setBulkLoading(false) }
   }
 
   const runBulkAssign = async () => {
-    if (!bulkContractor || selectedIds.size === 0) return
+    if (!bulkContractor || selectedIds.size === 0 || bulkLoading) return
+    setBulkLoading(true)
     const ids = Array.from(selectedIds)
     try {
       const res = await apiPost('/api/shipments/bulk/assign', { ids, contractorId: bulkContractor })
       toast({ title: `تم إسناد ${fmtNum(res?.count ?? ids.length)} من ${fmtNum(res?.total ?? ids.length)} شحنة للمقاول` })
       setBulkActionOpen(null); setBulkContractor(''); clearSelection(); mutate()
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+    finally { setBulkLoading(false) }
   }
 
   // ---- export to CSV ----
@@ -306,7 +318,7 @@ export function ShipmentsModule() {
       // المبالغ — صلاحية العمود + prices.view
       if (cols.freight) r['نولون العميل'] = s.freightTotal ?? s.freightCost
       if (cols.suppliers) r['نولون المقاول'] = s.totalSuppliers ?? 0
-      if (cols.margin) r['هامش الربح'] = (s.freightTotal ?? 0) - (s.totalSuppliers ?? 0)
+      if (cols.margin) r['هامش الربح'] = s.margin ?? ((s.freightTotal ?? 0) - (s.totalSuppliers ?? 0))
       // بنود النقلة الإضافية — صلاحية العمود + extras.view
       if (cols.aging) r['تعتيق'] = s.aging
       if (cols.overnight) r['مبيت'] = s.overnight
@@ -314,7 +326,7 @@ export function ShipmentsModule() {
       if (cols.drop) r['دروب'] = s.drop
       return r
     })
-    exportToCSV(rows, `shipments-${new Date().toISOString().slice(0, 10)}.csv`)
+    exportToCSV(rows, `shipments-${localDateStr()}.csv`)
     toast({ title: `تم تصدير ${rows.length} شحنة` })
   }
 
@@ -333,14 +345,29 @@ export function ShipmentsModule() {
           <Button variant={showFilters ? 'default' : 'outline'} onClick={() => setShowFilters((v) => !v)} className="flex-1 sm:flex-none min-h-[40px]">
             <Filter className="size-4" /> تصفية
           </Button>
-          <Button variant="outline" onClick={exportShipments} className="flex-1 sm:flex-none min-h-[40px]" disabled={!pageItems.length}>
-            <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">تصدير</span>
-          </Button>
+          {has('shipments.export') && (
+            <Button variant="outline" onClick={exportShipments} className="flex-1 sm:flex-none min-h-[40px]" disabled={!pageItems.length}>
+              <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">تصدير</span>
+            </Button>
+          )}
           <Button onClick={() => setAddOpen(true)} className="flex-1 sm:flex-none min-h-[40px]">
             <Plus className="size-4" /> <span className="hidden sm:inline">شحنة جديدة</span><span className="sm:hidden">جديد</span>
           </Button>
         </div>
       </div>
+
+      {/* خطأ التحميل — يميّز فشل الشبكة عن غياب البيانات (كان يظهر كأنه «لا توجد شحنات») */}
+      {error && !data && (
+        <Card className="border-destructive/40 bg-destructive/5 print:hidden">
+          <CardContent className="p-4 flex flex-wrap items-center gap-3">
+            <AlertTriangle className="size-5 text-destructive shrink-0" />
+            <div className="flex-1 min-w-[200px] text-sm">
+              <b>تعذّر تحميل الشحنات.</b>{error?.message ? ` (${error.message})` : ''} تأكد من الاتصال ثم أعد المحاولة.
+            </div>
+            <Button variant="outline" size="sm" onClick={() => mutate()} className="min-h-[40px]">إعادة المحاولة</Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Bulk selection action bar */}
       {selectedIds.size > 0 && (
@@ -349,12 +376,20 @@ export function ShipmentsModule() {
             <span className="text-sm font-medium tnum">{selectedIds.size} شحنة محددة</span>
             <Button variant="ghost" size="sm" onClick={clearSelection} className="text-muted-foreground"><X className="size-3.5" /> إلغاء التحديد</Button>
             <div className="flex-1" />
-            <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => { setBulkStatus(''); setBulkActionOpen('status') }}>
-              <CheckSquare className="size-3.5" /> تغيير الحالة دفعة
-            </Button>
-            <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => { setBulkContractor(''); setBulkActionOpen('assign') }}>
-              <Truck className="size-3.5" /> إسناد لمقاول
-            </Button>
+            {has('shipments.status') && (
+              <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => {
+                // تحديث الحالات المحفوظة من آخر استجابة — منع حساب التقاطع من لقطة قديمة (تحديث تلقائي كل 30 ثانية)
+                setSelectedStatuses((prev) => { const next = new Map(prev); for (const it of pageItems) if (next.has(it.id)) next.set(it.id, it.status); return next })
+                setBulkStatus(''); setBulkActionOpen('status')
+              }}>
+                <CheckSquare className="size-3.5" /> تغيير الحالة دفعة
+              </Button>
+            )}
+            {has('shipments.assign') && (
+              <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => { setBulkContractor(''); setBulkActionOpen('assign') }}>
+                <Truck className="size-3.5" /> إسناد لمقاول
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -561,7 +596,7 @@ export function ShipmentsModule() {
                     <div className="min-w-0">
                       <div className="text-[10px] text-muted-foreground/70">الإجمالي</div>
                       <div className="text-xs font-bold tnum num-ltr text-primary">
-                        {fmtNum((Number(s.freightTotal ?? s.freightCost ?? 0) || 0) + (Number(s.aging ?? 0) || 0) + (Number(s.overnight ?? 0) || 0) + (Number(s.transfer ?? 0) || 0) + (Number(s.drop ?? 0) || 0))} ج.م
+                        {fmtNum(s.grand ?? ((Number(s.freightTotal ?? s.freightCost ?? 0) || 0) + (Number(s.aging ?? 0) || 0) + (Number(s.overnight ?? 0) || 0) + (Number(s.transfer ?? 0) || 0) + (Number(s.drop ?? 0) || 0)))} ج.م
                       </div>
                     </div>
                   )}
@@ -577,14 +612,16 @@ export function ShipmentsModule() {
                     >
                       <PackageSearch className="size-4" /> عرض التفاصيل
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 min-h-[40px]"
-                      onClick={() => setWaybillShipment(s)}
-                    >
-                      <Printer className="size-4" /> بوليصة
-                    </Button>
+                    {has('shipments.print') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 min-h-[40px]"
+                        onClick={() => setWaybillShipment(s)}
+                      >
+                        <Printer className="size-4" /> بوليصة
+                      </Button>
+                    )}
                   </div>
                 )}
                 {s.stopped && has('shipments.edit') && (
@@ -640,6 +677,8 @@ export function ShipmentsModule() {
             <tbody>
               {isLoading && !data ? (
                 Array.from({ length: 10 }).map((_, i) => <tr key={i}><td colSpan={colCount}><Skeleton className="h-12 m-1" /></td></tr>)
+              ) : error && !data ? (
+                <tr><td colSpan={colCount} className="py-14 text-center text-muted-foreground">تعذّر تحميل البيانات من الخادم — اضغط «إعادة المحاولة» أعلاه</td></tr>
               ) : data && data.items.length > 0 ? (
                 data.items.map((s, i) => {
                   const size = s.loadType === '1.5TON' ? '1.5ط' : s.loadType === '3TON' ? '3ط' : s.loadType === '6M' ? '6م' : '-'
@@ -647,7 +686,9 @@ export function ShipmentsModule() {
                     : s.loadType === '3TON' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300'
                     : 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
                   const sMeta = STATUS_LABEL[s.status] || { label: shipmentStatusLabel(s.status), tone: shipmentStatusDef(s.status)?.tone || '' }
-                  const margin = (s.freightTotal ?? 0) - (s.totalSuppliers ?? 0)
+                  // الهامش والإجمالي النقلة من الخادم (s.margin/s.grand) — يظلان صحيحين
+                  // حتى لو خُفي عمود نولون العميل/المقاول (الخادم يفرّغ القيم لكن يرسل المحسوب)
+                  const margin = s.margin ?? ((s.freightTotal ?? 0) - (s.totalSuppliers ?? 0))
                   // إجمالي النقلة لهذا الصف فقط — نولون العميل + التعتيق + المبيت + التحويلة + الدروب
                   const rowTotal = (Number(s.freightTotal ?? s.freightCost ?? 0) || 0)
                     + (Number(s.aging ?? 0) || 0)
@@ -740,12 +781,12 @@ export function ShipmentsModule() {
                       )}
                       {cols.freight && (
                         <td className="px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
-                          <span className="num-ltr">{fmtNum(s.freightTotal ?? s.freightCost)}</span>
+                          <span className="num-ltr">{(s.freightTotal ?? s.freightCost) != null ? fmtNum(s.freightTotal ?? s.freightCost) : '-'}</span>
                         </td>
                       )}
                       {cols.suppliers && (
                         <td className="px-4 py-3 align-middle text-left tnum whitespace-nowrap cursor-pointer" onClick={() => setSelected(s.id)}>
-                          <span className="num-ltr">{fmtNum(s.totalSuppliers ?? 0)}</span>
+                          <span className="num-ltr">{s.totalSuppliers != null ? fmtNum(s.totalSuppliers) : '-'}</span>
                         </td>
                       )}
                       {cols.margin && (
@@ -755,7 +796,7 @@ export function ShipmentsModule() {
                       )}
                       {cols.grand && (
                         <td className="px-4 py-3 align-middle text-left font-bold tnum whitespace-nowrap text-primary" onClick={() => setSelected(s.id)} title="إجمالي النقلة: نولون العميل + التعتيق + المبيت + التحويلة + الدروب">
-                          <span className="num-ltr">{fmtNum(rowTotal)}</span>
+                          <span className="num-ltr">{fmtNum(s.grand ?? rowTotal)}</span>
                         </td>
                       )}
                       {cols.actions && (
@@ -773,14 +814,16 @@ export function ShipmentsModule() {
                                 جدولة لليوم
                               </Button>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setWaybillShipment(s) }}
-                              title="طباعة بوليصة الشحن"
-                            >
-                              <Printer className="size-3.5" />
-                            </Button>
+                            {has('shipments.print') && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); setWaybillShipment(s) }}
+                                title="طباعة بوليصة الشحن"
+                              >
+                                <Printer className="size-3.5" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       )}
@@ -912,7 +955,7 @@ export function ShipmentsModule() {
       )}
 
       {/* Add dialog */}
-      <ShipmentCreateDialog open={addOpen} onOpenChange={setAddOpen} onCreated={() => { mutate(); toast({ title: 'تم إنشاء الشحنة بنجاح' }) }} onViewExisting={(dn) => { setQ(dn); setStatus('all'); setDestination('all'); setContractor('all'); setProvince('all') }} />
+      <ShipmentCreateDialog open={addOpen} onOpenChange={setAddOpen} onCreated={() => { mutate(); toast({ title: 'تم إنشاء الشحنة بنجاح' }) }} onViewExisting={(dn) => { setQ(dn); setStatus('all'); setDestination('all'); setContractor('all'); setProvince('all'); setDateFilter(''); setStoppedOnly(false) }} />
 
       {/* Waybill print dialog */}
       <WaybillPrint
@@ -947,7 +990,7 @@ export function ShipmentsModule() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkActionOpen(null)}>إلغاء</Button>
-            <Button onClick={runBulkStatus} disabled={!bulkStatus || bulkBlocked}>تطبيق على {selectedIds.size} شحنة</Button>
+            <Button onClick={runBulkStatus} disabled={!bulkStatus || bulkBlocked || bulkLoading}>{bulkLoading ? 'جاري التطبيق...' : `تطبيق على ${selectedIds.size} شحنة`}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -968,7 +1011,7 @@ export function ShipmentsModule() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkActionOpen(null)}>إلغاء</Button>
-            <Button onClick={runBulkAssign} disabled={!bulkContractor}>إسناد {selectedIds.size} شحنة</Button>
+            <Button onClick={runBulkAssign} disabled={!bulkContractor || bulkLoading}>{bulkLoading ? 'جاري الإسناد...' : `إسناد ${selectedIds.size} شحنة`}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1277,6 +1320,10 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
   const [ev, setEv] = React.useState<any>(null)
   // إعادة الجدولة لليوم (بتقف تاني يوم) — hook قبل أي early return
   const [rescheduleLoading, setRescheduleLoading] = React.useState(false)
+  // حماية من الضغط المكرر — كل عملية تُنفّذ مرة واحدة حتى مع النقر المتكرر
+  const [statusLoading, setStatusLoading] = React.useState(false)
+  const [codLoading, setCodLoading] = React.useState(false)
+  const [deleteLoading, setDeleteLoading] = React.useState(false)
 
   React.useEffect(() => {
     if (shipment && codOpen) {
@@ -1295,7 +1342,7 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
   )
   const sMeta = STATUS_LOOKUP[shipment.status] || { label: shipment.status, tone: '' }
   const cMeta = COLLECTION_LOOKUP[shipment.collectionStatus] || { label: shipment.collectionStatus, tone: '' }
-  const margin = (Number(shipment.freightTotal ?? 0)) - (Number(shipment.totalSuppliers ?? 0))
+  const margin = shipment.margin ?? ((Number(shipment.freightTotal ?? 0)) - (Number(shipment.totalSuppliers ?? 0)))
   // قاعدة «بتقف تاني يوم» — الشحنة متوقفة عن التحميل لأنها لم تُحمّل في يومها
   const stopped = isShipmentStoppedNextDay(shipment)
   const reschedule = async () => {
@@ -1335,6 +1382,8 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
       confirmText: 'تغيير الحالة',
     })
     if (!ok) return
+    if (statusLoading) return
+    setStatusLoading(true)
     try {
       // الخادم يفرض آلة الحالات — 409 برسالة عربية عند انتقال غير مسموح
       await apiPost(`/api/shipments/${id}/status`, { status: newStatus, notes: statusNotes })
@@ -1344,10 +1393,12 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
       onChanged?.()
     } catch (e: any) {
       toast({ title: 'تعذّر تغيير الحالة', description: e.message, variant: 'destructive' })
-    }
+    } finally { setStatusLoading(false) }
   }
 
   const settleCOD = async () => {
+    if (codLoading) return
+    setCodLoading(true)
     try {
       const res = await apiPost(`/api/shipments/${id}/settle-cod`, {
         customerAmount: Number(codCustomerAmount) || 0,
@@ -1358,6 +1409,7 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
       mutate()
       onChanged?.()
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+    finally { setCodLoading(false) }
   }
 
   const remove = async () => {
@@ -1366,12 +1418,15 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
       message: 'هل تريد حذف هذه الشحنة؟ لا يمكن التراجع.',
     })
     if (!ok) return
+    if (deleteLoading) return
+    setDeleteLoading(true)
     try {
       await apiDelete(`/api/shipments/${id}`)
       toast({ title: 'تم الحذف' })
       onChanged?.()
       onBack()
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }) }
+    finally { setDeleteLoading(false) }
   }
 
   // فتح نافذة التعديل — تعبئة الحقول البيضاء فقط (المبالغ لمن يملك صلاحية الأسعار)
@@ -1418,7 +1473,9 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
       <div className="flex items-center justify-between print:hidden">
         <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-4" /> رجوع للقائمة</Button>
         <div className="flex gap-2 flex-wrap items-center">
-          <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => setWaybillOpen(true)}><Printer className="size-4" /> طباعة بوليصة</Button>
+          {has('shipments.print') && (
+            <Button variant="outline" size="sm" className="min-h-[40px]" onClick={() => setWaybillOpen(true)}><Printer className="size-4" /> طباعة بوليصة</Button>
+          )}
           {/* إعادة الجدولة لليوم — إلغاء إيقاف «بتقف تاني يوم» */}
           {stopped && canEdit && (
             <Button variant="outline" size="sm" className="min-h-[40px] font-bold text-rose-700 border-rose-300 hover:bg-rose-50 dark:text-rose-300 dark:border-rose-900/60 dark:hover:bg-rose-950/40" disabled={rescheduleLoading} onClick={reschedule}>
@@ -1443,7 +1500,11 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
               تغيير الحالة
             </Button>
           )}
-          <Button variant="outline" size="sm" className="text-destructive min-h-[40px]" onClick={remove}><Trash2 className="size-4" /> حذف</Button>
+          {has('shipments.delete') && (
+            <Button variant="outline" size="sm" className="text-destructive min-h-[40px]" disabled={deleteLoading} onClick={remove}>
+              {deleteLoading ? 'جاري الحذف...' : <><Trash2 className="size-4" /> حذف</>}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1669,7 +1730,7 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setStatusOpen(false)}>إلغاء</Button>
-            <Button onClick={changeStatus} disabled={isTerminal || !newStatus}>تأكيد</Button>
+            <Button onClick={changeStatus} disabled={isTerminal || !newStatus || statusLoading}>{statusLoading ? 'جاري التغيير...' : 'تأكيد'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1873,7 +1934,7 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCodOpen(false)}>إلغاء</Button>
-            <Button onClick={settleCOD}><Banknote className="size-4" /> تأكيد التسوية</Button>
+            <Button onClick={settleCOD} disabled={codLoading}><Banknote className="size-4" /> {codLoading ? 'جاري التسوية...' : 'تأكيد التسوية'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
