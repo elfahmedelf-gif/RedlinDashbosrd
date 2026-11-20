@@ -157,44 +157,38 @@ export interface ShipmentColsVisibility {
 
 /**
  * يُعيد حالة رؤية كل عمود في جدول الشحنات للمستخدم الحالي.
- * القاعدة:
- *  - الأعمدة الأساسية (shipmentNo/customer/destination/pieces/loadType/contractor/date/status/actions):
- *    ظاهرة iff المستخدم يملك صلاحية العمود (shipments.cols.<col>).
- *  - أعمدة البنود الإضافية (aging/overnight/transfer/drop):
- *    ظاهرة iff المستخدم يملك صلاحية العمود AND shipments.extras.view
- *    (الخادم يفرّغ القيم بدون extras.view فلا فائدة من إظهار عمود فارغ).
- *  - أعمدة المبالغ (freight/suppliers/margin/grand):
- *    ظاهرة iff المستخدم يملك صلاحية العمود AND prices.view
- *    (الخادم يفرّغ القيم بدون prices.view).
- *  - تحديد (select): دائمًا ظاهر.
+ * القاعدة (بسيطة وصريحة):
+ *  - كل عمود ظاهر iff المستخدم يملك صلاحية العمود (shipcols.<col>) — لوحدها كافية.
+ *  - الخادم يمرّر قيمة الحقل بنفس القاعدة بالضبط (shipmentFieldVisibility)،
+ *    فلا يظهر عمود فارغًا أبدًا ولا تتسرّب قيمة لعمود مخفي.
+ *  - المدير (admin عبر '*') يرى كل الأعمدة.
+ *  - عمود التحديد (select): دائمًا ظاهر.
+ *
+ * ملاحظة أمنية: المفاتيح تحت البادئة shipcols. (وليس shipments.) حتى لا
+ * يمنحها نمط shipments.* الشامل ضمنيًا — عرض الأسعار يُمنح صراحةً فقط.
  */
 export function useShipmentCols(): ShipmentColsVisibility {
   const { has } = useAuth()
-  const canPrices = has('prices.view')
-  const canExtras = has('shipments.extras.view')
   const c = (k: string) => has(k)
-  const base = (k: string) => c(k)
-  const extras = (k: string) => c(k) && canExtras
-  const prices = (k: string) => c(k) && canPrices
   const v = {
     select: true,
-    shipmentNo: base('shipments.cols.shipmentNo'),
-    customer: base('shipments.cols.customer'),
-    destination: base('shipments.cols.destination'),
-    pieces: base('shipments.cols.pieces'),
-    loadType: base('shipments.cols.loadType'),
-    contractor: base('shipments.cols.contractor'),
-    date: base('shipments.cols.date'),
-    status: base('shipments.cols.status'),
-    aging: extras('shipments.cols.aging'),
-    overnight: extras('shipments.cols.overnight'),
-    transfer: extras('shipments.cols.transfer'),
-    drop: extras('shipments.cols.drop'),
-    freight: prices('shipments.cols.freight'),
-    suppliers: prices('shipments.cols.suppliers'),
-    margin: prices('shipments.cols.margin'),
-    grand: prices('shipments.cols.grand'),
-    actions: base('shipments.cols.actions'),
+    shipmentNo: c('shipcols.shipmentNo'),
+    customer: c('shipcols.customer'),
+    destination: c('shipcols.destination'),
+    pieces: c('shipcols.pieces'),
+    loadType: c('shipcols.loadType'),
+    contractor: c('shipcols.contractor'),
+    date: c('shipcols.date'),
+    status: c('shipcols.status'),
+    aging: c('shipcols.aging'),
+    overnight: c('shipcols.overnight'),
+    transfer: c('shipcols.transfer'),
+    drop: c('shipcols.drop'),
+    freight: c('shipcols.freight'),
+    suppliers: c('shipcols.suppliers'),
+    margin: c('shipcols.margin'),
+    grand: c('shipcols.grand'),
+    actions: c('shipcols.actions'),
   }
   const extrasArr = [v.aging, v.overnight, v.transfer, v.drop]
   const pricesArr = [v.freight, v.suppliers, v.margin, v.grand]

@@ -1,8 +1,12 @@
 // ============================================================================
 // فلترة الأسعار/المبالغ على الخادم — إخفاء قوي للحقول المالية لغير المصرح لهم
-// صلاحية prices.view تُمنح فقط للمالك (admin عبر '*') ومحمود (ops عبر دور إضافي).
+// صلاحية prices.view تُمنح فقط للمالك (admin عبر '*') ومن يصرّح له المدير.
 // هذه الطبقة تضمن أن واجهة المستخدم لن ترى المبالغ حتى لو خُبئت في الواجهة فقط —
 // الالتزام بتطبيق السياسة على الخادم (server-side enforcement) وليس في الواجهة فقط.
+//
+// + رؤية لكل حقل على حدة وفق صلاحيات أعمدة جدول الشحنات (shipcols.*):
+//   صلاحية العمود لوحدها (أو صلاحية الفئة الأوسع) كافية لتمرير قيمة الحقل —
+//   فيتطابق ما يُعرض في الجدول مع ما يُمرَّر من الخادم تمامًا (بلا تناقض).
 // ============================================================================
 import { matchPermission, type SessionUser } from '../permissions'
 
@@ -22,26 +26,89 @@ export function canSeeExtras(user: { permissions: string[] } | null | undefined)
   return matchPermission(user.permissions, 'shipments.extras.view')
 }
 
+// ---------------------------------------------------------------------------
+// رؤية حقول الشحنة لكل حقل على حدة (أعمدة الجدول + الحقول الصارمة)
+// ---------------------------------------------------------------------------
+
 /**
- * يُفرغ الحقول المالية من كائن شحنة — يُستعمل في API /api/shipments و /api/shipments/[id]
- * مستويان للإخفاء:
- *  - أسعار الشركة (نولون العميل/المقاول، التكلفة، التحصيل، الهامش، الأحجام) → صلاحية prices.view
- *  - بنود النقلة الإضافية (تعتيق/مبيت/مرتجع/تحويلة/أخرى/دروب) → صلاحية shipments.extras.view
- *    (تُمنح تلقائيًا لمن يملك extra_costs.view عبر خريطة التوافق)
+ * خريطة رؤية حقول الشحنة للمستخدم — تُحسب من صلاحياته مرة واحدة لكل طلب.
+ *  - freight/suppliers/margin/grand: صلاحية العمود (shipcols.*) أو prices.view
+ *  - aging/overnight/transfer/drop: صلاحية العمود (shipcols.*) أو shipments.extras.view
+ *  - strict (salePrice/customerPay/ton15/ton3/m6): prices.view فقط (ليست أعمدة جدول)
+ *  - canExtras تتحكم أيضًا في returns/other (بنود إضافية بلا أعمدة مخصصة)
+ */
+export interface ShipmentFieldVisibility {
+  canPrices: boolean
+  canExtras: boolean
+  /** نولون العميل — freightTotal/freightCost */
+  freight: boolean
+  /** نولون المقاول — totalSuppliers */
+  suppliers: boolean
+  /** هامش الربح — margin */
+  margin: boolean
+  /** الإجمالي النقلة — المجموع المحسوب */
+  grand: boolean
+  aging: boolean
+  overnight: boolean
+  transfer: boolean
+  drop: boolean
+  /** الحقول الصارمة غير المعروضة كأعمدة (salePrice/customerPay/ton15/ton3/m6) */
+  strict: boolean
+}
+
+export const SHIPMENT_VIS_FULL: ShipmentFieldVisibility = {
+  canPrices: true, canExtras: true,
+  freight: true, suppliers: true, margin: true, grand: true,
+  aging: true, overnight: true, transfer: true, drop: true,
+  strict: true,
+}
+
+export const SHIPMENT_VIS_NONE: ShipmentFieldVisibility = {
+  canPrices: false, canExtras: false,
+  freight: false, suppliers: false, margin: false, grand: false,
+  aging: false, overnight: false, transfer: false, drop: false,
+  strict: false,
+}
+
+/** حساب خريطة رؤية حقول الشحنة من صلاحيات المستخدم */
+export function shipmentFieldVisibility(user: { permissions: string[] } | null | undefined): ShipmentFieldVisibility {
+  const perms = user?.permissions ?? []
+  const has = (k: string) => matchPermission(perms, k)
+  const canPrices = has('prices.view')
+  const canExtras = has('shipments.extras.view')
+  return {
+    canPrices,
+    canExtras,
+    freight: canPrices || has('shipcols.freight'),
+    suppliers: canPrices || has('shipcols.suppliers'),
+    margin: canPrices || has('shipcols.margin'),
+    grand: canPrices || has('shipcols.grand'),
+    aging: canExtras || has('shipcols.aging'),
+    overnight: canExtras || has('shipcols.overnight'),
+    transfer: canExtras || has('shipcols.transfer'),
+    drop: canExtras || has('shipcols.drop'),
+    strict: canPrices,
+  }
+}
+
+/**
+ * يُفرغ حقول الشحنة وفق خريطة الرؤية — يُستعمل في API /api/shipments و /api/shipments/[id]
  * (نُبقي policyQty لأنها كمية لا سعر)
  */
-export function stripShipmentPrices<T extends Record<string, any>>(s: T, canPrices: boolean, canExtras: boolean = canPrices): T {
-  if (canPrices) return s
-  const strictHide = [
-    'freightCost', 'freightTotal', 'salePrice', 'customerPay', 'totalSuppliers',
-    'ton15', 'ton3', 'm6', 'margin',
-  ]
-  const extrasHide = ['aging', 'overnight', 'returns', 'transfer', 'other', 'drop']
-  const hide = canExtras ? strictHide : [...strictHide, ...extrasHide]
+export function stripShipmentPrices<T extends Record<string, any>>(s: T, vis: ShipmentFieldVisibility): T {
   const out: any = { ...s }
-  for (const k of hide) {
-    if (k in out) out[k] = null
+  const setNull = (keys: string[]) => {
+    for (const k of keys) if (k in out) out[k] = null
   }
+  if (!vis.strict) setNull(['salePrice', 'customerPay', 'ton15', 'ton3', 'm6'])
+  if (!vis.freight) setNull(['freightCost', 'freightTotal'])
+  if (!vis.suppliers) setNull(['totalSuppliers'])
+  if (!vis.margin && 'margin' in out) out.margin = null
+  if (!vis.aging) setNull(['aging'])
+  if (!vis.overnight) setNull(['overnight'])
+  if (!vis.transfer) setNull(['transfer'])
+  if (!vis.drop) setNull(['drop'])
+  if (!vis.canExtras) setNull(['returns', 'other'])
   return out
 }
 
@@ -56,7 +123,7 @@ export function stripVoucherPrices<T extends Record<string, any>>(v: T, canPrice
     out.items = out.items.map((it: any) => {
       const itOut = { ...it }
       if (itOut.shipment) {
-        itOut.shipment = stripShipmentPrices(itOut.shipment, false)
+        itOut.shipment = stripShipmentPrices(itOut.shipment, SHIPMENT_VIS_NONE)
       }
       return itOut
     })

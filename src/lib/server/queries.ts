@@ -11,7 +11,7 @@ import { VOUCHER_CATEGORIES, VOUCHER_STATES, VOUCHER_TYPES } from '../voucher-ca
 import { EXTRA_COST_SOURCE, extraCostTypeLabel } from '../extra-cost-catalog'
 import { enrichVoucherRows, voucherInclude } from './vouchers-queries'
 import { isShipmentStoppedNextDay } from '../shipment-catalog'
-import { canSeeExtras, canSeePrices, reportRequiresPrices, stripDashboardStats, stripParties, stripShipmentPrices, stripVoucherPrices, stripVoucherStats } from './prices'
+import { canSeePrices, reportRequiresPrices, SHIPMENT_VIS_FULL, shipmentFieldVisibility, stripDashboardStats, stripParties, stripShipmentPrices, stripVoucherPrices, stripVoucherStats, type ShipmentFieldVisibility } from './prices'
 
 const SHIPMENT_INCLUDE = {
   customer: { select: { id: true, name: true } },
@@ -44,7 +44,7 @@ function ref(r?: { id: string; name: string } | null) {
   return r ? { id: r.id, name: r.name } : null
 }
 
-export function enrichShipment(s: ShipmentRow, voucherLinks?: Map<string, { id: string; voucherNo: string; type: string; status: string; createdAt: Date; amount: number | null; notes: string | null }[]>, canPrices: boolean = true, canExtras: boolean = canPrices) {
+export function enrichShipment(s: ShipmentRow, voucherLinks?: Map<string, { id: string; voucherNo: string; type: string; status: string; createdAt: Date; amount: number | null; notes: string | null }[]>, vis: ShipmentFieldVisibility = SHIPMENT_VIS_FULL) {
   const sell = Number(s.freightTotal ?? 0)
   const cost = Number(s.totalSuppliers ?? 0)
   const history = (s.statusHistory ?? []).map((h) => ({ status: h.toStatus, notes: h.notes ?? null, date: h.changedAt, userName: h.userName ?? null }))
@@ -63,10 +63,10 @@ export function enrichShipment(s: ShipmentRow, voucherLinks?: Map<string, { id: 
   }
   // إخفاء روابط الإذن التي تحمل مبالغ لو المستخدم لا يملك صلاحية الأسعار
   // (روابط السندات المالية تكشف المبلغ — نُفرّغها)
-  if (!canPrices) {
+  if (!vis.canPrices) {
     base.vouchers = base.vouchers.map((v: any) => ({ ...v, amount: null, notes: v.notes }))
   }
-  return stripShipmentPrices(base, canPrices, canExtras)
+  return stripShipmentPrices(base, vis)
 }
 
 /** روابط إذن↔شحنة لدفعة معرفات (لتفادي N+1) */
@@ -91,8 +91,8 @@ export async function voucherLinksForShipments(shipments: { id: string }[]) {
 // Shipments
 // ---------------------------------------------------------------------------
 export async function listShipments(q: URLSearchParams, user?: { permissions: string[] } | null) {
-  const canPrices = canSeePrices(user)
-  const canExtras = canSeeExtras(user)
+  // رؤية الحقول لكل حقل على حدة — صلاحيات الأعمدة (shipcols.*) أو الفئة الأوسع
+  const vis = shipmentFieldVisibility(user)
   const search = (q.get('q') ?? '').trim().toLowerCase()
   const status = q.get('status')
   const dest = q.get('destination')
@@ -160,21 +160,21 @@ export async function listShipments(q: URLSearchParams, user?: { permissions: st
     postponed: countIn('postponed'),
     returned: countIn('returned', 'received_returned'),
     delivered: countIn('delivered'),
-    aging: canExtras ? extrasSum.aging : null,
-    overnight: canExtras ? extrasSum.overnight : null,
-    transfer: canExtras ? extrasSum.transfer : null,
-    drop: canExtras ? extrasSum.drop : null,
-    // الإجمالي النقلة = نولون العميل + البنود الإضافية (يُكشف لمن يملك صلاحية الأسعار فقط)
-    freight: canPrices ? freightSum : null,
-    suppliers: canPrices ? suppliersSum : null,
-    margin: canPrices ? round2(freightSum - suppliersSum) : null,
-    grand: canPrices ? grandSum : null,
+    aging: vis.aging ? extrasSum.aging : null,
+    overnight: vis.overnight ? extrasSum.overnight : null,
+    transfer: vis.transfer ? extrasSum.transfer : null,
+    drop: vis.drop ? extrasSum.drop : null,
+    // الإجمالي النقلة = نولون العميل + البنود الإضافية — يُكشف وفق صلاحية العمود/الفئة
+    freight: vis.freight ? freightSum : null,
+    suppliers: vis.suppliers ? suppliersSum : null,
+    margin: vis.margin ? round2(freightSum - suppliersSum) : null,
+    grand: vis.grand ? grandSum : null,
   }
 
   // روابط الإذن↔شحنة لكل الصفوف المفلترة (كانت للصفين الـ60 الأول فقط)
   const links = await voucherLinksForShipments(filteredRows)
   const items = filteredRows.map((s) => {
-    const enriched = enrichShipment(s, links, canPrices, canExtras)
+    const enriched = enrichShipment(s, links, vis)
     return { ...enriched, stopped: s._stopped }
   })
   const page = Math.max(1, parseInt(q.get('page') || '1', 10))
@@ -183,12 +183,11 @@ export async function listShipments(q: URLSearchParams, user?: { permissions: st
 }
 
 export async function getShipment(id: string, user?: { permissions: string[] } | null) {
-  const canPrices = canSeePrices(user)
-  const canExtras = canSeeExtras(user)
+  const vis = shipmentFieldVisibility(user)
   const s = await db.shipment.findUnique({ where: { id }, include: SHIPMENT_INCLUDE })
   if (!s) throw new ApiError(404, 'الشحنة غير موجودة')
   const links = await voucherLinksForShipments([s])
-  return enrichShipment(s, links, canPrices, canExtras)
+  return enrichShipment(s, links, vis)
 }
 
 export async function shipmentVouchers(id: string, user?: { permissions: string[] } | null) {
@@ -564,7 +563,8 @@ export async function report(type: string, q: URLSearchParams, user?: { permissi
 
   if (type === 'shipments' || type === 'freight-margin') {
     const rows = await db.shipment.findMany({ where: dateWhere('date', from, to), include: SHIPMENT_INCLUDE, orderBy: { date: 'desc' } })
-    const items = rows.map((s) => enrichShipment(s, undefined, canPrices)).map((s: any) => {
+    // تقارير الأسعار محمية بـ prices.view قبل الوصول هنا — الرؤية كاملة
+    const items = rows.map((s) => enrichShipment(s, undefined, SHIPMENT_VIS_FULL)).map((s: any) => {
       // هامش موحّد في كل النظام: نولون البيع − تكلفة المقاول
       const sell = s.salePrice ?? s.freightTotal ?? 0
       return { ...s, sell, margin: round2(sell - (s.totalSuppliers ?? 0)) }

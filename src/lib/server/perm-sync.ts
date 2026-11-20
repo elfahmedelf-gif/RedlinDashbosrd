@@ -15,32 +15,44 @@ import { parsePerms } from './passwords'
 import { logAudit } from './audit'
 import { PERMISSION_CATALOG, GROUP_MODULE_KEY, matchPermission } from '@/lib/permissions'
 
-/** مفاتيح أعمدة جدول الشحنات — مُسطّرة هنا للاستخدام في الهجرة */
+/** مفاتيح أعمدة جدول الشحنات (النطاق الجديد shipcols.*) — تُستخدم في الهجرة */
 export const SHIPMENTS_COL_KEYS_BASELINE = [
-  'shipments.cols.shipmentNo',
-  'shipments.cols.customer',
-  'shipments.cols.destination',
-  'shipments.cols.pieces',
-  'shipments.cols.loadType',
-  'shipments.cols.contractor',
-  'shipments.cols.date',
-  'shipments.cols.status',
-  'shipments.cols.actions',
+  'shipcols.shipmentNo',
+  'shipcols.customer',
+  'shipcols.destination',
+  'shipcols.pieces',
+  'shipcols.loadType',
+  'shipcols.contractor',
+  'shipcols.date',
+  'shipcols.status',
+  'shipcols.actions',
 ] as const
 
 export const SHIPMENTS_COL_KEYS_EXTRAS = [
-  'shipments.cols.aging',
-  'shipments.cols.overnight',
-  'shipments.cols.transfer',
-  'shipments.cols.drop',
+  'shipcols.aging',
+  'shipcols.overnight',
+  'shipcols.transfer',
+  'shipcols.drop',
 ] as const
 
 export const SHIPMENTS_COL_KEYS_PRICES = [
-  'shipments.cols.freight',
-  'shipments.cols.suppliers',
-  'shipments.cols.margin',
-  'shipments.cols.grand',
+  'shipcols.freight',
+  'shipcols.suppliers',
+  'shipcols.margin',
+  'shipcols.grand',
 ] as const
+
+/**
+ * خريطة إعادة التسمية من النطاق القديم (shipments.cols.*) إلى الجديد (shipcols.*).
+ * السبب: النطاق القديم كان يقع تحت نمط `shipments.*` الشامل — أي دور يملك
+ * `shipments.*` كان سيحصل على كل أعمدة الأسعار ضمنيًا دون تصريح صريح،
+ * وهذا يكسر سياسة «نولون العميل لمن يُصرَّح له فقط». النطاق الجديد معزول.
+ */
+export const SHIPMENTS_COL_RENAME: Record<string, string> = Object.fromEntries([
+  ...SHIPMENTS_COL_KEYS_BASELINE,
+  ...SHIPMENTS_COL_KEYS_EXTRAS,
+  ...SHIPMENTS_COL_KEYS_PRICES,
+].map((k) => [`shipments.cols.${k.replace('shipcols.', '')}`, k]))
 
 /**
  * الإضافات الافتراضية لكل دور معروف — تُضاف فوق صلاحياته الحالية (لا تُطرح أبدًا).
@@ -180,7 +192,7 @@ export async function syncPermissionsCatalog(): Promise<PermSyncResult> {
     }
   }
 
-  // 3) هجرة أحادية المرة لأعمدة جدول الشحنات — تجري بعد تطبيق الإضافات الافتراضية
+  // 3) هجرة v2 لأعمدة جدول الشحنات — تجري بعد تطبيق الإضافات الافتراضية
   //    حتى تستقر صلاحيات الفئة (shipments.view / extras.view / prices.view) للأدوار المعروفة
   //    (تعيد قراءة الأدوار من DB لالتقاط صلاحيات الفئة المُضافة للتو)
   const colsMigration = await migrateShipmentColumnsOnce()
@@ -193,21 +205,18 @@ export async function syncPermissionsCatalog(): Promise<PermSyncResult> {
 }
 
 /**
- * هجرة أحادية المرة لمنح أعمدة جدول الشحنات للأدوار القائمة بناءً على صلاحيات الفئة.
- * تُحمى بعلم Setting `perms.cols.v1` — تُشغَّل مرة واحدة فقط ثم لا تُعاد أبدًا
- * (حتى لو حذف المدير عمودًا من دور، لا تُعاد إضافته — يبقى التحكم صراحةً بيد المدير).
+ * هجرة v2 لأعمدة جدول الشحنات — تُشغَّل مرة واحدة فقط (علم Setting `perms.cols.v2`):
+ *   (أ) إعادة تسمية المفاتيح القديمة `shipments.cols.*` → `shipcols.*` مع الحفاظ 1:1
+ *       على ما منحه المدير يدويًا (لا يُفقد ولا يُعاد إضافته ما حُذف عمدًا).
+ *   (ب) للأدوار التي لا تملك أي مفاتيح أعمدة (قواعد بيانات جديدة أو أدوار جديدة
+ *       لم تُلمس الهجرة): تُمنح الأعمدة المناسبة بناءً على صلاحيات الفئة —
+ *       shipments.view ← الأساسية، shipments.extras.view ← البنود الإضافية، prices.view ← المبالغ.
  *
- * القواعد:
- *  - دور admin (name === 'admin'): لا يُلمس — يرى الكل عبر '*'.
- *  - أي دور يملك shipments.view (أو shipments.* أو *): يُمنح الأعمدة الأساسية الـ9.
- *  - أي دور يملك shipments.extras.view (أو extra_costs.view عبر التوافق): يُمنح أعمدة البنود الإضافية الـ4.
- *  - أي دور يملك prices.view (أو *): يُمنح أعمدة المبالغ الـ4.
- *
- * تُعاد القيمة migrated=true إذا تمت إضافة أي صلاحية عمود جديدة.
+ * بعد ضبط العلم لا تُعاد الهجرة أبدًا — التحكم في الأعمدة يصبح صريحًا بيد المدير بالكامل.
  */
 async function migrateShipmentColumnsOnce(): Promise<{ migrated: boolean; rolesUpdated: string[]; addedKeys: number }> {
   // علم الهجرة — يمنع إعادة التشغيل
-  const flag = await db.setting.findUnique({ where: { key: 'perms.cols.v1' } }).catch(() => null)
+  const flag = await db.setting.findUnique({ where: { key: 'perms.cols.v2' } }).catch(() => null)
   if (flag) return { migrated: false, rolesUpdated: [], addedKeys: 0 }
 
   // إعادة قراءة الأدوار من DB لالتقاط أي صلاحيات فئة أُضيفت للتو في مرحلة الإضافات الافتراضية
@@ -225,27 +234,31 @@ async function migrateShipmentColumnsOnce(): Promise<{ migrated: boolean; rolesU
     const set = new Set(current)
     let changed = false
 
-    const grant = (keys: readonly string[]) => {
-      for (const k of keys) {
-        if (!set.has(k)) {
-          set.add(k)
-          changed = true
-          addedKeys++
-        }
+    // (أ) إعادة تسمية المفاتيح القديمة إلى النطاق المعزول الجديد
+    for (const [oldKey, newKey] of Object.entries(SHIPMENTS_COL_RENAME)) {
+      if (set.has(oldKey)) {
+        set.delete(oldKey)
+        set.add(newKey)
+        changed = true
       }
     }
 
-    // الأعمدة الأساسية — لكل من يرى الشحنات
-    if (matchPermission(current, 'shipments.view')) {
-      grant(SHIPMENTS_COL_KEYS_BASELINE)
-    }
-    // أعمدة البنود الإضافية — لمن يرى بنود النقلة
-    if (matchPermission(current, 'shipments.extras.view')) {
-      grant(SHIPMENTS_COL_KEYS_EXTRAS)
-    }
-    // أعمدة المبالغ — لمن يرى الأسعار
-    if (matchPermission(current, 'prices.view')) {
-      grant(SHIPMENTS_COL_KEYS_PRICES)
+    // (ب) للأدوار بلا أي أعمدة — منح أولي بحسب صلاحيات الفئة
+    const hasAnyCol = Object.values(SHIPMENTS_COL_RENAME).some((k) => set.has(k))
+    if (!hasAnyCol) {
+      const permsNow = Array.from(set)
+      const grant = (keys: readonly string[]) => {
+        for (const k of keys) {
+          if (!set.has(k)) {
+            set.add(k)
+            changed = true
+            addedKeys++
+          }
+        }
+      }
+      if (matchPermission(permsNow, 'shipments.view')) grant(SHIPMENTS_COL_KEYS_BASELINE)
+      if (matchPermission(permsNow, 'shipments.extras.view')) grant(SHIPMENTS_COL_KEYS_EXTRAS)
+      if (matchPermission(permsNow, 'prices.view')) grant(SHIPMENTS_COL_KEYS_PRICES)
     }
 
     if (changed) {
@@ -259,7 +272,7 @@ async function migrateShipmentColumnsOnce(): Promise<{ migrated: boolean; rolesU
         action: 'update',
         entity: 'role',
         entityId: role.id,
-        notes: `هجرة أعمدة جدول الشحنات (cols.v1) — إضافة ${SHIPMENTS_COL_KEYS_BASELINE.length + SHIPMENTS_COL_KEYS_EXTRAS.length + SHIPMENTS_COL_KEYS_PRICES.length} صلاحية عمود محتملة للدور "${role.label || role.name}"`,
+        notes: `هجرة أعمدة جدول الشحنات v2 — نقل مفاتيح الأعمدة إلى النطاق المعزول shipcols.* للدور "${role.label || role.name}"`,
         user: { userId: 'system', username: 'permissions-cols-migrate' },
       }).catch(() => {})
     }
@@ -267,9 +280,9 @@ async function migrateShipmentColumnsOnce(): Promise<{ migrated: boolean; rolesU
 
   // ضبط علم الهجرة دائمًا (حتى لو لم يحدث تغيير — يثبت أن الهجرة جرت)
   await db.setting.upsert({
-    where: { key: 'perms.cols.v1' },
+    where: { key: 'perms.cols.v2' },
     update: { value: 'done' },
-    create: { key: 'perms.cols.v1', value: 'done', label: 'هجرة أعمدة جدول الشحنات v1', category: 'permissions' },
+    create: { key: 'perms.cols.v2', value: 'done', label: 'هجرة أعمدة جدول الشحنات v2 (نطاق shipcols)', category: 'permissions' },
   }).catch(() => {})
 
   return { migrated: anyChange, rolesUpdated, addedKeys }

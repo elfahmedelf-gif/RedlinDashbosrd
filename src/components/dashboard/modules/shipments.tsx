@@ -1284,6 +1284,8 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
   const canPrices = useCanPrices()
   // صلاحية رؤية بنود النقلة الإضافية (تعتيق/مبيت/تحويلة/دروب) — تشغيلية منفصلة
   const canExtras = useCanExtras()
+  // رؤية الأعمدة المستقلة (shipcols.*) — تُوحَّد مع الجدول والخادم في كل شاشات العرض
+  const cols = useShipmentCols()
   // صلاحيات التشغيل — يفرضها الخادم أيضًا (تعديل الحقول البيضاء / تغيير الحالة)
   const canEdit = has('shipments.edit')
   const canChangeStatus = has('shipments.status')
@@ -1507,24 +1509,30 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
         </CardContent>
       </Card>
 
-      {/* شريط هامش الربح — يُعرض فقط لمن يملك صلاحية الأسعار */}
-      {canPrices && (
+      {/* شريط هامش الربح — كل خانة تظهر وفق صلاحية عمودها (نولون/تكلفة/هامش) */}
+      {(cols.freight || cols.suppliers || cols.margin) && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-            <div>
-              <div className="text-xs text-muted-foreground">نولون العميل (بيع)</div>
-              <div className="text-lg font-bold tnum num-ltr">{fmtNum(shipment.freightTotal ?? 0)} ج.م</div>
-            </div>
-            <div className="sm:border-x sm:border-border/60">
-              <div className="text-xs text-muted-foreground">نولون المقاول (تكلفة)</div>
-              <div className="text-lg font-bold tnum num-ltr">{fmtNum(shipment.totalSuppliers ?? 0)} ج.م</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">هامش الربح (صافي)</div>
-              <div className={cn('text-lg font-bold tnum num-ltr', margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>
-                {fmtNum(margin)} ج.م
+            {cols.freight && (
+              <div>
+                <div className="text-xs text-muted-foreground">نولون العميل (بيع)</div>
+                <div className="text-lg font-bold tnum num-ltr">{fmtNum(shipment.freightTotal ?? 0)} ج.م</div>
               </div>
-            </div>
+            )}
+            {cols.suppliers && (
+              <div className={cn(cols.freight && 'sm:border-x sm:border-border/60')}>
+                <div className="text-xs text-muted-foreground">نولون المقاول (تكلفة)</div>
+                <div className="text-lg font-bold tnum num-ltr">{fmtNum(shipment.totalSuppliers ?? 0)} ج.م</div>
+              </div>
+            )}
+            {cols.margin && (
+              <div>
+                <div className="text-xs text-muted-foreground">هامش الربح (صافي)</div>
+                <div className={cn('text-lg font-bold tnum num-ltr', margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400')}>
+                  {fmtNum(margin)} ج.م
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1555,43 +1563,47 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* بطاقة المبالغ المالية — الأسعار لمن يملك prices.view، وبنود النقلة لمن يملك shipments.extras.view */}
-        {canPrices ? (
-          <Card>
-            <CardContent className="p-4 space-y-2 text-sm">
-              <h3 className="font-semibold mb-2">المبالغ المالية</h3>
-              <Row label="تكلفة النولون" value={`${fmtNum(shipment.freightCost)} ج.م`} money />
-              <Row label="إجمالي النولون" value={`${fmtNum(shipment.freightTotal)} ج.م`} money bold />
-              <Row label="سعر البيع" value={`${fmtNum(shipment.salePrice ?? 0)} ج.م`} money />
-              <Row label="تحصيل العميل" value={`${fmtNum(shipment.customerPay)} ج.م`} money />
-              <Row label="إجمالي الموردين" value={`${fmtNum(shipment.totalSuppliers)} ج.م`} money bold />
-              <Row label="التعتيق" value={`${fmtNum(shipment.aging)} ج.م`} money />
-              <Row label="المبيت" value={`${fmtNum(shipment.overnight)} ج.م`} money />
-              <Row label="المرتجع" value={`${fmtNum(shipment.returns)} ج.م`} money />
-              <Row label="التحويلة" value={`${fmtNum(shipment.transfer)} ج.م`} money />
-              <Row label="أخرى / Drop" value={`${fmtNum((shipment.other ?? 0) + (shipment.drop ?? 0))} ج.م`} money />
-            </CardContent>
-          </Card>
-        ) : canExtras ? (
-          <Card>
-            <CardContent className="p-4 space-y-2 text-sm">
-              <h3 className="font-semibold mb-2">بنود النقلة الإضافية</h3>
-              <Row label="التعتيق" value={`${fmtNum(shipment.aging)} ج.م`} money />
-              <Row label="المبيت" value={`${fmtNum(shipment.overnight)} ج.م`} money />
-              <Row label="المرتجع" value={`${fmtNum(shipment.returns)} ج.م`} money />
-              <Row label="التحويلة" value={`${fmtNum(shipment.transfer)} ج.م`} money />
-              <Row label="أخرى / Drop" value={`${fmtNum((shipment.other ?? 0) + (shipment.drop ?? 0))} ج.م`} money />
-              <p className="text-[10px] text-muted-foreground pt-1">الأسعار (نولون/تكلفة/هامش) محجوبة — لا تملك صلاحية رؤية الأسعار.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardContent className="p-4 space-y-2 text-sm">
-              <h3 className="font-semibold mb-2">المبالغ المالية</h3>
-              <p className="text-xs text-muted-foreground">المبالغ وبنود النقلة محجوبة — لا تملك صلاحية رؤيتها.</p>
-            </CardContent>
-          </Card>
-        )}
+        {/* بطاقة المبالغ المالية — كل سطر يظهر وفق صلاحيته (عمود مستقل shipcols.* أو الفئة الأوسع) */}
+        {(() => {
+          const showFreightCost = cols.freight
+          const showFreightTotal = cols.freight
+          const showSalePrice = canPrices
+          const showCustomerPay = canPrices
+          const showSuppliers = cols.suppliers
+          const showAging = canExtras || cols.aging
+          const showOvernight = canExtras || cols.overnight
+          const showReturns = canExtras
+          const showTransfer = canExtras || cols.transfer
+          const showOtherDrop = canExtras || cols.drop
+          const anyRow = showFreightCost || showFreightTotal || showSalePrice || showCustomerPay || showSuppliers || showAging || showOvernight || showReturns || showTransfer || showOtherDrop
+          if (!anyRow) {
+            return (
+              <Card>
+                <CardContent className="p-4 space-y-2 text-sm">
+                  <h3 className="font-semibold mb-2">المبالغ المالية</h3>
+                  <p className="text-xs text-muted-foreground">المبالغ وبنود النقلة محجوبة — لا تملك صلاحية رؤيتها.</p>
+                </CardContent>
+              </Card>
+            )
+          }
+          return (
+            <Card>
+              <CardContent className="p-4 space-y-2 text-sm">
+                <h3 className="font-semibold mb-2">المبالغ المالية</h3>
+                {showFreightCost && <Row label="تكلفة النولون" value={`${fmtNum(shipment.freightCost)} ج.م`} money />}
+                {showFreightTotal && <Row label="إجمالي النولون" value={`${fmtNum(shipment.freightTotal)} ج.م`} money bold />}
+                {showSalePrice && <Row label="سعر البيع" value={`${fmtNum(shipment.salePrice ?? 0)} ج.م`} money />}
+                {showCustomerPay && <Row label="تحصيل العميل" value={`${fmtNum(shipment.customerPay)} ج.م`} money />}
+                {showSuppliers && <Row label="إجمالي الموردين" value={`${fmtNum(shipment.totalSuppliers)} ج.م`} money bold />}
+                {showAging && <Row label="التعتيق" value={`${fmtNum(shipment.aging)} ج.م`} money />}
+                {showOvernight && <Row label="المبيت" value={`${fmtNum(shipment.overnight)} ج.م`} money />}
+                {showReturns && <Row label="المرتجع" value={`${fmtNum(shipment.returns)} ج.م`} money />}
+                {showTransfer && <Row label="التحويلة" value={`${fmtNum(shipment.transfer)} ج.م`} money />}
+                {showOtherDrop && <Row label="أخرى / Drop" value={`${fmtNum((shipment.other ?? 0) + (shipment.drop ?? 0))} ج.م`} money />}
+              </CardContent>
+            </Card>
+          )
+        })()}
         <Card>
           <CardContent className="p-4 space-y-2 text-sm">
             <h3 className="font-semibold mb-2">التواريخ والملاحظات</h3>
