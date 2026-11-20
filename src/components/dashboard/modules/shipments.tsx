@@ -19,7 +19,7 @@ import { WaybillPrint } from '../waybill-print'
 import { DataTablePagination } from '../data-table-pagination'
 import { fetcher } from '@/lib/api'
 import { apiPostSync as apiPost, apiPatchSync as apiPatch, apiDeleteSync as apiDelete } from '@/lib/sync'
-import { exportToCSV } from '@/lib/export'
+import { downloadFile } from '@/lib/download'
 import { fmtNum, fmtDate, fmtDateTime } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import { useLookup } from '@/lib/lookups'
@@ -325,50 +325,9 @@ export function ShipmentsModule() {
     finally { setBulkLoading(false) }
   }
 
-  // ---- export to CSV — كل النتائج المطابقة (لا الصفحة الحالية فقط) ----
-  // يُجلب بنفس الفلاتر على دفعات 500 صف حتى 5000 صف كحد أقصى — يفشل بأمان برسالة واضحة
+  // ---- تصدير Excel احترافي — يُولَّد على الخادم بنفس الفلاتر والصلاحيات ----
+  // شريط عنوان + فلاتر موصوفة + ملخص أرقام الشاشة + شارات حالة ملوّنة + إجماليات
   const [exporting, setExporting] = React.useState(false)
-  const buildExportRow = (s: Shipment) => {
-    const r: Record<string, any> = {}
-    if (cols.shipmentNo) {
-      r['رقم الشحنة'] = s.shipmentNo
-      r['رقم البوليصة'] = s.billNo
-      r['Ship Part'] = s.shipPart
-    }
-    if (cols.customer) {
-      r['العميل'] = s.customer?.name || s.recipientName
-      r['المستلم'] = s.recipientName
-    }
-    if (cols.destination) {
-      r['الوجهة'] = s.destination
-      r['الوجهة EN'] = s.destinationEn
-      r['كود الخط'] = s.routeCode
-    }
-    if (cols.pieces) r['الكمية (سياسات)'] = s.policyQty
-    // عدد الشاحنات: الصريح (truckCount) أو مجموع المقاسات — نفس منطق العرض في التفاصيل
-    const trucks = s.truckCount ?? (((s.ton15 ?? 0) + (s.ton3 ?? 0) + (s.m6 ?? 0)) || null)
-    r['عدد الشاحنات'] = trucks
-    if (cols.loadType) {
-      r['شاحنات 1.5 طن'] = s.ton15
-      r['شاحنات 3 طن'] = s.ton3
-      r['شاحنات 6م'] = s.m6
-      r['النوع'] = s.loadType
-    }
-    if (cols.contractor) r['المقاول'] = s.contractor?.name
-    r['الفرع'] = s.branch?.name // الفرع دائمًا — معلومة لوجستية غير مالية
-    if (cols.date) r['تاريخ الشحن'] = s.date ? fmtDate(s.date) : ''
-    if (cols.status) r['الحالة'] = STATUS_LABEL[s.status]?.label || s.status
-    // المبالغ — صلاحية العمود + prices.view
-    if (cols.freight) r['نولون العميل'] = s.freightTotal ?? s.freightCost
-    if (cols.suppliers) r['نولون المقاول'] = s.totalSuppliers ?? 0
-    if (cols.margin) r['هامش الربح'] = s.margin ?? ((s.freightTotal ?? 0) - (s.totalSuppliers ?? 0))
-    // بنود النقلة الإضافية — صلاحية العمود + extras.view
-    if (cols.aging) r['تعتيق'] = s.aging
-    if (cols.overnight) r['مبيت'] = s.overnight
-    if (cols.transfer) r['تحويلة'] = s.transfer
-    if (cols.drop) r['دروب'] = s.drop
-    return r
-  }
   const exportShipments = async () => {
     if (!pageItems.length) {
       toast({ title: 'لا توجد بيانات للتصدير' })
@@ -377,20 +336,10 @@ export function ShipmentsModule() {
     if (exporting) return
     setExporting(true)
     try {
-      const all: Shipment[] = []
-      const maxRows = 5000
-      for (let p = 1; p <= Math.ceil(maxRows / 500); p++) {
-        const qp = new URLSearchParams(params.toString())
-        qp.set('page', String(p))
-        qp.set('pageSize', '500')
-        const res: ShipmentsResponse = await fetcher(`/api/shipments?${qp.toString()}`)
-        all.push(...(res?.items ?? []))
-        if (!res?.items?.length || p >= (res.totalPages ?? 1) || all.length >= maxRows) break
-      }
-      if (!all.length) { toast({ title: 'لا توجد بيانات للتصدير' }); return }
-      // كل عمود يُصدّر فقط إذا كان ظاهرًا للمستخدم (cols) — ضمان عدم تسرّب بيانات لمن لا يراها
-      exportToCSV(all.map(buildExportRow), `shipments-${localDateStr()}.csv`)
-      toast({ title: `تم تصدير ${fmtNum(all.length)} شحنة${all.length > pageItems.length ? ' — كل النتائج المطابقة' : ''}` })
+      const qs = new URLSearchParams(params.toString())
+      qs.delete('page'); qs.delete('pageSize')
+      await downloadFile(`/api/shipments/export?${qs.toString()}`, `تقرير الشحنات ${localDateStr()}.xlsx`)
+      toast({ title: 'تم التصدير — ملف Excel منسّق وجاهز للإرسال', description: 'الأعمدة وفق صلاحياتك، والحالات ملوّنة كما في الشاشة' })
     } catch (e: any) {
       toast({ title: 'تعذّر التصدير', description: e.message, variant: 'destructive' })
     } finally { setExporting(false) }
@@ -418,7 +367,7 @@ export function ShipmentsModule() {
           </Button>
           {has('shipments.export') && (
             <Button variant="outline" onClick={exportShipments} className="flex-1 sm:flex-none min-h-[40px]" disabled={!pageItems.length || exporting}>
-              <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">{exporting ? 'جاري التصدير...' : 'تصدير'}</span>
+              <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">{exporting ? 'جاري التصدير...' : 'تصدير Excel'}</span>
             </Button>
           )}
           <Button onClick={() => setAddOpen(true)} className="flex-1 sm:flex-none min-h-[40px]">

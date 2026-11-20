@@ -2,7 +2,9 @@
 
 // ============================================================================
 // معالج استيراد الشحنات — تدفق حقيقي من أربع خطوات:
-// 1) المصدر: لصق CSV/TSV/صفوف منسوخة من Excel أو رفع ملف .csv/.txt (تحليل محلي)
+// 1) المصدر: لصق CSV/TSV/صفوف منسوخة من Excel، أو رفع ملف .csv/.txt (تحليل محلي)،
+//    أو رفع ملف Excel .xlsx (تحليل على الخادم — يدعم قالب النظام بالقوائم المنسدلة)
+//    + تحميل قالب الاستيراد الرسمي بمنسدلات معبّأة ببيانات النظام
 // 2) الربط: تعيين أعمدة المصدر إلى حقول النظام مع تعيين تلقائي بالتلميحات
 // 3) المعاينة: /api/import/preview — تحقق حقيقي من الخادم (مستلم/وجهة/أطراف)
 // 4) التنفيذ: /api/import/commit — إنشاء الشحنات + سجل استيراد + تدقيق
@@ -13,7 +15,7 @@ import * as React from 'react'
 import useSWR from 'swr'
 import {
   Upload, Table2, Check, ArrowRight, Loader2, AlertTriangle,
-  History, Play, RotateCcw, Info,
+  History, Play, RotateCcw, Info, FileSpreadsheet, Download,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,8 +26,9 @@ import { Input } from '@/components/ui/input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { fetcher } from '@/lib/api'
+import { fetcher, getToken } from '@/lib/api'
 import { apiPostSync as apiPost } from '@/lib/sync'
+import { downloadFile } from '@/lib/download'
 import { fmtNum, fmtDateTime } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '../auth-provider'
@@ -261,6 +264,8 @@ export function ImportModule() {
   const [committing, setCommitting] = React.useState(false)
   const [result, setResult] = React.useState<CommitResponse | null>(null)
   const [fileLoading, setFileLoading] = React.useState(false)
+  const [xlsxLoading, setXlsxLoading] = React.useState(false)
+  const [tplLoading, setTplLoading] = React.useState(false)
 
   // سجل الاستيرادات — يُجلب فقط لمن يملك صلاحية الاستيراد
   const { data: logsData, isLoading: logsLoading, mutate: mutateLogs } = useSWR<{ items: ImportLogItem[]; total: number }>(
@@ -321,6 +326,61 @@ export function ImportModule() {
     }
     reader.readAsText(file)
     e.target.value = ''
+  }
+
+  // ── رفع ملف Excel (.xlsx) — يُحلَّل على الخادم ويُربط تلقائيًا ثم ينتقل للربط مباشرة ──
+  const handleExcelFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    if (!canImport) return
+    setXlsxLoading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/shipments/import/parse', {
+        method: 'POST',
+        headers: { 'x-session-token': getToken() },
+        body: fd,
+        cache: 'no-store',
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error ?? `فشل التحليل (${res.status})`)
+      const p: ParsedTable = {
+        headers: data.headers ?? [],
+        rows: data.rows ?? [],
+        delimiterLabel: data.delimiterLabel ?? 'ملف Excel',
+      }
+      setParsed(p)
+      setMapping(data.mapping ?? guessMapping(p.headers))
+      setPreview(null)
+      setResult(null)
+      setRaw('')
+      if (data.fileName) setFileName(String(data.fileName))
+      toast({
+        title: `تم رصد ${fmtNum(p.rows.length)} صف و${fmtNum(p.headers.length)} عمود من شيت «${data.sheetName ?? ''}»`,
+        description: `${data.skippedExamples ? `تُخطى ${data.skippedExamples} صف مثال · ` : ''}الربط تم تلقائيًا — راجعه في الخطوة التالية`,
+      })
+      setStep('mapping')
+    } catch (err: unknown) {
+      toast({ title: 'تعذّر قراءة ملف Excel', description: err instanceof Error ? err.message : 'خطأ غير متوقع', variant: 'destructive' })
+    } finally {
+      setXlsxLoading(false)
+    }
+  }
+
+  // ── تحميل قالب الاستيراد الرسمي — قوائم منسدلة معبّأة ببيانات النظام ──
+  const downloadTemplate = async () => {
+    if (tplLoading) return
+    setTplLoading(true)
+    try {
+      await downloadFile('/api/shipments/import-template', 'قالب استيراد الشحنات.xlsx')
+      toast({ title: 'تم تحميل القالب', description: 'افتحه واملأ الصفوف — المنسدلات معبّأة ببيانات النظام الحقيقي' })
+    } catch (err: unknown) {
+      toast({ title: 'تعذّر تحميل القالب', description: err instanceof Error ? err.message : 'خطأ غير متوقع', variant: 'destructive' })
+    } finally {
+      setTplLoading(false)
+    }
   }
 
   // ── الخطوة 3: معاينة حقيقية من الخادم ──
@@ -401,9 +461,9 @@ export function ImportModule() {
             <div className="flex items-start gap-3">
               <div className="flex items-center justify-center size-12 rounded-xl bg-primary/10 text-primary shrink-0"><Upload className="size-6" /></div>
               <div className="flex-1 min-w-0">
-                <div className="font-semibold">معالج استيراد الشحنات (CSV/Excel)</div>
+                <div className="font-semibold">معالج استيراد الشحنات (Excel/CSV)</div>
                 <div className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  الصق صفوفًا منسوخة من Excel أو ارفع ملف CSV، ثم اربط الأعمدة بحقول النظام، وعاين التحقق من الخادم، ونفّذ الاستيراد الفعلي مع تسجيل العملية.
+                  حمّل قالب Excel رسميًا بمنسدلات معبّأة ببيانات النظام، أو ارفع ملف .xlsx/.csv مباشرة، أو الصق صفوفًا منسوخة — ثم اربط الأعمدة، وعاين التحقق من الخادم، ونفّذ الاستيراد مع تسجيل العملية.
                 </div>
               </div>
             </div>
@@ -429,14 +489,41 @@ export function ImportModule() {
                   <label className="text-xs font-medium" htmlFor="import-source-name">اسم المصدر (يظهر في سجل الاستيرادات)</label>
                   <Input id="import-source-name" value={fileName} onChange={(e) => setFileName(e.target.value)} disabled={!canImport} className="h-9 text-xs" />
                 </div>
+              </div>
+              {/* أزرار المصدر: قالب Excel / رفع Excel / رفع CSV — البوابة الرسمية للبيانات */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Button
+                  variant="default"
+                  onClick={downloadTemplate}
+                  disabled={!canImport || tplLoading}
+                  className="min-h-[44px] w-full"
+                  title={permTitle}
+                >
+                  {tplLoading ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                  <span>{tplLoading ? 'جاري التحميل...' : 'تحميل قالب Excel'}</span>
+                </Button>
                 <label className={cn(
-                  'inline-flex items-center justify-center gap-1.5 min-h-[40px] px-4 rounded-md text-sm font-medium border border-input bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors shrink-0',
+                  'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 rounded-md text-sm font-medium border border-input bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors cursor-pointer',
+                  (!canImport || xlsxLoading) && 'opacity-60 pointer-events-none',
+                )} title={permTitle}>
+                  <input type="file" accept=".xlsx,.xlsm" className="sr-only" onChange={handleExcelFile} disabled={!canImport || xlsxLoading} />
+                  {xlsxLoading ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet className="size-4" />}
+                  {xlsxLoading ? 'جاري التحليل...' : 'رفع ملف Excel (.xlsx)'}
+                </label>
+                <label className={cn(
+                  'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 rounded-md text-sm font-medium border border-input bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors cursor-pointer',
                   !canImport && 'opacity-60 pointer-events-none',
                 )} title={permTitle}>
                   <input type="file" accept=".csv,.txt,text/csv,text/plain" className="sr-only" onChange={handleFile} disabled={!canImport} />
                   {fileLoading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
                   {fileLoading ? 'جاري القراءة...' : 'رفع ملف CSV/TXT'}
                 </label>
+              </div>
+              <div className="flex items-start gap-2 rounded-lg bg-primary/5 border border-primary/20 text-foreground/80 px-3 py-2 text-xs">
+                <Info className="size-3.5 shrink-0 mt-0.5 text-primary" />
+                <span>
+                  <b>القالب الرسمي</b> يحتوي قوائم منسدلة (▼) معبّأة تلقائيًا بالعملاء والمقاولين والفروع والوجهات والعمال الموجودين في النظام — Excel يرفض أي قيمة خارجها، فتصل البيانات نظيفة 100%. صفوف المثال تتخطى تلقائيًا عند الرفع.
+                </span>
               </div>
               <Textarea
                 dir="rtl"
