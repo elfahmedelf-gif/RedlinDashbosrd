@@ -1,27 +1,27 @@
-// Prisma schema - Shipping Company Management System
-// S1 (2026): إضافة منظومة الأذونات التشغيلية الموحدة + محرك محاسبي كامل
-//   - OpVoucher / OpVoucherItem / OpVoucherAction (16 نوعًا × 7 حالات)
-//   - JournalEntry.reversalOfId (قيد عكسي) + postedBy
-//   - SeqCounter (أرقام تسلسلية آمنة) + IdempotencyKey (منع تكرار العمليات)
-//   - حذف نموذج Voucher القديم (كان ماليًا فقط ولا يُستخدم — مساراته أوفية فارغة)
-// S2 (2026): منظومة أذونات التسليم للعملاء (إذن التسليم لكل نقلة) + البنود الإضافية
-//   - Shipment.deliveryNumber (رقم الديليفري) + isReceiptDelivered/receiptDeliveredAt
-//   - ExtraCost (تعتيق/مبيت/مرتجعات) مع دورة اعتماد PENDING→APPROVED/REJECTED
-//     والربط المحاسبي: قيد مزدوج (مدين مصروف/دائن مستحقات المقاول 2102) عند الاعتماد
-//     بحيث تُحسب في مستحقات المقاول فقط بعد موافقة الشركة — دون تكرار للبيانات
+﻿// Prisma schema - Shipping Company Management System
+// S1 (2026): ط¥ط¶ط§ظپط© ظ…ظ†ط¸ظˆظ…ط© ط§ظ„ط£ط°ظˆظ†ط§طھ ط§ظ„طھط´ط؛ظٹظ„ظٹط© ط§ظ„ظ…ظˆط­ط¯ط© + ظ…ط­ط±ظƒ ظ…ط­ط§ط³ط¨ظٹ ظƒط§ظ…ظ„
+//   - OpVoucher / OpVoucherItem / OpVoucherAction (16 ظ†ظˆط¹ظ‹ط§ أ— 7 ط­ط§ظ„ط§طھ)
+//   - JournalEntry.reversalOfId (ظ‚ظٹط¯ ط¹ظƒط³ظٹ) + postedBy
+//   - SeqCounter (ط£ط±ظ‚ط§ظ… طھط³ظ„ط³ظ„ظٹط© ط¢ظ…ظ†ط©) + IdempotencyKey (ظ…ظ†ط¹ طھظƒط±ط§ط± ط§ظ„ط¹ظ…ظ„ظٹط§طھ)
+//   - ط­ط°ظپ ظ†ظ…ظˆط°ط¬ Voucher ط§ظ„ظ‚ط¯ظٹظ… (ظƒط§ظ† ظ…ط§ظ„ظٹظ‹ط§ ظپظ‚ط· ظˆظ„ط§ ظٹظڈط³طھط®ط¯ظ… â€” ظ…ط³ط§ط±ط§طھظ‡ ط£ظˆظپظٹط© ظپط§ط±ط؛ط©)
+// S2 (2026): ظ…ظ†ط¸ظˆظ…ط© ط£ط°ظˆظ†ط§طھ ط§ظ„طھط³ظ„ظٹظ… ظ„ظ„ط¹ظ…ظ„ط§ط، (ط¥ط°ظ† ط§ظ„طھط³ظ„ظٹظ… ظ„ظƒظ„ ظ†ظ‚ظ„ط©) + ط§ظ„ط¨ظ†ظˆط¯ ط§ظ„ط¥ط¶ط§ظپظٹط©
+//   - Shipment.deliveryNumber (ط±ظ‚ظ… ط§ظ„ط¯ظٹظ„ظٹظپط±ظٹ) + isReceiptDelivered/receiptDeliveredAt
+//   - ExtraCost (طھط¹طھظٹظ‚/ظ…ط¨ظٹطھ/ظ…ط±طھط¬ط¹ط§طھ) ظ…ط¹ ط¯ظˆط±ط© ط§ط¹طھظ…ط§ط¯ PENDINGâ†’APPROVED/REJECTED
+//     ظˆط§ظ„ط±ط¨ط· ط§ظ„ظ…ط­ط§ط³ط¨ظٹ: ظ‚ظٹط¯ ظ…ط²ط¯ظˆط¬ (ظ…ط¯ظٹظ† ظ…طµط±ظˆظپ/ط¯ط§ط¦ظ† ظ…ط³طھط­ظ‚ط§طھ ط§ظ„ظ…ظ‚ط§ظˆظ„ 2102) ط¹ظ†ط¯ ط§ظ„ط§ط¹طھظ…ط§ط¯
+//     ط¨ط­ظٹط« طھظڈط­ط³ط¨ ظپظٹ ظ…ط³طھط­ظ‚ط§طھ ط§ظ„ظ…ظ‚ط§ظˆظ„ ظپظ‚ط· ط¨ط¹ط¯ ظ…ظˆط§ظپظ‚ط© ط§ظ„ط´ط±ظƒط© â€” ط¯ظˆظ† طھظƒط±ط§ط± ظ„ظ„ط¨ظٹط§ظ†ط§طھ
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model Party {
   id                 String   @id @default(cuid())
-  // S2: البنود الإضافية المسجلة على الطرف كمقاول (تعتيق/مبيت/مرتجعات)
+  // S2: ط§ظ„ط¨ظ†ظˆط¯ ط§ظ„ط¥ط¶ط§ظپظٹط© ط§ظ„ظ…ط³ط¬ظ„ط© ط¹ظ„ظ‰ ط§ظ„ط·ط±ظپ ظƒظ…ظ‚ط§ظˆظ„ (طھط¹طھظٹظ‚/ظ…ط¨ظٹطھ/ظ…ط±طھط¬ط¹ط§طھ)
   code               String?
   name               String
   nameEn             String?
@@ -133,8 +133,8 @@ model Shipment {
   id            String    @id @default(cuid())
   shipmentNo    String?
   billNo        String?
-  // الفواتير: الشحنة المفوترة بفاتورة نشطة (يُفك الربط عند إلغاء الفاتورة)
-  // الحقل وحده يمنع الفوترة المزدوجة (قيمة واحدة لكل شحنة) + تحقق تطبيقي على الخادم
+  // ط§ظ„ظپظˆط§طھظٹط±: ط§ظ„ط´ط­ظ†ط© ط§ظ„ظ…ظپظˆطھط±ط© ط¨ظپط§طھظˆط±ط© ظ†ط´ط·ط© (ظٹظڈظپظƒ ط§ظ„ط±ط¨ط· ط¹ظ†ط¯ ط¥ظ„ط؛ط§ط، ط§ظ„ظپط§طھظˆط±ط©)
+  // ط§ظ„ط­ظ‚ظ„ ظˆط­ط¯ظ‡ ظٹظ…ظ†ط¹ ط§ظ„ظپظˆطھط±ط© ط§ظ„ظ…ط²ط¯ظˆط¬ط© (ظ‚ظٹظ…ط© ظˆط§ط­ط¯ط© ظ„ظƒظ„ ط´ط­ظ†ط©) + طھط­ظ‚ظ‚ طھط·ط¨ظٹظ‚ظٹ ط¹ظ„ظ‰ ط§ظ„ط®ط§ط¯ظ…
   invoiceId     String?
   policyQty     Float?
   customerId    String?
@@ -152,9 +152,9 @@ model Shipment {
   warehouseId   String?
   warehouse     Warehouse? @relation(fields: [warehouseId], references: [id])
   loadType      String?
-  // شيت التوزيع اليومي من العميل: Ship Part = رقم أمر الشحن المرجعي عند العميل
+  // ط´ظٹطھ ط§ظ„طھظˆط²ظٹط¹ ط§ظ„ظٹظˆظ…ظٹ ظ…ظ† ط§ظ„ط¹ظ…ظٹظ„: Ship Part = ط±ظ‚ظ… ط£ظ…ط± ط§ظ„ط´ط­ظ† ط§ظ„ظ…ط±ط¬ط¹ظٹ ط¹ظ†ط¯ ط§ظ„ط¹ظ…ظٹظ„
   shipPart      String?
-  // عدد الشاحنات كما يأتي في عمود Truck بالشيت (مستقل عن المقاسات ton15/ton3/m6)
+  // ط¹ط¯ط¯ ط§ظ„ط´ط§ط­ظ†ط§طھ ظƒظ…ط§ ظٹط£طھظٹ ظپظٹ ط¹ظ…ظˆط¯ Truck ط¨ط§ظ„ط´ظٹطھ (ظ…ط³طھظ‚ظ„ ط¹ظ† ط§ظ„ظ…ظ‚ط§ط³ط§طھ ton15/ton3/m6)
   truckCount    Float?
   ton15         Float?
   ton3          Float?
@@ -176,8 +176,8 @@ model Shipment {
   totalSuppliers Float?
   status        String   @default("new")
   collectionStatus String @default("uncollected")
-  // S2: أذونات التسليم — رقم الديليفري هو المعرف البحثي الأساسي للمقاول
-  deliveryNumber      String?   @unique  // فريد على مستوى النظام — منع تسجيل نفس رقم الديليفري لشحتين
+  // S2: ط£ط°ظˆظ†ط§طھ ط§ظ„طھط³ظ„ظٹظ… â€” ط±ظ‚ظ… ط§ظ„ط¯ظٹظ„ظٹظپط±ظٹ ظ‡ظˆ ط§ظ„ظ…ط¹ط±ظپ ط§ظ„ط¨ط­ط«ظٹ ط§ظ„ط£ط³ط§ط³ظٹ ظ„ظ„ظ…ظ‚ط§ظˆظ„
+  deliveryNumber      String?   @unique  // ظپط±ظٹط¯ ط¹ظ„ظ‰ ظ…ط³طھظˆظ‰ ط§ظ„ظ†ط¸ط§ظ… â€” ظ…ظ†ط¹ طھط³ط¬ظٹظ„ ظ†ظپط³ ط±ظ‚ظ… ط§ظ„ط¯ظٹظ„ظٹظپط±ظٹ ظ„ط´ط­طھظٹظ†
   isReceiptDelivered  Boolean   @default(false)
   receiptDeliveredAt  DateTime?
   date          DateTime?
@@ -208,30 +208,30 @@ model Shipment {
 }
 
 // ============================================================
-// الفواتير الرسمية للعملاء (S3) — فاتورة ضريبية على نولون الشحنات
-// دورة الحياة: draft (مسودة — لا قيد) ← issued (صادرة — قيد مزدوج:
-//   مدين العملاء 1103 بالإجمالي شامل الضريبة / دائن إيراد الشحن 4101
-//   بصافي القيمة / دائن ضريبة القيمة المضافة 2103 بقيمة الضريبة)
-//   ← partially_paid/paid (سندات قبض مرتبطة) — والإلغاء يُرحّل قيدًا عكسيًا
-//   ويفك ربط الشحنات لتُفوتر من جديد (الإيراد لا يُحتسب مرتين أبدًا:
-//   عند الإصدار يُعكس قيد استحقاق التسليم للشحنات المُدخلة ويُعاد
-//   إثبات مستحقات المقاول فقط بحساب مستقل)
+// ط§ظ„ظپظˆط§طھظٹط± ط§ظ„ط±ط³ظ…ظٹط© ظ„ظ„ط¹ظ…ظ„ط§ط، (S3) â€” ظپط§طھظˆط±ط© ط¶ط±ظٹط¨ظٹط© ط¹ظ„ظ‰ ظ†ظˆظ„ظˆظ† ط§ظ„ط´ط­ظ†ط§طھ
+// ط¯ظˆط±ط© ط§ظ„ط­ظٹط§ط©: draft (ظ…ط³ظˆط¯ط© â€” ظ„ط§ ظ‚ظٹط¯) â†گ issued (طµط§ط¯ط±ط© â€” ظ‚ظٹط¯ ظ…ط²ط¯ظˆط¬:
+//   ظ…ط¯ظٹظ† ط§ظ„ط¹ظ…ظ„ط§ط، 1103 ط¨ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ ط´ط§ظ…ظ„ ط§ظ„ط¶ط±ظٹط¨ط© / ط¯ط§ط¦ظ† ط¥ظٹط±ط§ط¯ ط§ظ„ط´ط­ظ† 4101
+//   ط¨طµط§ظپظٹ ط§ظ„ظ‚ظٹظ…ط© / ط¯ط§ط¦ظ† ط¶ط±ظٹط¨ط© ط§ظ„ظ‚ظٹظ…ط© ط§ظ„ظ…ط¶ط§ظپط© 2103 ط¨ظ‚ظٹظ…ط© ط§ظ„ط¶ط±ظٹط¨ط©)
+//   â†گ partially_paid/paid (ط³ظ†ط¯ط§طھ ظ‚ط¨ط¶ ظ…ط±طھط¨ط·ط©) â€” ظˆط§ظ„ط¥ظ„ط؛ط§ط، ظٹظڈط±ط­ظ‘ظ„ ظ‚ظٹط¯ظ‹ط§ ط¹ظƒط³ظٹظ‹ط§
+//   ظˆظٹظپظƒ ط±ط¨ط· ط§ظ„ط´ط­ظ†ط§طھ ظ„طھظڈظپظˆطھط± ظ…ظ† ط¬ط¯ظٹط¯ (ط§ظ„ط¥ظٹط±ط§ط¯ ظ„ط§ ظٹظڈط­طھط³ط¨ ظ…ط±طھظٹظ† ط£ط¨ط¯ظ‹ط§:
+//   ط¹ظ†ط¯ ط§ظ„ط¥طµط¯ط§ط± ظٹظڈط¹ظƒط³ ظ‚ظٹط¯ ط§ط³طھط­ظ‚ط§ظ‚ ط§ظ„طھط³ظ„ظٹظ… ظ„ظ„ط´ط­ظ†ط§طھ ط§ظ„ظ…ظڈط¯ط®ظ„ط© ظˆظٹظڈط¹ط§ط¯
+//   ط¥ط«ط¨ط§طھ ظ…ط³طھط­ظ‚ط§طھ ط§ظ„ظ…ظ‚ط§ظˆظ„ ظپظ‚ط· ط¨ط­ط³ط§ط¨ ظ…ط³طھظ‚ظ„)
 // ============================================================
 model Invoice {
   id             String    @id @default(cuid())
-  invoiceNumber  String    @unique          // INV-0001 (تسلسلي آمن)
+  invoiceNumber  String    @unique          // INV-0001 (طھط³ظ„ط³ظ„ظٹ ط¢ظ…ظ†)
   customerId     String
   issueDate      DateTime  @default(now())
   dueDate        DateTime?
   status         String    @default("draft") // draft|issued|partially_paid|paid|cancelled
-  subtotal       Float     @default(0)      // إجمالي البنود قبل الخصم والضريبة
-  vatRate        Float     @default(14)     // نسبة ضريبة القيمة المضافة (14 أو 0)
-  vatAmount      Float     @default(0)      // قيمة الضريبة المحسوبة
-  discountAmount Float     @default(0)      // الخصم الممنوح
-  totalAmount    Float     @default(0)      // الإجمالي النهائي شامل الضريبة
-  paidAmount     Float     @default(0)      // المسدد من سندات القبض المرتبطة
+  subtotal       Float     @default(0)      // ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط¨ظ†ظˆط¯ ظ‚ط¨ظ„ ط§ظ„ط®طµظ… ظˆط§ظ„ط¶ط±ظٹط¨ط©
+  vatRate        Float     @default(14)     // ظ†ط³ط¨ط© ط¶ط±ظٹط¨ط© ط§ظ„ظ‚ظٹظ…ط© ط§ظ„ظ…ط¶ط§ظپط© (14 ط£ظˆ 0)
+  vatAmount      Float     @default(0)      // ظ‚ظٹظ…ط© ط§ظ„ط¶ط±ظٹط¨ط© ط§ظ„ظ…ط­ط³ظˆط¨ط©
+  discountAmount Float     @default(0)      // ط§ظ„ط®طµظ… ط§ظ„ظ…ظ…ظ†ظˆط­
+  totalAmount    Float     @default(0)      // ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ظ†ظ‡ط§ط¦ظٹ ط´ط§ظ…ظ„ ط§ظ„ط¶ط±ظٹط¨ط©
+  paidAmount     Float     @default(0)      // ط§ظ„ظ…ط³ط¯ط¯ ظ…ظ† ط³ظ†ط¯ط§طھ ط§ظ„ظ‚ط¨ط¶ ط§ظ„ظ…ط±طھط¨ط·ط©
   notes          String?
-  journalEntryId String?   @unique          // قيد الإصدار (يُنشأ مرة واحدة عند الإصدار)
+  journalEntryId String?   @unique          // ظ‚ظٹط¯ ط§ظ„ط¥طµط¯ط§ط± (ظٹظڈظ†ط´ط£ ظ…ط±ط© ظˆط§ط­ط¯ط© ط¹ظ†ط¯ ط§ظ„ط¥طµط¯ط§ط±)
   createdById    String?
   createdByName  String?
   issuedById     String?
@@ -257,7 +257,7 @@ model Invoice {
 model InvoiceItem {
   id          String  @id @default(cuid())
   invoiceId   String
-  shipmentId  String?             // بند مرتبط بشحنة (اختياري — يمنع الفوترة المزدوجة بالتحقق على الخادم)
+  shipmentId  String?             // ط¨ظ†ط¯ ظ…ط±طھط¨ط· ط¨ط´ط­ظ†ط© (ط§ط®طھظٹط§ط±ظٹ â€” ظٹظ…ظ†ط¹ ط§ظ„ظپظˆطھط±ط© ط§ظ„ظ…ط²ط¯ظˆط¬ط© ط¨ط§ظ„طھط­ظ‚ظ‚ ط¹ظ„ظ‰ ط§ظ„ط®ط§ط¯ظ…)
   description String
   quantity    Float   @default(1)
   unitPrice   Float   @default(0)
@@ -374,7 +374,7 @@ model JournalLine {
 }
 
 // ============================================================
-// الأذونات التشغيلية الموحدة (16 نوعًا: تشغيلية/مالية/جرد/خاصة)
+// ط§ظ„ط£ط°ظˆظ†ط§طھ ط§ظ„طھط´ط؛ظٹظ„ظٹط© ط§ظ„ظ…ظˆط­ط¯ط© (16 ظ†ظˆط¹ظ‹ط§: طھط´ط؛ظٹظ„ظٹط©/ظ…ط§ظ„ظٹط©/ط¬ط±ط¯/ط®ط§طµط©)
 // ============================================================
 model OpVoucher {
   id             String    @id @default(cuid())
@@ -383,18 +383,18 @@ model OpVoucher {
   status         String    @default("draft") // draft|pending|approved|in_progress|completed|rejected|cancelled
   sourceBranchId String?
   destBranchId   String?
-  employeeId     String? // موظف مسؤول (User)
-  courierId      String? // مندوب (Party)
-  partyId        String? // طرف مالي (عميل/مقاول)
+  employeeId     String? // ظ…ظˆط¸ظپ ظ…ط³ط¤ظˆظ„ (User)
+  courierId      String? // ظ…ظ†ط¯ظˆط¨ (Party)
+  partyId        String? // ط·ط±ظپ ظ…ط§ظ„ظٹ (ط¹ظ…ظٹظ„/ظ…ظ‚ط§ظˆظ„)
   amount         Float?
   totalValue     Float     @default(0)
   notes          String?
   accountName    String?
-  cashAccountId  String? // خزينة/بنك مرتبط (Account)
+  cashAccountId  String? // ط®ط²ظٹظ†ط©/ط¨ظ†ظƒ ظ…ط±طھط¨ط· (Account)
   vehicleNo      String?
   driverName     String?
-  journalEntryId String?   @unique // القيد المحاسبي المرتبط (للسندات المالية)
-  userId         String? // المنشئ (User)
+  journalEntryId String?   @unique // ط§ظ„ظ‚ظٹط¯ ط§ظ„ظ…ط­ط§ط³ط¨ظٹ ط§ظ„ظ…ط±طھط¨ط· (ظ„ظ„ط³ظ†ط¯ط§طھ ط§ظ„ظ…ط§ظ„ظٹط©)
+  userId         String? // ط§ظ„ظ…ظ†ط´ط¦ (User)
   userName       String
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -406,7 +406,7 @@ model OpVoucher {
   party         Party?        @relation("OpVoucherParty", fields: [partyId], references: [id])
   cashAccount   Account?      @relation("OpVoucherCashAccount", fields: [cashAccountId], references: [id])
   journalEntry  JournalEntry? @relation(fields: [journalEntryId], references: [id])
-  invoiceId     String?              // سند قبض مرتبط بفاتورة عميل (دفعة تحصيل)
+  invoiceId     String?              // ط³ظ†ط¯ ظ‚ط¨ط¶ ظ…ط±طھط¨ط· ط¨ظپط§طھظˆط±ط© ط¹ظ…ظٹظ„ (ط¯ظپط¹ط© طھط­طµظٹظ„)
   invoice       Invoice?      @relation("OpVoucherInvoice", fields: [invoiceId], references: [id])
   items         OpVoucherItem[]
   actions       OpVoucherAction[]
@@ -446,15 +446,15 @@ model OpVoucherAction {
 }
 
 // ============================================================
-// البنود الإضافية على حساب المقاول (S2) — تعتيق/مبيت/مرتجعات
-// قاعدة العمل الحاسمة: المبيت والمرتجعات لا تدخل مستحقات المقاول
-// إلا بعد اعتماد الشركة (approvalStatus = approved) — وعند الاعتماد
-// يُرحّل قيد مزدوج: مدين تكلفة النقل 5101 / دائن مقاولو النقل 2102.
-// التعتيق يُعتمد تلقائيًا عند الإنشاء (بند قياسي متفق عليه).
+// ط§ظ„ط¨ظ†ظˆط¯ ط§ظ„ط¥ط¶ط§ظپظٹط© ط¹ظ„ظ‰ ط­ط³ط§ط¨ ط§ظ„ظ…ظ‚ط§ظˆظ„ (S2) â€” طھط¹طھظٹظ‚/ظ…ط¨ظٹطھ/ظ…ط±طھط¬ط¹ط§طھ
+// ظ‚ط§ط¹ط¯ط© ط§ظ„ط¹ظ…ظ„ ط§ظ„ط­ط§ط³ظ…ط©: ط§ظ„ظ…ط¨ظٹطھ ظˆط§ظ„ظ…ط±طھط¬ط¹ط§طھ ظ„ط§ طھط¯ط®ظ„ ظ…ط³طھط­ظ‚ط§طھ ط§ظ„ظ…ظ‚ط§ظˆظ„
+// ط¥ظ„ط§ ط¨ط¹ط¯ ط§ط¹طھظ…ط§ط¯ ط§ظ„ط´ط±ظƒط© (approvalStatus = approved) â€” ظˆط¹ظ†ط¯ ط§ظ„ط§ط¹طھظ…ط§ط¯
+// ظٹظڈط±ط­ظ‘ظ„ ظ‚ظٹط¯ ظ…ط²ط¯ظˆط¬: ظ…ط¯ظٹظ† طھظƒظ„ظپط© ط§ظ„ظ†ظ‚ظ„ 5101 / ط¯ط§ط¦ظ† ظ…ظ‚ط§ظˆظ„ظˆ ط§ظ„ظ†ظ‚ظ„ 2102.
+// ط§ظ„طھط¹طھظٹظ‚ ظٹظڈط¹طھظ…ط¯ طھظ„ظ‚ط§ط¦ظٹظ‹ط§ ط¹ظ†ط¯ ط§ظ„ط¥ظ†ط´ط§ط، (ط¨ظ†ط¯ ظ‚ظٹط§ط³ظٹ ظ…طھظپظ‚ ط¹ظ„ظٹظ‡).
 // ============================================================
 model ExtraCost {
   id              String    @id @default(cuid())
-  ref             String    @unique   // EC-0001 (تسلسلي آمن)
+  ref             String    @unique   // EC-0001 (طھط³ظ„ط³ظ„ظٹ ط¢ظ…ظ†)
   type            String    // taateeq | mabeet | return
   amount          Float
   notes           String?
@@ -462,10 +462,10 @@ model ExtraCost {
   contractorId    String
   shipmentId      String?
   date            DateTime  @default(now())
-  journalEntryId  String?   @unique  // القيد المحاسبي المرتبط (يُنشأ عند الاعتماد)
-  // F2: مصدر البند — 'shipment_sync' بند متزامن تلقائيًا من حقول الشحنة
-  // (تعتيق/مبيت/تحويلة/دروب في جدول الصباح) و'null' بند يدوي من وحدة البنود الإضافية.
-  // المزامنة تلمس فقط بنود shipment_sync — البنود اليدوية لا تُمس أبدًا (منع التكرار المحاسبي).
+  journalEntryId  String?   @unique  // ط§ظ„ظ‚ظٹط¯ ط§ظ„ظ…ط­ط§ط³ط¨ظٹ ط§ظ„ظ…ط±طھط¨ط· (ظٹظڈظ†ط´ط£ ط¹ظ†ط¯ ط§ظ„ط§ط¹طھظ…ط§ط¯)
+  // F2: ظ…طµط¯ط± ط§ظ„ط¨ظ†ط¯ â€” 'shipment_sync' ط¨ظ†ط¯ ظ…طھط²ط§ظ…ظ† طھظ„ظ‚ط§ط¦ظٹظ‹ط§ ظ…ظ† ط­ظ‚ظˆظ„ ط§ظ„ط´ط­ظ†ط©
+  // (طھط¹طھظٹظ‚/ظ…ط¨ظٹطھ/طھط­ظˆظٹظ„ط©/ط¯ط±ظˆط¨ ظپظٹ ط¬ط¯ظˆظ„ ط§ظ„طµط¨ط§ط­) ظˆ'null' ط¨ظ†ط¯ ظٹط¯ظˆظٹ ظ…ظ† ظˆط­ط¯ط© ط§ظ„ط¨ظ†ظˆط¯ ط§ظ„ط¥ط¶ط§ظپظٹط©.
+  // ط§ظ„ظ…ط²ط§ظ…ظ†ط© طھظ„ظ…ط³ ظپظ‚ط· ط¨ظ†ظˆط¯ shipment_sync â€” ط§ظ„ط¨ظ†ظˆط¯ ط§ظ„ظٹط¯ظˆظٹط© ظ„ط§ طھظڈظ…ط³ ط£ط¨ط¯ظ‹ط§ (ظ…ظ†ط¹ ط§ظ„طھظƒط±ط§ط± ط§ظ„ظ…ط­ط§ط³ط¨ظٹ).
   source          String?
   userId          String?
   userName        String?
@@ -485,14 +485,14 @@ model ExtraCost {
   @@index([date])
 }
 
-// عدادات تسلسلية آمنة (أرقام أذونات/قيود) — تمنع تكرار الأرقام بعد الحذف
+// ط¹ط¯ط§ط¯ط§طھ طھط³ظ„ط³ظ„ظٹط© ط¢ظ…ظ†ط© (ط£ط±ظ‚ط§ظ… ط£ط°ظˆظ†ط§طھ/ظ‚ظٹظˆط¯) â€” طھظ…ظ†ط¹ طھظƒط±ط§ط± ط§ظ„ط£ط±ظ‚ط§ظ… ط¨ط¹ط¯ ط§ظ„ط­ط°ظپ
 model SeqCounter {
   id    String @id @default(cuid())
   key   String @unique
   value Int    @default(0)
 }
 
-// منع تكرار العمليات (Idempotency) — مفتاح صادر من العميل لكل عملية منطقية
+// ظ…ظ†ط¹ طھظƒط±ط§ط± ط§ظ„ط¹ظ…ظ„ظٹط§طھ (Idempotency) â€” ظ…ظپطھط§ط­ طµط§ط¯ط± ظ…ظ† ط§ظ„ط¹ظ…ظٹظ„ ظ„ظƒظ„ ط¹ظ…ظ„ظٹط© ظ…ظ†ط·ظ‚ظٹط©
 model IdempotencyKey {
   id        String   @id @default(cuid())
   key       String   @unique
@@ -518,8 +518,8 @@ model User {
   sessions UserSession[]
 }
 
-/** جلسات الدخول المخزنة في قاعدة البيانات — تعمل عبر كل نسخ الوحدة في بيئة التطوير
- *  (كل مسار يحمل نسخته الخاصة من الذاكرة) وتصمد أمام إعادة التشغيل/التحديث الساخن */
+/** ط¬ظ„ط³ط§طھ ط§ظ„ط¯ط®ظˆظ„ ط§ظ„ظ…ط®ط²ظ†ط© ظپظٹ ظ‚ط§ط¹ط¯ط© ط§ظ„ط¨ظٹط§ظ†ط§طھ â€” طھط¹ظ…ظ„ ط¹ط¨ط± ظƒظ„ ظ†ط³ط® ط§ظ„ظˆط­ط¯ط© ظپظٹ ط¨ظٹط¦ط© ط§ظ„طھط·ظˆظٹط±
+ *  (ظƒظ„ ظ…ط³ط§ط± ظٹط­ظ…ظ„ ظ†ط³ط®طھظ‡ ط§ظ„ط®ط§طµط© ظ…ظ† ط§ظ„ط°ط§ظƒط±ط©) ظˆطھطµظ…ط¯ ط£ظ…ط§ظ… ط¥ط¹ط§ط¯ط© ط§ظ„طھط´ط؛ظٹظ„/ط§ظ„طھط­ط¯ظٹط« ط§ظ„ط³ط§ط®ظ† */
 model UserSession {
   token   String   @id
   userId  String
@@ -538,7 +538,7 @@ model Role {
   users UserRole[]
 }
 
-/// كتالوج الصلاحيات المتزامن مع الكود (syncPermissionsCatalog) — مرآة قابلة للتدقيق
+/// ظƒطھط§ظ„ظˆط¬ ط§ظ„طµظ„ط§ط­ظٹط§طھ ط§ظ„ظ…طھط²ط§ظ…ظ† ظ…ط¹ ط§ظ„ظƒظˆط¯ (syncPermissionsCatalog) â€” ظ…ط±ط¢ط© ظ‚ط§ط¨ظ„ط© ظ„ظ„طھط¯ظ‚ظٹظ‚
 model Permission {
   id        String   @id @default(cuid())
   key       String   @unique
@@ -613,3 +613,4 @@ model LookupItem {
   @@unique([category, key])
   @@index([category])
 }
+
