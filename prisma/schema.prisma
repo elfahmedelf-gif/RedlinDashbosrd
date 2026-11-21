@@ -1,4 +1,4 @@
-﻿// Prisma schema - Shipping Company Management System
+// Prisma schema - Shipping Company Management System
 // S1 (2026): ط¥ط¶ط§ظپط© ظ…ظ†ط¸ظˆظ…ط© ط§ظ„ط£ط°ظˆظ†ط§طھ ط§ظ„طھط´ط؛ظٹظ„ظٹط© ط§ظ„ظ…ظˆط­ط¯ط© + ظ…ط­ط±ظƒ ظ…ط­ط§ط³ط¨ظٹ ظƒط§ظ…ظ„
 //   - OpVoucher / OpVoucherItem / OpVoucherAction (16 ظ†ظˆط¹ظ‹ط§ أ— 7 ط­ط§ظ„ط§طھ)
 //   - JournalEntry.reversalOfId (ظ‚ظٹط¯ ط¹ظƒط³ظٹ) + postedBy
