@@ -305,6 +305,101 @@ export async function listUninvoicedShipments(q: URLSearchParams) {
   }
 }
 
+/**
+ * البحث الشامل عن أي إذن (شحنة) أو عميل — بوابة إنشاء الفاتورة الإجبارية.
+ * q يبحث في: رقم الديليفري / رقم الشحنة / رقم البوليصة / المستلم / كود العميل / اسم العميل.
+ * يعيد الأذون المطابقة مع حالتها الفوترة (متاح / مفوترة برقم فاتورتها / محصّلة)
+ * + العملاء المطابقين مع عدد أذونهم غير المفوترة — بحيث يكفي رقم ديليفري واحد
+ * أو كود عميل لإحضار أي إذن في النظام (بحث يحتوي غير حساس لحالة الأحرف).
+ */
+export async function lookupInvoiceCandidates(q: URLSearchParams) {
+  const term = (q.get('q') ?? '').trim()
+  if (!term) throw new ApiError(400, 'اكتب رقم الديليفري أو كود العميل للبحث')
+  const like = term.toLowerCase()
+  const takePermits = 30
+  const takeCustomers = 6
+
+  // خريطة الحجز: شحنة داخل فاتورة نشطة (مسودة أو صادرة) → رقم الفاتورة وحالتها
+  const reserved = await db.invoiceItem.findMany({
+    where: { shipmentId: { not: null }, invoice: { status: { not: 'cancelled' } } },
+    select: { shipmentId: true, invoice: { select: { invoiceNumber: true, status: true } } },
+  })
+  const reservedMap = new Map(reserved.map((r) => [r.shipmentId as string, r.invoice]))
+
+  // الأذون المطابقة — مطابقة بالاحتواء على مستوى التطبيق (SQLite حساس لحالة الأحرف)
+  const rows = await db.shipment.findMany({
+    where: { status: { notIn: ['cancelled', 'written_off'] } },
+    include: {
+      customer: { select: { id: true, name: true, code: true } },
+      contractor: { select: { id: true, name: true, code: true } },
+      invoice: { select: { invoiceNumber: true, status: true } },
+    },
+    orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+    take: 2000,
+  })
+  const permits = rows.filter((s) =>
+    [s.deliveryNumber, s.shipmentNo, s.billNo, s.recipientName,
+      s.customer?.code, s.customer?.name, s.contractor?.code]
+      .some((f) => String(f ?? '').toLowerCase().includes(like)),
+  ).slice(0, takePermits)
+
+  // العملاء المطابقة (كود أو اسم) — مع عدد أذونهم الجاهزة للفوترة
+  const customerRows = await db.party.findMany({
+    where: { isCustomer: true, active: true },
+    select: { id: true, name: true, code: true },
+    take: 500,
+  })
+  const matchedCustomers = customerRows
+    .filter((c) => String(c.code ?? '').toLowerCase().includes(like) || String(c.name).toLowerCase().includes(like))
+    .slice(0, takeCustomers)
+  const uninvoicedWhere = {
+    invoiceId: null,
+    collectionStatus: { not: 'collected' },
+    status: { notIn: ['cancelled', 'written_off'] },
+    ...(reserved.length ? { id: { notIn: reserved.map((r) => r.shipmentId as string) } } : {}),
+  }
+  const customers = await Promise.all(matchedCustomers.map(async (c) => ({
+    id: c.id,
+    name: c.name,
+    code: c.code,
+    uninvoicedCount: await db.shipment.count({ where: { ...uninvoicedWhere, customerId: c.id } }),
+  })))
+
+  return {
+    term,
+    permits: permits.map((s) => {
+      const reservedInv = reservedMap.get(s.id) ?? null
+      let invoiceable = true
+      let reason: string | null = null
+      if (s.collectionStatus === 'collected') {
+        invoiceable = false
+        reason = 'محصّلة بالفعل — لا تُفوتر'
+      } else if (s.invoice) {
+        invoiceable = false
+        reason = `مفوترة بفاتورة ${s.invoice.invoiceNumber}`
+      } else if (reservedInv) {
+        invoiceable = false
+        reason = `محجوزة داخل فاتورة ${reservedInv.invoiceNumber} (${INVOICE_STATUS_LABELS[reservedInv.status as InvoiceStatus] ?? ''})`
+      }
+      return {
+        id: s.id,
+        deliveryNumber: s.deliveryNumber,
+        shipmentNo: s.shipmentNo,
+        billNo: s.billNo,
+        destination: s.destination,
+        date: s.date,
+        delivered: s.status === 'delivered',
+        freightTotal: round2(Number(s.freightTotal ?? 0)),
+        customer: s.customer ? { id: s.customer.id, name: s.customer.name, code: s.customer.code } : null,
+        contractor: s.contractor ? { id: s.contractor.id, name: s.contractor.name } : null,
+        invoiceable,
+        reason,
+      }
+    }),
+    customers,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // إنشاء/تعديل/حذف المسودات
 // ---------------------------------------------------------------------------

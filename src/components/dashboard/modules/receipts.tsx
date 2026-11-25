@@ -14,7 +14,7 @@ import * as React from 'react'
 import useSWR from 'swr'
 import {
   ClipboardCheck, Package, PackageCheck, PackageX, AlarmClock, Search,
-  FileSpreadsheet, Printer, CircleCheck, Circle, RefreshCw, Plus, Pencil, Trash2, Loader2,
+  FileSpreadsheet, Printer, CircleCheck, Circle, RefreshCw, Plus, Pencil, Trash2, Loader2, X,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -422,7 +422,7 @@ export function ReceiptsModule() {
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث برقم الديليفري..." className="pr-8 h-9 w-40 sm:w-56 text-xs bg-card" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث برقم الديليفري أو الكود — يجيب أي إذن" className="pr-8 h-9 w-48 sm:w-72 text-xs bg-card" />
           </div>
           {canAdd && (
             <Button size="sm" onClick={openAdd} className="h-9">
@@ -443,7 +443,24 @@ export function ReceiptsModule() {
         </div>
       </div>
 
-      {/* ── تبويبات المقاولين — أذونات كل مقاول منفصلة ── */}
+      {/* ── أثناء البحث: شريط «بحث شامل يجيب أي إذن» بدل التبويبات — النتائج من كل المقاولين ── */}
+      {search.trim() ? (
+        <div className="flex items-center justify-between gap-2 flex-wrap rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 print:hidden">
+          <div className="flex items-center gap-2 text-xs font-medium">
+            <Search className="size-4 text-primary" />
+            <span>
+              بحث شامل عن <b className="font-mono">«{search.trim()}»</b> — يجيب أي إذن من كل المقاولين (المسلّمة وغير المسلّمة)
+            </span>
+            {data && (
+              <Badge variant="secondary" className="tnum text-[10px]">{data.total} نتيجة</Badge>
+            )}
+          </div>
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSearch('')}>
+            <X className="size-3.5" /> مسح البحث والعودة للتبويبات
+          </Button>
+        </div>
+      ) : (
+      /* ── تبويبات المقاولين — أذونات كل مقاول منفصلة ── */
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 print:hidden scrollbar-thin">
         <button
           onClick={() => setContractorId('all')}
@@ -487,6 +504,7 @@ export function ReceiptsModule() {
           <span className="text-xs text-muted-foreground px-2">لا توجد شحنات مسندة لمقاولين بعد</span>
         )}
       </div>
+      )}
 
       {/* ── لوحة المتأخرة: ملخص مسؤولية كل مقاول ── */}
       {view === 'overdue' && byContractor.filter((c) => c.overdue > 0).length > 0 && (
@@ -525,15 +543,18 @@ export function ReceiptsModule() {
         rows={items}
         loading={isLoading && !data}
         emptyText="لا توجد أذونات في هذا العرض"
-        emptyTitle={
-          view === 'overdue'
+        emptyTitle={search.trim()
+          ? `مفيش إذن مطابق لـ«${search.trim()}»`
+          : view === 'overdue'
             ? 'كل الأذونات مستلمة ✓'
             : view === 'delivered'
               ? 'لسه مفيش أذونات مسلّمة في هذا العرض'
               : 'مفيش أذونات مستنية تأشير'
         }
         emptyHint={
-          view === 'overdue'
+          search.trim()
+            ? 'جرّب رقم الديليفري كاملًا أو كود العميل — البحث شامل بين كل المقاولين والمسلّمة وغير المسلّمة'
+            : view === 'overdue'
             ? (contractorId !== 'all'
               ? `لا توجد أذونات متأخرة أكثر من ${RECEIPT_OVERDUE_DAYS} أيام على هذا المقاول — شغله تمام`
               : 'لا توجد أذونات متأخرة أكثر من ٣ أيام على أي مقاول — كل الأذونات تحت السيطرة')

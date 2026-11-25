@@ -31,12 +31,17 @@ export async function listReceipts(q: URLSearchParams, user?: { permissions: str
   const search = (q.get('q') ?? '').trim().toLowerCase()
   const now = Date.now()
 
+  // ── البحث الشامل: نص البحث يجيب أي إذن من كل المقاولين (المسلّمة وغير المسلّمة)
+  // متجاوزًا تبويب المقاول وعرض الحالة — رقم الديليفري أو الكود يكفي للوصول لأي إذن ──
+  const globalSearch = search.length > 0
   const where: Prisma.ShipmentWhereInput = {
-    contractorId: contractorId && contractorId !== 'all' ? contractorId : { not: null },
+    contractorId: !globalSearch && contractorId && contractorId !== 'all' ? contractorId : { not: null },
     status: { notIn: [...RECEIPT_EXCLUDED_STATUSES] },
   }
-  if (view === 'undelivered' || view === 'overdue') where.isReceiptDelivered = false
-  if (view === 'delivered') where.isReceiptDelivered = true
+  if (!globalSearch) {
+    if (view === 'undelivered' || view === 'overdue') where.isReceiptDelivered = false
+    if (view === 'delivered') where.isReceiptDelivered = true
+  }
 
   const rows = await db.shipment.findMany({
     where,
@@ -67,17 +72,28 @@ export async function listReceipts(q: URLSearchParams, user?: { permissions: str
     }
   })
 
-  let items = enriched
-  if (view === 'overdue') items = items.filter((x) => x.overdue)
+  // أساس العدّادات والتبويبات — فلاتر المقاول/العرض بلا بحث (تبقى ثابتة أثناء البحث)
+  const baseItems = globalSearch
+    ? enriched.filter((x) => {
+        if (contractorId && contractorId !== 'all' && x.contractor?.id !== contractorId) return false
+        if (view === 'undelivered' && x.isReceiptDelivered) return false
+        if (view === 'delivered' && !x.isReceiptDelivered) return false
+        if (view === 'overdue' && !x.overdue) return false
+        return true
+      })
+    : enriched
+
+  let items = baseItems
   if (search) {
-    items = items.filter((x) =>
-      [x.deliveryNumber, x.shipmentNo, x.billNo, x.destination, x.recipientName, x.contractor?.name]
+    items = enriched.filter((x) =>
+      [x.deliveryNumber, x.shipmentNo, x.billNo, x.destination, x.recipientName,
+        x.contractor?.name, x.contractor?.code, x.customer?.name]
         .some((f) => String(f ?? '').toLowerCase().includes(search)))
   }
 
   // تجميع لكل مقاول — أذوناته الخاصة (شارات التبويبات)
   const byContractorMap = new Map<string, { id: string; name: string; code: string | null; pending: number; overdue: number; delivered: number; total: number }>()
-  for (const x of enriched) {
+  for (const x of baseItems) {
     if (!x.contractor) continue
     const key = x.contractor.id
     const cur = byContractorMap.get(key) ?? { id: key, name: x.contractor.name, code: x.contractor.code, pending: 0, overdue: 0, delivered: 0, total: 0 }
@@ -99,10 +115,10 @@ export async function listReceipts(q: URLSearchParams, user?: { permissions: str
   const start = (p - 1) * pageSize
 
   const totals = {
-    all: enriched.length,
-    pending: enriched.filter((x) => !x.isReceiptDelivered).length,
-    overdue: enriched.filter((x) => x.overdue).length,
-    delivered: enriched.filter((x) => x.isReceiptDelivered).length,
+    all: baseItems.length,
+    pending: baseItems.filter((x) => !x.isReceiptDelivered).length,
+    overdue: baseItems.filter((x) => x.overdue).length,
+    delivered: baseItems.filter((x) => x.isReceiptDelivered).length,
   }
 
   return { items: items.slice(start, start + pageSize), total, page: p, pageSize, totalPages, totals, byContractor }

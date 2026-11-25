@@ -91,15 +91,10 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
     { name: 'nameEn', label: 'الاسم (EN)', type: 'text', span: 2 },
     { name: 'phone', label: 'الهاتف', type: 'tel' },
     { name: 'phones', label: 'هواتف إضافية', type: 'tel' },
-    { name: 'email', label: 'البريد', type: 'email' },
-    { name: 'taxNumber', label: 'الرقم الضريبي', type: 'text' },
     { name: 'address', label: 'العنوان', type: 'text', span: 2 },
     { name: 'city', label: 'المدينة', type: 'text' },
     { name: 'region', label: 'المنطقة', type: 'text' },
     { name: 'creditLimit', label: 'حد الائتمان', type: 'number' },
-    { name: 'openingBalance', label: 'الرصيد الافتتاحي', type: 'number' },
-    { name: 'openingBalanceType', label: 'نوع الرصيد', type: 'select', options: [{ value: 'debit', label: 'مدين' }, { value: 'credit', label: 'دائن' }] },
-    { name: 'paymentTerms', label: 'شروط السداد', type: 'text' },
     { name: 'branchId', label: 'الفرع المسؤول', type: 'select', options: (branches?.items ?? []).map((b) => ({ value: b.id, label: b.name })) },
     ...(editing ? [{ name: 'active', label: 'نشط (غير موقوف)', type: 'switch' } as Field] : []),
     { name: 'notes', label: 'ملاحظات', type: 'textarea', span: 2 },
@@ -131,7 +126,6 @@ export function PartiesModule({ type, title }: { type: 'customer' | 'contractor'
       // حقول مالية تُصدّر فقط لمن يملك صلاحية الأسعار
       ...(canPrices ? {
         'حد الائتمان': p.creditLimit ?? '',
-        'الرصيد الافتتاحي': p.openingBalance ?? 0,
         'إجمالي التعامل': p._sum.totalSuppliers ?? 0,
         'تحصيل العميل': p._sum.customerPay ?? 0,
       } : {}),

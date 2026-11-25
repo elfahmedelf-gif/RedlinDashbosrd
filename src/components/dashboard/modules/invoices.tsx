@@ -12,7 +12,7 @@ import * as React from 'react'
 import useSWR from 'swr'
 import {
   FilePlus2, Printer, Eye, CheckCheck, Banknote, Ban, Pencil, Trash2,
-  Plus, X, Truck, RefreshCw, Loader2, FileStack, Wallet, AlarmClock, FileDown,
+  Plus, X, Truck, RefreshCw, Loader2, FileStack, Wallet, AlarmClock, FileDown, Search,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -139,6 +139,24 @@ function StatusBadge({ status, label }: { status: string; label: string }) {
 // ---------------------------------------------------------------------------
 interface FormItem { key: string; shipmentId: string | null; description: string; quantity: number; unitPrice: number }
 
+/** نتيجة البحث الإجباري — إذن (شحنة) بحالته الفوترة */
+interface LookupPermit {
+  id: string
+  deliveryNumber: string | null
+  shipmentNo: string | null
+  billNo: string | null
+  destination: string | null
+  date: string | null
+  delivered: boolean
+  freightTotal: number
+  customer: { id: string; name: string; code: string | null } | null
+  contractor: { id: string; name: string } | null
+  invoiceable: boolean
+  reason: string | null
+}
+interface LookupCustomer { id: string; name: string; code: string | null; uninvoicedCount: number }
+interface LookupResult { term: string; permits: LookupPermit[]; customers: LookupCustomer[] }
+
 function InvoiceFormDialog({
   open, onOpenChange, editing, onSaved,
 }: {
@@ -176,6 +194,9 @@ function InvoiceFormDialog({
     setErr('')
     setSelectedShipments(new Set())
     setShowShipments(false)
+    setLookup(null)
+    setLookupQ('')
+    setCustomerChip(null)
     if (isEdit && detail) {
       setCustomerId(detail.customerId)
       setItems(detail.items.map((it, i) => ({
@@ -201,6 +222,94 @@ function InvoiceFormDialog({
 
   const setItem = (key: string, patch: Partial<FormItem>) =>
     setItems((s) => s.map((it) => (it.key === key ? { ...it, ...patch } : it)))
+
+  // ── البحث الإجباري: رقم الديليفري أو كود العميل يجيب أي إذن في النظام ──
+  const [lookupQ, setLookupQ] = React.useState('')
+  const [lookup, setLookup] = React.useState<LookupResult | null>(null)
+  const [looking, setLooking] = React.useState(false)
+  // بطاقة العميل المحدد — تُملأ من نتيجة البحث (الاسم/الكود قد لا يتوفران في قائمة العملاء المحمّلة)
+  const [customerChip, setCustomerChip] = React.useState<{ name: string; code: string | null } | null>(null)
+
+  const doLookup = async () => {
+    const q = lookupQ.trim()
+    if (!q || looking || busy) return
+    setLooking(true)
+    try {
+      const r = await fetcher(`/api/invoices/lookup?q=${encodeURIComponent(q)}`) as LookupResult
+      setLookup(r)
+      if (!r.permits.length && !r.customers.length) {
+        toast({ title: 'لا نتائج', description: `مفيش إذن أو عميل مطابق لـ«${q}» — جرّب رقم الديليفري أو الكود كاملًا`, variant: 'destructive' })
+      }
+    } catch (e: any) {
+      toast({ title: 'تعذر البحث', description: e.message, variant: 'destructive' })
+    } finally {
+      setLooking(false)
+    }
+  }
+
+  /** اختيار عميل من نتائج البحث — يجهّز قائمة أذوناته غير المفوترة */
+  const chooseCustomer = (c: LookupCustomer) => {
+    if (customerId && customerId !== c.id && items.length > 0) {
+      toast({
+        title: 'فيه بنود مرتبطة بالعميل الحالي',
+        description: `امسح العميل ${customerChip?.name ?? ''} من زر «مسح» أولًا — الفاتورة الواحدة لعميل واحد`,
+        variant: 'destructive',
+      })
+      return
+    }
+    setCustomerId(c.id)
+    setCustomerChip({ name: c.name, code: c.code })
+    setShowShipments(true)
+    setLookup(null)
+    toast({
+      title: `تم اختيار العميل ${c.name}`,
+      description: c.uninvoicedCount > 0
+        ? `عنده ${c.uninvoicedCount} إذن غير مفوتر — القائمة ظاهرة تحت، علّم عليها لتضيفها كبنود`
+        : 'مفيش أذون غير مفوترة له — أضف بندًا يدويًا لو محتاج',
+    })
+  }
+
+  /** إضافة إذن من نتائج البحث كبند في الفاتورة — العميل يتحدد تلقائيًا من الإذن */
+  const addPermit = (p: LookupPermit) => {
+    if (!p.invoiceable) return
+    if (items.some((it) => it.shipmentId === p.id)) {
+      toast({ title: 'الإذن مضاف بالفعل في بنود الفاتورة' })
+      return
+    }
+    if (customerId && p.customer && p.customer.id !== customerId) {
+      toast({
+        title: 'الإذن تابع لعميل آخر',
+        description: `${p.deliveryNumber ?? p.shipmentNo ?? ''} تابع لـ${p.customer.name} — الفاتورة الواحدة لعميل واحد. امسح العميل الحالي من زر «مسح» وابدأ من جديد`,
+        variant: 'destructive',
+      })
+      return
+    }
+    if (!customerId && p.customer) {
+      setCustomerId(p.customer.id)
+      setCustomerChip({ name: p.customer.name, code: p.customer.code })
+    }
+    setItems((cur) => [...cur, {
+      key: `sh-${p.id}`,
+      shipmentId: p.id,
+      description: `نقل شحنة رقم ديليفري ${p.deliveryNumber ?? p.shipmentNo ?? ''}${p.destination ? ` — ${p.destination}` : ''}`,
+      quantity: 1,
+      unitPrice: Math.max(0, p.freightTotal || 0),
+    }])
+    toast({
+      title: `تم إضافة الإذن ${p.deliveryNumber ?? p.shipmentNo ?? ''} كبند`,
+      description: p.customer ? `العميل: ${p.customer.name}${p.customer.code ? ` (${p.customer.code})` : ''} — راجع السعر ثم احفظ` : 'راجع السعر ثم احفظ',
+    })
+  }
+
+  /** مسح العميل والبنود — للبدء بفاتورة جديدة من البحث */
+  const clearCustomer = () => {
+    setCustomerId('')
+    setCustomerChip(null)
+    setItems([])
+    setSelectedShipments(new Set())
+    setShowShipments(false)
+    toast({ title: 'تم مسح العميل والبنود — ابحث من جديد برقم الديليفري أو الكود' })
+  }
 
   const addManualLine = () =>
     setItems((s) => [...s, { key: `m-${Date.now()}-${s.length}`, shipmentId: null, description: '', quantity: 1, unitPrice: 0 }])
@@ -236,7 +345,7 @@ function InvoiceFormDialog({
 
   const submit = async () => {
     setErr('')
-    if (!customerId) { setErr('اختيار العميل مطلوب'); return }
+    if (!customerId) { setErr('ابحث أولًا برقم الديليفري أو كود العميل — البحث إجباري لتحديد عميل الفاتورة'); return }
     if (!items.length) { setErr('الفاتورة تحتاج بندًا واحدًا على الأقل — استورد شحنات أو أضف بندًا يدويًا'); return }
     if (items.some((it) => !it.description.trim())) { setErr('كل البنود تحتاج وصفًا'); return }
     if (items.some((it) => !(it.quantity > 0) || !(it.unitPrice > 0))) { setErr('الكمية وسعر الوحدة يجب أن يكونا أكبر من صفر'); return }
@@ -274,29 +383,130 @@ function InvoiceFormDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? `تعديل مسودة الفاتورة ${editing?.invoiceNumber}` : 'فاتورة جديدة — مسودة'}</DialogTitle>
           <DialogDescription>
-            المسودة بلا أثر محاسبي — عند الإصدار يُرحّل قيد مزدوج تلقائيًا (مدين العملاء / دائن الإيراد + الضريبة 2103)
+            {isEdit
+              ? 'المسودة بلا أثر محاسبي — عند الإصدار يُرحّل قيد مزدوج تلقائيًا (مدين العملاء / دائن الإيراد + الضريبة 2103)'
+              : 'ابدأ بالبحث الإجباري: اكتب رقم الديليفري أو كود العميل — يجيب أي إذن في النظام. المسودة بلا أثر محاسبي، وعند الإصدار يُرحّل قيد مزدوج تلقائيًا'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-1">
-          {/* العميل + تاريخ الاستحقاق — شبكة 12 عمودًا مع min-w-0 لمنع أي تداخل في RTL */}
+          {/* العميل + تاريخ الاستحقاق — الإنشاء بالبحث الإجباري برقم الديليفري أو كود العميل */}
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-            <div className="sm:col-span-8 min-w-0">
-              <Label className="text-xs font-medium mb-1.5 block whitespace-nowrap">العميل *</Label>
-              <Select value={customerId} onValueChange={(v) => { setCustomerId(v); setShowShipments(false) }} disabled={isEdit || busy}>
-                <SelectTrigger className="w-full overflow-hidden"><SelectValue placeholder="اختر عميلًا..." /></SelectTrigger>
-                <SelectContent className="max-h-64">
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}{c.code ? ` (${c.code})` : ''}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="sm:col-span-8 min-w-0 space-y-2">
+              {isEdit ? (
+                <>
+                  <Label className="text-xs font-medium mb-1.5 block whitespace-nowrap">العميل *</Label>
+                  <Select value={customerId} disabled>
+                    <SelectTrigger className="w-full overflow-hidden"><SelectValue placeholder="اختر عميلًا..." /></SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {customers.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}{c.code ? ` (${c.code})` : ''}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              ) : (
+                <>
+                  <Label className="text-xs font-medium mb-1.5 block whitespace-nowrap">
+                    رقم الديليفري أو كود العميل <span className="text-destructive">*</span> — إجباري، يكفي رقم واحد لإحضار أي إذن
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={lookupQ}
+                      onChange={(e) => setLookupQ(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doLookup() } }}
+                      placeholder="مثال: DLV-1045 أو C-0007 — اكتب واضغط بحث"
+                      className="flex-1 min-w-0 font-mono"
+                      disabled={busy}
+                      aria-label="بحث إجباري برقم الديليفري أو كود العميل"
+                    />
+                    <Button onClick={doLookup} disabled={!lookupQ.trim() || looking || busy} className="shrink-0">
+                      {looking ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+                      بحث
+                    </Button>
+                  </div>
+                  {customerId && customerChip && (
+                    <div className="flex items-center gap-2 rounded-lg bg-primary/10 border border-primary/30 px-3 py-2 text-xs">
+                      <span className="font-semibold" dir="auto">{customerChip.name}</span>
+                      {customerChip.code && <span className="font-mono text-muted-foreground">({customerChip.code})</span>}
+                      <Badge variant="secondary" className="text-[9px]">عميل الفاتورة</Badge>
+                      {!busy && (
+                        <button
+                          onClick={clearCustomer}
+                          className="mr-auto flex items-center gap-1 text-muted-foreground hover:text-destructive transition-colors"
+                          title="مسح العميل والبنود والبدء من جديد"
+                        >
+                          <X className="size-3.5" /> مسح
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
             <div className="sm:col-span-4 min-w-0">
               <Label className="text-xs font-medium mb-1.5 block whitespace-nowrap">تاريخ الاستحقاق</Label>
               <Input type="date" className="w-full" value={dueDate} onChange={(e) => setDueDate(e.target.value)} disabled={busy} />
             </div>
           </div>
+
+          {/* نتائج البحث الإجباري — أي إذن في النظام يجيبه رقم الديليفري أو كود العميل */}
+          {lookup && !isEdit && (
+            <div className="rounded-xl border border-primary/30 bg-card overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 bg-primary/5 border-b border-border/60">
+                <div className="text-xs font-semibold flex items-center gap-1.5">
+                  <Search className="size-3.5 text-primary" />
+                  نتائج البحث عن «{lookup.term}» — اضغط «إضافة» لجلب الإذن للفاتورة
+                </div>
+                <button onClick={() => setLookup(null)} className="text-muted-foreground hover:text-foreground transition-colors" title="إغلاق النتائج" aria-label="إغلاق النتائج">
+                  <X className="size-4" />
+                </button>
+              </div>
+              <div className="max-h-60 overflow-y-auto divide-y divide-border/50 scrollbar-thin">
+                {lookup.permits.length === 0 && lookup.customers.length === 0 && (
+                  <div className="p-4 text-center text-xs text-muted-foreground">
+                    مفيش إذن أو عميل مطابق — جرّب رقم الديليفري كاملًا أو كود العميل أو اسم العميل
+                  </div>
+                )}
+                {lookup.permits.map((p) => (
+                  <div key={p.id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/30">
+                    <span className="font-mono font-bold min-w-[86px]">{p.deliveryNumber ?? p.shipmentNo ?? '—'}</span>
+                    <span className="flex-1 truncate" dir="auto">{p.destination ?? '—'}</span>
+                    {p.customer && (
+                      <span className="text-muted-foreground truncate max-w-[150px]" dir="auto">
+                        {p.customer.name}{p.customer.code ? ` (${p.customer.code})` : ''}
+                      </span>
+                    )}
+                    <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full whitespace-nowrap shrink-0',
+                      p.delivered ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300')}>
+                      {p.delivered ? 'مسلّم' : 'قيد التشغيل'}
+                    </span>
+                    <span className="tnum font-bold min-w-[72px] text-left">{money(p.freightTotal)} ج.م</span>
+                    {p.invoiceable ? (
+                      <Button size="sm" className="h-7 shrink-0" onClick={() => addPermit(p)} disabled={busy}>إضافة</Button>
+                    ) : (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 whitespace-nowrap shrink-0" title={p.reason ?? ''}>
+                        {p.reason ?? 'غير متاحة'}
+                      </span>
+                    )}
+                  </div>
+                ))}
+                {lookup.customers.map((c) => (
+                  <div key={c.id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/30">
+                    <span className="font-mono font-bold min-w-[86px]">{c.code ?? '—'}</span>
+                    <span className="flex-1 truncate font-semibold" dir="auto">{c.name}</span>
+                    <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full whitespace-nowrap shrink-0',
+                      c.uninvoicedCount > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300')}>
+                      {c.uninvoicedCount > 0 ? `${c.uninvoicedCount} إذن غير مفوتر` : 'لا أذون غير مفوترة'}
+                    </span>
+                    <Button size="sm" variant="outline" className="h-7 shrink-0" onClick={() => chooseCustomer(c)} disabled={busy}>
+                      اختيار العميل
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* استيراد الشحنات غير المفوترة */}
           {customerId && (
