@@ -27,7 +27,7 @@ import { InvoicesModule } from '@/components/dashboard/modules/invoices'
 import { ExecutiveModule } from '@/components/dashboard/modules/executive'
 import { PartiesModule } from '@/components/dashboard/modules/parties'
 import { BranchesModule, WarehousesModule } from '@/components/dashboard/modules/structure'
-import { InventoryModule, MovementsModule, FreightModule } from '@/components/dashboard/modules/inventory'
+import { FreightModule } from '@/components/dashboard/modules/inventory'
 import { AccountsModule, JournalModule } from '@/components/dashboard/modules/accounting'
 import { VouchersModule } from '@/components/dashboard/modules/vouchers-ops'
 import { PendingReturnsModule } from '@/components/dashboard/modules/pending-returns'
@@ -56,8 +56,6 @@ const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
   suppliers: { title: 'الموردون', subtitle: 'موردو الخدمات' },
   branches: { title: 'الفروع', subtitle: 'الفروع ومناطق التغطية' },
   warehouses: { title: 'المخازن', subtitle: 'المخازن وأرصدتها' },
-  inventory: { title: 'المخزون', subtitle: 'الأصناف وأرصدتها' },
-  movements: { title: 'حركة المخزون', subtitle: 'الاستلام والصرف والتحويل' },
   freight: { title: 'أسعار النولون', subtitle: 'جدول أسعار المناطق' },
   accounts: { title: 'شجرة الحسابات', subtitle: 'دليل الحسابات والأرصدة' },
   journal: { title: 'القيود اليومية', subtitle: 'القيد المزدوج والترحيل' },
@@ -380,8 +378,6 @@ function DashboardShell() {
               {tab === 'suppliers' && <PartiesModule type="supplier" title="موردون" />}
               {tab === 'branches' && <BranchesModule />}
               {tab === 'warehouses' && <WarehousesModule />}
-              {tab === 'inventory' && <InventoryModule />}
-              {tab === 'movements' && <MovementsModule />}
               {tab === 'freight' && <FreightModule />}
               {tab === 'accounts' && <AccountsModule />}
               {tab === 'journal' && <JournalModule />}

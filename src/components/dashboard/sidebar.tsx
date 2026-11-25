@@ -3,7 +3,7 @@
 import * as React from 'react'
 import {
   Truck, LayoutDashboard, LayoutGrid, PackageSearch, Users, UserCog, Building2,
-  Warehouse as WarehouseIcon, Boxes, ArrowRightLeft, Receipt, BookOpen,
+  Warehouse as WarehouseIcon, Receipt, BookOpen,
   FileText, Landmark, FileBarChart, Upload, UserCircle, Settings, History,
   ChevronRight, ChevronLeft, ChevronDown, PanelRightClose, PanelRightOpen,
   LogOut, ListChecks, Shield, Undo2, Menu, X, ClipboardCheck, Layers, Eye, FilePlus2, type LucideIcon,
@@ -18,7 +18,7 @@ import { QuickTourButton } from './quick-tour'
 
 export type ModuleKey =
   | 'overview' | 'shipments' | 'receipts' | 'extra-costs' | 'invoices' | 'executive' | 'pending-returns' | 'customers' | 'contractors' | 'suppliers'
-  | 'branches' | 'warehouses' | 'inventory' | 'movements' | 'freight'
+  | 'branches' | 'warehouses' | 'freight'
   | 'accounts' | 'journal' | 'vouchers' | 'reports' | 'import'
   | 'users' | 'roles' | 'lookups' | 'settings' | 'audit'
 
@@ -45,9 +45,7 @@ export const MODULES: ModuleDef[] = [
   { key: 'suppliers', label: 'الموردون', icon: Truck, desc: 'الموردون', group: 'parties' },
   { key: 'branches', label: 'الفروع', icon: Building2, desc: 'الفروع', group: 'structure' },
   { key: 'warehouses', label: 'المخازن', icon: WarehouseIcon, desc: 'المخازن', group: 'structure' },
-  { key: 'inventory', label: 'المخزون', icon: Boxes, desc: 'الأصناف', group: 'inventory' },
-  { key: 'movements', label: 'حركة المخزون', icon: ArrowRightLeft, desc: 'الحركات', group: 'inventory' },
-  { key: 'freight', label: 'أسعار النولون', icon: Receipt, desc: 'جدول الأسعار', group: 'inventory' },
+  { key: 'freight', label: 'أسعار النولون', icon: Receipt, desc: 'جدول الأسعار', group: 'pricing' },
   { key: 'accounts', label: 'شجرة الحسابات', icon: BookOpen, desc: 'دليل الحسابات', group: 'accounting' },
   { key: 'journal', label: 'القيود اليومية', icon: FileText, desc: 'القيد المزدوج', group: 'accounting' },
   { key: 'vouchers', label: 'الأذونات التشغيلية', icon: Landmark, desc: 'أذونات الشحن والمالية', group: 'accounting' },
@@ -74,8 +72,6 @@ export const MODULE_PERMISSIONS: Record<ModuleKey, string> = {
   suppliers: 'suppliers.view',
   branches: 'branches.view',
   warehouses: 'warehouses.view',
-  inventory: 'inventory.view',
-  movements: 'inventory.view',
   freight: 'inventory.view',
   accounts: 'accounting.view',
   journal: 'accounting.journal',
@@ -126,7 +122,7 @@ export const GROUP_LABELS: Record<string, string> = {
   daily: 'شغلك اليومي',
   parties: 'الأطراف',
   structure: 'الهيكل التنظيمي',
-  inventory: 'المخزون والتسعير',
+  pricing: 'التسعير',
   accounting: 'الحسابات المالية',
   reports: 'التقارير',
   system: 'النظام',
@@ -138,7 +134,7 @@ const GROUP_META: Record<string, { icon: LucideIcon; label: string }> = {
   daily: { icon: LayoutDashboard, label: 'شغلك اليومي' },
   parties: { icon: Users, label: 'الأطراف' },
   structure: { icon: Building2, label: 'الهيكل التنظيمي' },
-  inventory: { icon: Boxes, label: 'المخزون والتسعير' },
+  pricing: { icon: Receipt, label: 'التسعير' },
   accounting: { icon: BookOpen, label: 'الحسابات المالية' },
   reports: { icon: FileBarChart, label: 'التقارير' },
   system: { icon: Settings, label: 'النظام' },
