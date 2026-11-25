@@ -1238,16 +1238,16 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
             <label className="text-xs font-medium">تاريخ الشحن</label>
             <Input type="date" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} />
           </div>
-          {/* التسعير المزدوج — سعر النولون للعميل/بيكو (بيع) + سعر النولون للمقاول (تكلفة) + هامش الربح */}
+          {/* التسعير المزدوج — سعر النولون للعميل (بيع) + سعر النولون للمقاول (تكلفة) + هامش الربح */}
           {canPrices && (
             <div className="sm:col-span-2 rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-primary">
                 <HandCoins className="size-4" />
-                التسعير المزدوج — نولون العميل (شركة بيكو) ونولون المقاول
+                التسعير المزدوج — نولون العميل ونولون المقاول
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium">سعر النولون للعميل / شركة بيكو (بيع)</label>
+                  <label className="text-xs font-medium">سعر النولون للعميل (بيع)</label>
                   <Input
                     type="number"
                     value={v.freightTotal}
@@ -1269,7 +1269,7 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
                       </button>
                     </div>
                   )}
-                  <div className="text-[10px] text-muted-foreground mt-1">المبلغ اللي هتاخده من شركة بيكو أو العميل — ده الإيراد</div>
+                  <div className="text-[10px] text-muted-foreground mt-1">المبلغ اللي هتاخده من العميل — ده الإيراد</div>
                 </div>
                 <div>
                   <label className="text-xs font-medium">سعر النولون للمقاول (تكلفة)</label>
@@ -2032,9 +2032,9 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
               {/* المبالغ المالية — تُعرض فقط لمن يملك صلاحية الأسعار */}
               {canPrices && (
                 <>
-                  {/* التسعير المزدوج — سعر العميل/بيكو (بيع) + سعر المقاول (تكلفة) + هامش الربح */}
+                  {/* التسعير المزدوج — سعر العميل (بيع) + سعر المقاول (تكلفة) + هامش الربح */}
                   <div>
-                    <label className="text-xs font-medium">سعر النولون للعميل / شركة بيكو (بيع)</label>
+                    <label className="text-xs font-medium">سعر النولون للعميل (بيع)</label>
                     <Input type="number" value={ev.freightTotal ?? ''} onChange={(e) => setEv({ ...ev, freightTotal: e.target.value })} placeholder="0" />
                   </div>
                   <div>

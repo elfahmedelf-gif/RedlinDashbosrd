@@ -677,7 +677,7 @@ export function ReceiptsModule() {
                 هامش ربحك من النقلة
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">نولون العميل (شركة بيكو) − نولون المقاول</span>
+                <span className="text-muted-foreground">نولون العميل − نولون المقاول</span>
                 <span className="tnum num-ltr text-muted-foreground">{fmtNum(sell)} − {fmtNum(cost)}</span>
               </div>
               <div className="flex items-center justify-between border-t border-primary/20 pt-1.5">
