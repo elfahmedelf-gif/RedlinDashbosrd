@@ -23,7 +23,7 @@ export const ACCOUNT_PARENT_BY_CODE: Record<string, string> = {
   '2101': '21', '2102': '21', '2103': '21', '2104': '21',
   '3101': '3', '3102': '3',
   '4101': '4', '4102': '4', '4103': '4',
-  '5101': '5', '5102': '5', '5103': '5', '5104': '5',
+  '5101': '5', '5102': '5', '5103': '5', '5104': '5', '5105': '5',
 }
 
 /** تصحيح شجرة الحسابات: كل حساب تفصيلي معروف الكود يُربط بمجموعته الأم (idempotent) */
@@ -44,6 +44,37 @@ export async function ensureAccountTree(): Promise<void> {
     }
   }
   if (fixed) console.log(`[seed] تم ربط ${fixed} حساب تفصيلي بمجموعته في شجرة الحسابات`)
+}
+
+/**
+ * ضمان وجود حساب «مصروفات عمومية وإدارية» (5105) على القواعد القائمة — idempotent.
+ * يُنشأ تحت مجموعة المصروفات (5) إن لم يوجد، ويُربط بأبيه إن كان بلا أب.
+ * يُستخدم في وحدة المصروفات العمومية والتشغيل (نولون الشحن مكتب/بوفية/أدوات...).
+ */
+export async function ensureOperatingExpenseAccount(): Promise<void> {
+  const existing = await db.account.findUnique({ where: { code: '5105' } })
+  if (existing) {
+    // اربطه بمجموعته إن كان بلا أب (قاعدة قديمة نُقلت)
+    if (!existing.parentId) {
+      const parent = await db.account.findUnique({ where: { code: '5' } })
+      if (parent) await db.account.update({ where: { id: existing.id }, data: { parentId: parent.id } })
+    }
+    return
+  }
+  const parent = await db.account.findUnique({ where: { code: '5' } })
+  await db.account.create({
+    data: {
+      id: 'acc-5105-general-admin',
+      code: '5105',
+      name: 'مصروفات عمومية وإدارية',
+      nameEn: 'General & Administrative Expenses',
+      type: 'expense',
+      parentId: parent?.id ?? null,
+      isDetail: true,
+      active: true,
+    },
+  })
+  console.log('[seed] تم إنشاء حساب 5105 «مصروفات عمومية وإدارية»')
 }
 
 /**
@@ -89,6 +120,12 @@ export async function ensureSeeded(): Promise<void> {
       await ensureAccountTree()
     } catch (e) {
       console.warn('[seed] فشل تصحيح شجرة الحسابات:', (e as Error)?.message)
+    }
+    // حساب مصروفات عمومية وإدارية (5105) — يُنشأ على القواعد القائمة إن لم يوجد (idempotent)
+    try {
+      await ensureOperatingExpenseAccount()
+    } catch (e) {
+      console.warn('[seed] فشل إنشاء حساب المصروفات العمومية:', (e as Error)?.message)
     }
     // إعدادات النظام الأساسية (idempotent upserts — تنشئ ما ينقص فقط في كل إقلاع)
     try {

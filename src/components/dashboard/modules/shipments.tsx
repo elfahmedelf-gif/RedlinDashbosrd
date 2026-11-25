@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import useSWR from 'swr'
-import { Plus, PackageSearch, Filter, X, Search, Printer, ArrowLeft, Trash2, FileSpreadsheet, CheckSquare, Layers, Banknote, Link2, Truck, Pencil, AlertTriangle } from 'lucide-react'
+import { Plus, PackageSearch, Filter, X, Search, Printer, ArrowLeft, Trash2, FileSpreadsheet, CheckSquare, Layers, Banknote, Link2, Truck, Pencil, AlertTriangle, HandCoins } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -85,7 +85,7 @@ const SHIPMENT_EDIT_COUNT_FIELDS = ['policyQty', 'truckCount'] as const
 // خريطة أسماء عربية للحقول الرقمية — تُستخدم في رسائل التحقق بدل المفاتيح الإنجليزية
 // (كانت الرسالة تظهر مثل «القيمة في «ton15»» — غير مفهومة للمستخدم)
 const NUM_FIELD_LABELS: Record<string, string> = {
-  freightCost: 'تكلفة النولون', freightTotal: 'إجمالي النولون', totalSuppliers: 'نولون المقاول',
+  freightCost: 'تكلفة النولون', freightTotal: 'سعر النولون للعميل', totalSuppliers: 'سعر النولون للمقاول',
   salePrice: 'سعر البيع', customerPay: 'مدفوع من العميل', aging: 'تعتيق', overnight: 'مبيت',
   returns: 'مرتجعات', transfer: 'تحويلة', other: 'أخرى', drop: 'دروب',
   ton15: 'شاحنات 1.5 طن', ton3: 'شاحنات 3 طن', m6: 'شاحنات 6 متر',
@@ -117,7 +117,7 @@ function emptyCreateForm(): any {
     deliveryNumber: '', recipientName: '', destination: '', destinationEn: '', loadType: '', customerId: '', contractorId: '',
     branchId: '', warehouseId: '', date: localDateStr(), shipPart: '', worker: '',
     truckCount: '', ton15: '', ton3: '', m6: '',
-    freightCost: '', freightTotal: '', notes: '',
+    freightCost: '', freightTotal: '', totalSuppliers: '', notes: '',
     salePrice: '', customerPay: '', aging: '', overnight: '', returns: '', transfer: '', other: '', drop: '', policyQty: '',
   }
 }
@@ -1238,37 +1238,64 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
             <label className="text-xs font-medium">تاريخ الشحن</label>
             <Input type="date" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} />
           </div>
+          {/* التسعير المزدوج — سعر النولون للعميل/بيكو (بيع) + سعر النولون للمقاول (تكلفة) + هامش الربح */}
           {canPrices && (
-            <div>
-              <label className="text-xs font-medium">تكلفة النولون</label>
-              <Input type="number" value={v.freightCost} onChange={(e) => setV({ ...v, freightCost: e.target.value })} placeholder="0" />
-            </div>
-          )}
-          {canPrices && (
-            <div>
-              <label className="text-xs font-medium">إجمالي النولون</label>
-              <Input
-                type="number"
-                value={v.freightTotal}
-                onChange={(e) => { freightTouchedRef.current = true; setSuggested(null); setV({ ...v, freightTotal: e.target.value }) }}
-                onBlur={() => lookupQuote(v.destination, v.loadType)}
-                placeholder="0"
-              />
-              {/* سعر مقترح من محرك التسعير — مع إمكانية التراجع */}
-              {suggested && (
-                <div className="flex items-center justify-between gap-2 mt-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 dark:border-emerald-900/50 dark:bg-emerald-900/20">
-                  <span className="text-[11px] text-emerald-700 truncate-1 dark:text-emerald-300">
-                    سعر مقترح من جدول النولون: {suggested.routeName} — {fmtNum(suggested.sellPrice)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => { setV((prev: any) => ({ ...prev, freightTotal: '' })); setSuggested(null) }}
-                    className="shrink-0 min-h-[40px] px-2 text-[11px] font-medium text-emerald-800 underline-offset-2 hover:underline dark:text-emerald-200"
-                  >
-                    تراجع
-                  </button>
+            <div className="sm:col-span-2 rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-primary">
+                <HandCoins className="size-4" />
+                التسعير المزدوج — نولون العميل (شركة بيكو) ونولون المقاول
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium">سعر النولون للعميل / شركة بيكو (بيع)</label>
+                  <Input
+                    type="number"
+                    value={v.freightTotal}
+                    onChange={(e) => { freightTouchedRef.current = true; setSuggested(null); setV({ ...v, freightTotal: e.target.value }) }}
+                    onBlur={() => lookupQuote(v.destination, v.loadType)}
+                    placeholder="0"
+                  />
+                  {suggested && (
+                    <div className="flex items-center justify-between gap-2 mt-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 dark:border-emerald-900/50 dark:bg-emerald-900/20">
+                      <span className="text-[11px] text-emerald-700 truncate-1 dark:text-emerald-300">
+                        سعر مقترح: {suggested.routeName} — {fmtNum(suggested.sellPrice)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setV((prev: any) => ({ ...prev, freightTotal: '' })); setSuggested(null) }}
+                        className="shrink-0 min-h-[40px] px-2 text-[11px] font-medium text-emerald-800 underline-offset-2 hover:underline dark:text-emerald-200"
+                      >
+                        تراجع
+                      </button>
+                    </div>
+                  )}
+                  <div className="text-[10px] text-muted-foreground mt-1">المبلغ اللي هتاخده من شركة بيكو أو العميل — ده الإيراد</div>
                 </div>
-              )}
+                <div>
+                  <label className="text-xs font-medium">سعر النولون للمقاول (تكلفة)</label>
+                  <Input
+                    type="number"
+                    value={v.totalSuppliers}
+                    onChange={(e) => setV({ ...v, totalSuppliers: e.target.value })}
+                    placeholder="0"
+                  />
+                  <div className="text-[10px] text-muted-foreground mt-1">المبلغ اللي هتدفعه للمقاول — ده المستحق على حسابه</div>
+                </div>
+              </div>
+              {(() => {
+                const sell = Number(v.freightTotal ?? 0) || 0
+                const cost = Number(v.totalSuppliers ?? 0) || 0
+                if (!sell && !cost) return null
+                const profit = Math.round((sell - cost) * 100) / 100
+                return (
+                  <div className="flex items-center justify-between gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 dark:border-emerald-900/50 dark:bg-emerald-900/20">
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-300">هامش ربحك من النقلة</span>
+                    <span className={cn('text-sm font-bold tnum num-ltr', profit >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-400')}>
+                      {fmtNum(profit)} ج.م
+                    </span>
+                  </div>
+                )
+              })()}
             </div>
           )}
           {/* الحقول المالية الممتدة — تُعرض فقط لمن يملك صلاحية الأسعار */}
@@ -2005,17 +2032,34 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
               {/* المبالغ المالية — تُعرض فقط لمن يملك صلاحية الأسعار */}
               {canPrices && (
                 <>
+                  {/* التسعير المزدوج — سعر العميل/بيكو (بيع) + سعر المقاول (تكلفة) + هامش الربح */}
                   <div>
-                    <label className="text-xs font-medium">تكلفة النولون</label>
-                    <Input type="number" value={ev.freightCost ?? ''} onChange={(e) => setEv({ ...ev, freightCost: e.target.value })} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium">إجمالي النولون</label>
+                    <label className="text-xs font-medium">سعر النولون للعميل / شركة بيكو (بيع)</label>
                     <Input type="number" value={ev.freightTotal ?? ''} onChange={(e) => setEv({ ...ev, freightTotal: e.target.value })} placeholder="0" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium">نولون المقاول (إجمالي الموردين)</label>
+                    <label className="text-xs font-medium">سعر النولون للمقاول (تكلفة)</label>
                     <Input type="number" value={ev.totalSuppliers ?? ''} onChange={(e) => setEv({ ...ev, totalSuppliers: e.target.value })} placeholder="0" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    {(() => {
+                      const sell = Number(ev.freightTotal ?? 0) || 0
+                      const cost = Number(ev.totalSuppliers ?? 0) || 0
+                      if (!sell && !cost) return null
+                      const profit = Math.round((sell - cost) * 100) / 100
+                      return (
+                        <div className="flex items-center justify-between gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 dark:border-emerald-900/50 dark:bg-emerald-900/20">
+                          <span className="text-[11px] text-emerald-700 dark:text-emerald-300">هامش ربحك من النقلة</span>
+                          <span className={cn('text-sm font-bold tnum num-ltr', profit >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-400')}>
+                            {fmtNum(profit)} ج.م
+                          </span>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">تكلفة النولون (احتياطي)</label>
+                    <Input type="number" value={ev.freightCost ?? ''} onChange={(e) => setEv({ ...ev, freightCost: e.target.value })} placeholder="0" />
                   </div>
                   <div>
                     <label className="text-xs font-medium">سعر البيع</label>

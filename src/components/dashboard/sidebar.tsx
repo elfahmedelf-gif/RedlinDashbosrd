@@ -6,7 +6,7 @@ import {
   Warehouse as WarehouseIcon, Receipt, BookOpen,
   FileText, Landmark, FileBarChart, Upload, UserCircle, Settings, History,
   ChevronRight, ChevronLeft, ChevronDown, PanelRightClose, PanelRightOpen,
-  LogOut, ListChecks, Shield, Undo2, Menu, X, ClipboardCheck, Layers, Eye, FilePlus2, type LucideIcon,
+  LogOut, ListChecks, Shield, Undo2, Menu, X, ClipboardCheck, Layers, Eye, FilePlus2, ReceiptText, type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { matchPermission } from '@/lib/permissions'
@@ -19,7 +19,7 @@ import { QuickTourButton } from './quick-tour'
 export type ModuleKey =
   | 'overview' | 'shipments' | 'receipts' | 'extra-costs' | 'invoices' | 'executive' | 'pending-returns' | 'customers' | 'contractors' | 'suppliers'
   | 'branches' | 'warehouses' | 'freight'
-  | 'accounts' | 'journal' | 'vouchers' | 'reports' | 'import'
+  | 'accounts' | 'journal' | 'vouchers' | 'opex' | 'reports' | 'import'
   | 'users' | 'roles' | 'lookups' | 'settings' | 'audit'
 
 export interface ModuleDef {
@@ -49,6 +49,7 @@ export const MODULES: ModuleDef[] = [
   { key: 'accounts', label: 'شجرة الحسابات', icon: BookOpen, desc: 'دليل الحسابات', group: 'accounting' },
   { key: 'journal', label: 'القيود اليومية', icon: FileText, desc: 'القيد المزدوج', group: 'accounting' },
   { key: 'vouchers', label: 'الأذونات التشغيلية', icon: Landmark, desc: 'أذونات الشحن والمالية', group: 'accounting' },
+  { key: 'opex', label: 'مصروفات عمومية وتشغيل', icon: ReceiptText, desc: 'مصروفات المكتب والبوفية والأدوات اليومية', group: 'accounting' },
   { key: 'reports', label: 'التقارير', icon: FileBarChart, desc: 'التقارير', group: 'reports' },
   { key: 'import', label: 'استيراد البيانات', icon: Upload, desc: 'استيراد Excel', group: 'system' },
   { key: 'users', label: 'المستخدمون', icon: UserCircle, desc: 'حسابات المستخدمين', group: 'system' },
@@ -76,6 +77,7 @@ export const MODULE_PERMISSIONS: Record<ModuleKey, string> = {
   accounts: 'accounting.view',
   journal: 'accounting.journal',
   vouchers: 'vouchers.view',
+  opex: 'opex.view',
   reports: 'reports.view',
   import: 'import.manage',
   users: 'users.manage',

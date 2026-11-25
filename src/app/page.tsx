@@ -30,6 +30,7 @@ import { BranchesModule, WarehousesModule } from '@/components/dashboard/modules
 import { FreightModule } from '@/components/dashboard/modules/inventory'
 import { AccountsModule, JournalModule } from '@/components/dashboard/modules/accounting'
 import { VouchersModule } from '@/components/dashboard/modules/vouchers-ops'
+import { OperatingExpensesModule } from '@/components/dashboard/modules/operating-expenses'
 import { PendingReturnsModule } from '@/components/dashboard/modules/pending-returns'
 import { ReportsModule } from '@/components/dashboard/modules/reports'
 import { ImportModule } from '@/components/dashboard/modules/import-wizard'
@@ -60,6 +61,7 @@ const TAB_LABELS: Record<ModuleKey, { title: string; subtitle: string }> = {
   accounts: { title: 'شجرة الحسابات', subtitle: 'دليل الحسابات والأرصدة' },
   journal: { title: 'القيود اليومية', subtitle: 'القيد المزدوج والترحيل' },
   vouchers: { title: 'الأذونات التشغيلية', subtitle: 'إدارة أذونات الشحن والمالية بدورة حياة كاملة' },
+  opex: { title: 'مصروفات عمومية وتشغيل', subtitle: 'مصروفات المكتب اليومية (لابتوب/بوفية/أدوات/مشتريات) — قيد مزدوج تلقائي' },
   reports: { title: 'التقارير', subtitle: 'تقارير شاملة قابلة للتصدير' },
   import: { title: 'استيراد البيانات', subtitle: 'معالج استيراد Excel' },
   users: { title: 'المستخدمون', subtitle: 'حسابات المستخدمين وكلمات المرور' },
@@ -382,6 +384,7 @@ function DashboardShell() {
               {tab === 'accounts' && <AccountsModule />}
               {tab === 'journal' && <JournalModule />}
               {tab === 'vouchers' && <VouchersModule />}
+              {tab === 'opex' && <OperatingExpensesModule />}
               {tab === 'reports' && <ReportsModule />}
               {tab === 'import' && <ImportModule />}
               {tab === 'users' && <UsersModule />}

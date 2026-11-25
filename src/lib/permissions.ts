@@ -122,6 +122,9 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: 'vouchers.print', label: 'طباعة إذن', group: 'الأذونات التشغيلية' },
   { key: 'vouchers.export', label: 'تصدير الأذونات', group: 'الأذونات التشغيلية' },
   { key: 'prices.view', label: 'رؤية الأسعار والمبالغ (تكلفة/بيع/تحصيل)', group: 'الأذونات التشغيلية' },
+  // 18ب) المصروفات العمومية والتشغيلية (opex) — مكتب/بوفية/أدوات/مشتريات مستقلة عن حساب المقاول
+  { key: 'opex.view', label: 'عرض المصروفات العمومية والتشغيلية', group: 'المصروفات العمومية' },
+  { key: 'opex.manage', label: 'إضافة وتعديل وحذف المصروفات العمومية والتشغيلية', group: 'المصروفات العمومية' },
   // 19) التقارير (reports)
   { key: 'reports.view', label: 'عرض التقارير والتقرير الشهري الموحد', group: 'التقارير' },
   { key: 'reports.export', label: 'تصدير Excel وطباعة كشوف الحساب والتقارير', group: 'التقارير' },
@@ -165,6 +168,7 @@ export const GROUP_MODULE_KEY: Record<string, string> = {
   'شجرة الحسابات': 'accounts',
   'القيود اليومية': 'journal',
   'الأذونات التشغيلية': 'vouchers',
+  'المصروفات العمومية': 'opex',
   'التقارير': 'reports',
   'استيراد البيانات': 'import',
   'المستخدمون': 'users',

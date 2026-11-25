@@ -67,6 +67,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, string[]> = {
     'extra_costs.view', 'extra_costs.approve', 'returns.view', 'reports.export',
     'customers.view', 'invoices.view', 'invoices.create', 'invoices.issue', 'invoices.cancel',
     'invoices.print', 'invoices.export',
+    'opex.view', 'opex.manage',
   ],
   // مدير الفرع: إدارة الأطراف وأذونات التسليم والبنود والدفعات والمرتجعات + متابعة الإدارة
   branch_manager: [
@@ -76,6 +77,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, string[]> = {
     'extra_costs.view', 'extra_costs.create', 'extra_costs.approve', 'extra_costs.delete',
     'payments.view', 'payments.create', 'returns.view', 'returns.manage', 'reports.export',
     'invoices.view', 'invoices.create', 'invoices.print', 'invoices.export',
+    'opex.view', 'opex.manage',
   ],
   // موظف العمليات: تسجيل أذونات التسليم ✓ والبنود الإضافية والمرتجعات + عرض الدفعات
   operations: [
@@ -97,7 +99,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, string[]> = {
     'customers.view', 'contractors.view', 'suppliers.view',
     'branches.view', 'warehouses.view', 'inventory.view',
     'accounting.view', 'vouchers.view', 'reports.view', 'audit.view',
-    'invoices.view', 'invoices.print',
+    'invoices.view', 'invoices.print', 'opex.view',
   ],
   // رؤية الأسعار (خاص): تصدير التقارير المالية المسوح بها
   prices_viewer: ['reports.export'],
@@ -107,6 +109,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, string[]> = {
     'extra_costs.view', 'extra_costs.approve', 'returns.view', 'reports.export',
     'customers.view', 'invoices.view', 'invoices.create', 'invoices.issue', 'invoices.cancel',
     'invoices.print', 'invoices.export',
+    'opex.view', 'opex.manage',
   ],
   // موظف المخزن: عرض أذونات التسليم والبنود والمرتجعات والأطراف
   warehouse_clerk: ['receipts.view', 'extra_costs.view', 'returns.view', 'customers.view', 'contractors.view'],
@@ -124,7 +127,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, string[]> = {
     'executive.view', 'receipts.view', 'extra_costs.view',
     'customers.view', 'contractors.view', 'suppliers.view',
     'payments.view', 'returns.view', 'reports.view', 'reports.export',
-    'invoices.view', 'invoices.print', 'invoices.export',
+    'invoices.view', 'invoices.print', 'invoices.export', 'opex.view',
   ],
 }
 

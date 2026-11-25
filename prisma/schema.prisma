@@ -75,6 +75,7 @@ model Branch {
   users            User[]
   opVouchersSource OpVoucher[] @relation("OpVoucherSource")
   opVouchersDest   OpVoucher[] @relation("OpVoucherDest")
+  operatingExpenses OperatingExpense[]
 }
 
 model Warehouse {
@@ -313,6 +314,8 @@ model Account {
   children Account[]     @relation("AccountTree")
   lines    JournalLine[]
   cashVouchers OpVoucher[] @relation("OpVoucherCashAccount")
+  operatingExpensesExpense OperatingExpense[] @relation("OpExExpenseAccount")
+  operatingExpensesPay    OperatingExpense[] @relation("OpExPayAccount")
 }
 
 model CostCenter {
@@ -352,6 +355,7 @@ model JournalEntry {
   opVouchers OpVoucher[]
   extraCosts ExtraCost[]      @relation("ExtraCostJournal")
   invoice    Invoice?         @relation("InvoiceJournal")
+  operatingExpenses OperatingExpense[] @relation("OpExJournal")
 }
 
 model JournalLine {
@@ -483,6 +487,39 @@ model ExtraCost {
   @@index([shipmentId])
   @@index([type])
   @@index([date])
+}
+
+// ============================================================
+// المصروفات العمومية والتشغيلية (OE) — مصروفات يومية للمكتب
+// (لابتوب/أدوات مكتب/بوفية/مشتريات...إلخ) مستقلة عن حساب المقاول.
+// قيد مزدوج عند الإنشاء: مدين حساب المصروف / دائن الصندوق أو البنك.
+// التعديل يُعكس القيد ويُعاد إثباته بالبيانات الجديدة (نفس محرك البنود الإضافية).
+// ============================================================
+model OperatingExpense {
+  id             String    @id @default(cuid())
+  ref            String    @unique   // OE-0001 (تسلسلي آمن)
+  date           DateTime  @default(now())
+  accountId      String              // حساب المصروف (مدين) — 5101..5105
+  payAccountId   String?             // الصندوق/البنك المدفوع منه (دائن) — 1101/1102
+  amount         Float
+  category       String    @default("operating") // operating | general | other
+  vendor         String?             // المورد/المتجر (نص حر)
+  notes          String?
+  branchId       String?
+  journalEntryId String?   @unique   // القيد المحاسبي المرتبط
+  userId         String?
+  userName       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  account      Account       @relation("OpExExpenseAccount", fields: [accountId], references: [id])
+  payAccount   Account?      @relation("OpExPayAccount", fields: [payAccountId], references: [id])
+  branch       Branch?       @relation(fields: [branchId], references: [id])
+  journalEntry JournalEntry? @relation("OpExJournal", fields: [journalEntryId], references: [id])
+
+  @@index([date])
+  @@index([accountId])
+  @@index([category])
+  @@index([branchId])
 }
 
 // عدادات تسلسلية آمنة (أرقام أذونات/قيود) — تمنع تكرار الأرقام بعد الحذف
