@@ -744,7 +744,7 @@ export function ShipmentsModule() {
                             <div className="text-[10px] text-muted-foreground tnum truncate-1">ديليفري: {s.deliveryNumber}</div>
                           )}
                           {s.billNo && <div className="text-[10px] text-muted-foreground tnum truncate-1">بوليصة: {s.billNo}</div>}
-                          {s.shipPart && <div className="text-[10px] text-muted-foreground tnum truncate-1" title="Ship Part — رقم أمر الشحن عند العميل">Ship Part: {s.shipPart}</div>}
+                          {s.shipPart && <div className="text-[10px] text-muted-foreground tnum truncate-1" title="Ship Part — رقم أمر الشحن عند العميل">أمر الشحن: {s.shipPart}</div>}
                         </td>
                       )}
                       {cols.customer && (
@@ -1217,7 +1217,7 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
             </Select>
           </div>
           <div>
-            <label className="text-xs font-medium">Ship Part (رقم أمر الشحن)</label>
+            <label className="text-xs font-medium">رقم أمر الشحن (Ship Part)</label>
             <Input
               value={v.shipPart}
               onChange={(e) => setV({ ...v, shipPart: e.target.value })}
@@ -1227,7 +1227,7 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
             <div className="text-[10px] text-muted-foreground mt-1">الرقم المرجعي عند العميل — عمود Ship Part في شيت التوزيع، وقابل للبحث</div>
           </div>
           <div>
-            <label className="text-xs font-medium">العامل / Worker</label>
+            <label className="text-xs font-medium">العامل</label>
             <Input
               value={v.worker}
               onChange={(e) => setV({ ...v, worker: e.target.value })}
@@ -1341,7 +1341,7 @@ function ShipmentCreateDialog({ open, onOpenChange, onCreated, onViewExisting }:
           </div>
           {/* عدد الشاحنات — عمود Truck + توزيع المقاسات في شيت التوزيع اليومي */}
           <div>
-            <label className="text-xs font-medium">عدد الشاحنات (Truck)</label>
+            <label className="text-xs font-medium">عدد الشاحنات</label>
             <Input type="number" value={v.truckCount} onChange={(e) => setV({ ...v, truckCount: e.target.value })} placeholder="0" />
             <div className="text-[10px] text-muted-foreground mt-1">عمود Truck بالشيت — يُجمع تلقائيًا مع المقاسات إن تُرك فارغًا</div>
           </div>
@@ -1730,8 +1730,8 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
             <Row label="العميل" value={shipment.customer?.name || shipment.recipientName || '-'} />
             <Row label="جهة الشحن" value={shipment.shipToParty || '-'} />
             <Row label="هاتف التوصيل" value={shipment.deliveryPhones || '-'} ltr />
-            <Row label="Ship Part (أمر الشحن عند العميل)" value={shipment.shipPart || '-'} ltr />
-            <Row label="العامل / Worker" value={shipment.worker || '-'} />
+            <Row label="رقم أمر الشحن عند العميل" value={shipment.shipPart || '-'} ltr />
+            <Row label="العامل" value={shipment.worker || '-'} />
             <Row label="الوجهة" value={shipment.destination || '-'} />
             <Row label="الوجهة (EN)" value={shipment.destinationEn || '-'} ltr />
             <Row label="خط السير/التكويد" value={shipment.routeCode || '-'} />
@@ -1792,7 +1792,7 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
                 {showOvernight && <Row label="المبيت" value={`${fmtNum(shipment.overnight)} ج.م`} money />}
                 {showReturns && <Row label="المرتجع" value={`${fmtNum(shipment.returns)} ج.م`} money />}
                 {showTransfer && <Row label="التحويلة" value={`${fmtNum(shipment.transfer)} ج.م`} money />}
-                {showOtherDrop && <Row label="أخرى / Drop" value={`${fmtNum((shipment.other ?? 0) + (shipment.drop ?? 0))} ج.م`} money />}
+                {showOtherDrop && <Row label="أخرى + دروب" value={`${fmtNum((shipment.other ?? 0) + (shipment.drop ?? 0))} ج.م`} money />}
               </CardContent>
             </Card>
           )
@@ -1946,11 +1946,11 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
                 <Input value={ev.shipToParty} onChange={(e) => setEv({ ...ev, shipToParty: e.target.value })} />
               </div>
               <div>
-                <label className="text-xs font-medium">Ship Part (رقم أمر الشحن)</label>
+                <label className="text-xs font-medium">رقم أمر الشحن (Ship Part)</label>
                 <Input value={ev.shipPart} onChange={(e) => setEv({ ...ev, shipPart: e.target.value })} className="tnum" placeholder="79859" />
               </div>
               <div>
-                <label className="text-xs font-medium">العامل / Worker</label>
+                <label className="text-xs font-medium">العامل</label>
                 <Input value={ev.worker} onChange={(e) => setEv({ ...ev, worker: e.target.value })} />
               </div>
               <div>
@@ -2009,7 +2009,7 @@ function ShipmentDetail({ id, onBack, onChanged }: { id: string; onBack: () => v
                 <Input type="number" value={ev.policyQty ?? ''} onChange={(e) => setEv({ ...ev, policyQty: e.target.value })} placeholder="0" />
               </div>
               <div>
-                <label className="text-xs font-medium">عدد الشاحنات (Truck)</label>
+                <label className="text-xs font-medium">عدد الشاحنات</label>
                 <Input type="number" value={ev.truckCount ?? ''} onChange={(e) => setEv({ ...ev, truckCount: e.target.value })} placeholder="0" />
               </div>
               {/* توزيع المقاسات — يُعرض/يُحفظ لمن يملك صلاحية الأسعار (الخادم يخفيها عن غيرهم) */}

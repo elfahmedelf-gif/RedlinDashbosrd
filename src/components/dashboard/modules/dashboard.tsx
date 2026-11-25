@@ -341,7 +341,7 @@ export function DashboardModule({
         <StatCard label="مسلّمة" value={s.delivered} icon={Package} tone="emerald" />
         <StatCard label="مرتجعة" value={s.returned} icon={Undo2} tone="rose" />
         <StatCard label="متأخرة" value={s.delayed} icon={Clock} tone="amber" />
-        <StatCard label="COD غير محصّل" value={s.codUncollected} icon={Wallet} tone="orange" />
+        <StatCard label="تحصيل COD غير محصّل" value={s.codUncollected} icon={Wallet} tone="orange" />
         <StatCard label="إجمالي الوحدات" value={s.totalUnits} icon={Boxes} tone="teal" />
         <StatCard
           label={todayShipments > 0 ? 'شحنات اليوم' : 'لا شحنات اليوم'}

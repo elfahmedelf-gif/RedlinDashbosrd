@@ -89,7 +89,7 @@ const TARGET_FIELDS: { key: string; label: string; required?: boolean }[] = [
   { key: 'recipientName', label: 'اسم المستلم', required: true },
   { key: 'destination', label: 'الوجهة', required: true },
   { key: 'destinationEn', label: 'الوجهة (EN)' },
-  { key: 'shipPart', label: 'Ship Part (أمر الشحن)' },
+  { key: 'shipPart', label: 'رقم أمر الشحن' },
   { key: 'branchName', label: 'الفرع' },
   { key: 'customerName', label: 'العميل' },
   { key: 'contractorName', label: 'المقاول' },
@@ -99,11 +99,11 @@ const TARGET_FIELDS: { key: string; label: string; required?: boolean }[] = [
   { key: 'freightCost', label: 'التكويد (تكلفة النولون)' },
   { key: 'freightTotal', label: 'إجمالي النولون' },
   { key: 'policyQty', label: 'كمية السياسات' },
-  { key: 'truckCount', label: 'عدد الشاحنات (Truck)' },
+  { key: 'truckCount', label: 'عدد الشاحنات' },
   { key: 'ton15', label: 'شاحنات 1.5 طن' },
   { key: 'ton3', label: 'شاحنات 3 طن' },
   { key: 'm6', label: 'شاحنات 6 متر' },
-  { key: 'worker', label: 'العامل / Worker' },
+  { key: 'worker', label: 'العامل' },
   { key: 'date', label: 'تاريخ الشحن' },
 ]
 
@@ -140,7 +140,7 @@ const LOG_STATUS_META: Record<string, { label: string; cls: string }> = {
 // محلل نصي محلي صغير — يكتشف الفاصل (Tab/فاصلة/فاصلة منقوطة) ويقص دعم الاقتباس
 // ---------------------------------------------------------------------------
 const DELIMITERS: { d: string; label: string }[] = [
-  { d: '\t', label: 'Tab (نسخ Excel)' },
+  { d: '\t', label: 'جدولة (نسخ من Excel)' },
   { d: ',', label: 'فاصلة (,)' },
   { d: ';', label: 'فاصلة منقوطة (;)' },
 ]

@@ -316,7 +316,7 @@ export function FreightModule() {
   const exportFreight = () => {
     if (!data?.items?.length) { toast({ title: 'لا توجد بيانات للتصدير' }); return }
     const rows = data.items.map((r: any) => ({
-      'المنطقة (عربي)': r.regionAr ?? '', 'Region (EN)': r.regionEn ?? '',
+      'المنطقة (عربي)': r.regionAr ?? '', 'المنطقة (EN)': r.regionEn ?? '',
       'خط السير': r.routeName ?? '', 'المسافة (كم)': r.distanceKm ?? '',
       'نوع الحمولة': r.loadType ?? '', 'التكلفة': r.cost ?? 0,
       'سعر البيع': r.sellPrice ?? 0, 'سعر 2': r.sellPrice2 ?? '', 'ملاحظات': r.notes ?? '',
@@ -328,7 +328,7 @@ export function FreightModule() {
   const columns = [
     { key: 'idx', header: '#', align: 'center' as const, width: 'w-12', hideInCard: true, render: (_: any, i: number) => <span className="text-xs text-muted-foreground tnum">{i + 1}</span> },
     { key: 'regionAr', header: 'المنطقة (عربي)', primary: true, render: (r: any) => <span className="font-medium truncate-1 block">{r.regionAr || '-'}</span> },
-    { key: 'regionEn', header: 'Region (EN)', hideInCard: true, width: 'w-32', render: (r: any) => <span className="text-xs text-muted-foreground" dir="ltr">{r.regionEn || '-'}</span> },
+    { key: 'regionEn', header: 'المنطقة (EN)', hideInCard: true, width: 'w-32', render: (r: any) => <span className="text-xs text-muted-foreground" dir="ltr">{r.regionEn || '-'}</span> },
     { key: 'route', header: 'خط السير', hideInCard: true, width: 'w-32', render: (r: any) => <span className="text-xs">{r.routeName || '-'}</span> },
     // أعمدة التكلفة/سعر البيع/الهامش — تُعرض فقط لمن يملك صلاحية الأسعار
     ...(canPrices ? [
@@ -368,7 +368,7 @@ export function FreightModule() {
           <DialogHeader><DialogTitle>{editing ? 'تعديل سعر' : 'إضافة سعر نولون'}</DialogTitle></DialogHeader>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
             <div><label className="text-xs font-medium">المنطقة (عربي)</label><Input value={v.regionAr} onChange={(e) => setV({ ...v, regionAr: e.target.value })} /></div>
-            <div><label className="text-xs font-medium">Region (EN)</label><Input value={v.regionEn} onChange={(e) => setV({ ...v, regionEn: e.target.value })} dir="ltr" /></div>
+            <div><label className="text-xs font-medium">المنطقة (EN)</label><Input value={v.regionEn} onChange={(e) => setV({ ...v, regionEn: e.target.value })} dir="ltr" /></div>
             <div className="sm:col-span-2"><label className="text-xs font-medium">خط السير</label><Input value={v.routeName} onChange={(e) => setV({ ...v, routeName: e.target.value })} /></div>
             <div><label className="text-xs font-medium">التكلفة</label><Input type="number" value={v.cost} onChange={(e) => setV({ ...v, cost: e.target.value })} /></div>
             <div><label className="text-xs font-medium">سعر البيع</label><Input type="number" value={v.sellPrice} onChange={(e) => setV({ ...v, sellPrice: e.target.value })} /></div>
