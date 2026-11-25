@@ -25,6 +25,8 @@ interface EntityFormDialogProps {
   initial?: Record<string, any>
   onSubmit: (values: Record<string, any>) => Promise<void>
   submitLabel?: string
+  /** يُعرض أسفل الحقول مباشرة — يستقبل قيم الحقول الحية (مثل هامش الربح) */
+  preview?: (values: Record<string, any>) => React.ReactNode
 }
 
 export function EntityFormDialog({
@@ -36,6 +38,7 @@ export function EntityFormDialog({
   initial,
   onSubmit,
   submitLabel = 'حفظ',
+  preview,
 }: EntityFormDialogProps) {
   const [values, setValues] = React.useState<Record<string, any>>({})
   const [loading, setLoading] = React.useState(false)
@@ -118,6 +121,9 @@ export function EntityFormDialog({
             </div>
           ))}
         </div>
+        {preview && (
+          <div className="pt-1">{preview(values)}</div>
+        )}
         {err && (
           <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{err}</div>
         )}

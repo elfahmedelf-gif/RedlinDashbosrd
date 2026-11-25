@@ -51,6 +51,17 @@ const CATEGORY_OPTIONS = [
   { value: 'other', label: 'مصروفات أخرى', code: '5104' },
 ]
 
+// أنواع المصروف الجاهزة — اختيار سريع يعبّي البيان تلقائيًا (مطابق لأمثلة المكتب اليومية)
+const EXPENSE_TYPES: { label: string; note: string; category?: string }[] = [
+  { label: 'كمبيوتر/لابتوب', note: 'شراء لابتوب/كمبيوتر للمكتب', category: 'general' },
+  { label: 'أدوات مكتبية', note: 'أدوات ومستلزمات مكتبية', category: 'general' },
+  { label: 'بوفية/ضيافة', note: 'طلبات بوفية وضيافة', category: 'operating' },
+  { label: 'مشتريات عامة', note: 'مشتريات عامة للمكتب', category: 'operating' },
+  { label: 'صيانة/إصلاح', note: 'صيانة وإصلاح', category: 'operating' },
+  { label: 'كهرباء/إنترنت', note: 'فواتير كهرباء/إنترنت', category: 'general' },
+  { label: 'أخرى', note: '', category: 'other' },
+]
+
 function categoryLabel(c: string): string {
   return CATEGORY_OPTIONS.find((o) => o.value === c)?.label ?? 'مصروف'
 }
@@ -389,6 +400,42 @@ export function OperatingExpensesModule() {
               </Select>
               <div className="text-[10px] text-muted-foreground mt-1">يحدد الحساب الافتراضي (عمومية ← 5105، تشغيلية ← 5104)</div>
             </div>
+
+            {/* اختيار سريع لنوع المصروف — يعبّي التصنيف والبيان تلقائيًا */}
+            <div className="sm:col-span-2">
+              <Label className="text-xs font-medium">نوع المصروف (اختيار سريع)</Label>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {EXPENSE_TYPES.map((t) => {
+                  const active = form.notes === t.note || (t.note && (form.notes ?? '').startsWith(t.note))
+                  return (
+                    <button
+                      key={t.label}
+                      type="button"
+                      onClick={() => {
+                        const next: any = { ...form }
+                        if (t.category) {
+                          next.category = t.category
+                          const code = CATEGORY_OPTIONS.find((o) => o.value === t.category)?.code
+                          const acc = code ? expenseAccounts.find((a) => a.code === code) : null
+                          if (acc) next.accountId = acc.id
+                        }
+                        next.notes = t.note || form.notes
+                        setForm(next)
+                      }}
+                      className={cn(
+                        'text-[11px] font-medium px-2.5 py-1 rounded-full border transition-all',
+                        active
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/40',
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             <div className="sm:col-span-2">
               <Label className="text-xs font-medium">حساب المصروف (مدين) *</Label>
               <Select value={form.accountId || '__'} onValueChange={(val) => setForm({ ...form, accountId: val === '__' ? '' : val })}>

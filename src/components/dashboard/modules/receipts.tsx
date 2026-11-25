@@ -15,6 +15,7 @@ import useSWR from 'swr'
 import {
   ClipboardCheck, Package, PackageCheck, PackageX, AlarmClock, Search,
   FileSpreadsheet, Printer, CircleCheck, Circle, RefreshCw, Plus, Pencil, Trash2, Loader2, X,
+  HandCoins,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -664,6 +665,30 @@ export function ReceiptsModule() {
         initial={initialForm}
         onSubmit={submitForm}
         submitLabel={editing ? 'حفظ التعديل' : 'إضافة الإذن'}
+        preview={canPrices ? (v) => {
+          const sell = Number(v.freightTotal ?? 0) || 0
+          const cost = Number(v.freightCost ?? 0) || 0
+          if (!sell && !cost) return null
+          const profit = Math.round((sell - cost) * 100) / 100
+          return (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-primary">
+                <HandCoins className="size-4" />
+                هامش ربحك من النقلة
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">نولون العميل (شركة بيكو) − نولون المقاول</span>
+                <span className="tnum num-ltr text-muted-foreground">{fmtNum(sell)} − {fmtNum(cost)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-primary/20 pt-1.5">
+                <span className="text-sm font-medium">مكسبك من النقلة</span>
+                <span className={`font-bold tnum num-ltr ${profit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
+                  {fmtNum(profit)} ج.م
+                </span>
+              </div>
+            </div>
+          )
+        } : undefined}
       />
     </div>
   )
